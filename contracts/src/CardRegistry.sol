@@ -43,10 +43,12 @@ contract CardRegistry is ERC1155, AccessControl, TestnetOnly {
     }
 
     // ─── Card definitions ───────────────────────────────────────
-    function defineCards(uint16[] calldata ids, uint8[] calldata races, uint8[] calldata rarities, uint8[] calldata chains)
-        external
-        onlyRole(CARD_ADMIN_ROLE)
-    {
+    function defineCards(
+        uint16[] calldata ids,
+        uint8[] calldata races,
+        uint8[] calldata rarities,
+        uint8[] calldata chains
+    ) external onlyRole(CARD_ADMIN_ROLE) {
         for (uint256 i; i < ids.length; ++i) {
             uint256 id = ids[i];
             if (_cards[id].exists) revert AlreadyDefined(id);

@@ -32,7 +32,9 @@ contract Play is ForkfallScript {
         requireTestnet();
         uint16[30] memory s = StarterDecks(addr("StarterDecks")).starterList(race);
         uint16[] memory ids = new uint16[](30);
-        for (uint256 i; i < 30; ++i) ids[i] = s[i];
+        for (uint256 i; i < 30; ++i) {
+            ids[i] = s[i];
+        }
         vm.startBroadcast();
         deckId = DeckRegistry(addr("DeckRegistry")).register(race, ids);
         vm.stopBroadcast();
@@ -81,7 +83,9 @@ contract Play is ForkfallScript {
         vm.startBroadcast();
         ids = PackSale(addr("PackSale")).open(packId);
         vm.stopBroadcast();
-        for (uint256 i; i < 5; ++i) console2.log("card", ids[i]);
+        for (uint256 i; i < 5; ++i) {
+            console2.log("card", ids[i]);
+        }
     }
 
     function registerAgent(address operator, string calldata name, string calldata uri) external {
@@ -113,7 +117,12 @@ contract Play is ForkfallScript {
         if (byReferee) {
             ms.settleByReferee(r, vm.parseJsonBytes(json, ".winnerSig"));
         } else {
-            ms.settle(r, vm.parseJsonBytes(json, ".sigA"), vm.parseJsonBytes(json, ".sigB"));
+            ms.settle(
+                r,
+                vm.parseJsonBytes(json, ".sigA"),
+                vm.parseJsonBytes(json, ".sigB"),
+                vm.parseJsonBytes(json, ".refereeSig")
+            );
         }
         vm.stopBroadcast();
         console2.log("settled match");

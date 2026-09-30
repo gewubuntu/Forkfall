@@ -17,7 +17,8 @@ import {FaucetToken} from "../src/TestTokens.sol";
 abstract contract Fixture is Test {
     Deploy.Deployed d;
     address admin;
-    address referee = makeAddr("referee");
+    uint256 refereePk = 0x5EF;
+    address referee = vm.addr(0x5EF);
     uint256 alicePk = 0xA11CE;
     uint256 bobPk = 0xB0B;
     address alice;
@@ -36,7 +37,9 @@ abstract contract Fixture is Test {
     function starterIds(uint8 race) internal view returns (uint16[] memory ids) {
         uint16[30] memory s = d.starters.starterList(race);
         ids = new uint16[](30);
-        for (uint256 i; i < 30; ++i) ids[i] = s[i];
+        for (uint256 i; i < 30; ++i) {
+            ids[i] = s[i];
+        }
     }
 
     function claimAndRegister(address who, uint8 race) internal returns (bytes32 deckId) {

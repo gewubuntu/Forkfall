@@ -14,7 +14,10 @@ contract FaucetToken is ERC20, Ownable, TestnetOnly {
 
     error Cooldown(uint256 readyAt);
 
-    constructor(string memory n, string memory s, uint8 dec_, uint256 drip, address owner_) ERC20(n, s) Ownable(owner_) {
+    constructor(string memory n, string memory s, uint8 dec_, uint256 drip, address owner_)
+        ERC20(n, s)
+        Ownable(owner_)
+    {
         _dec = dec_;
         dripAmount = drip;
     }

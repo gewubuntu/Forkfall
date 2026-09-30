@@ -68,11 +68,15 @@ contract CardsTest is Fixture {
         vm.roll(block.number + 3);
         vm.prank(alice);
         uint256[5] memory ids = d.packs.open(0);
-        for (uint256 i; i < 3; ++i) assertEq(d.cards.cardInfo(ids[i]).rarity, 0);
+        for (uint256 i; i < 3; ++i) {
+            assertEq(d.cards.cardInfo(ids[i]).rarity, 0);
+        }
         assertEq(d.cards.cardInfo(ids[3]).rarity, 1);
         assertGe(d.cards.cardInfo(ids[4]).rarity, 2);
         uint256 total;
-        for (uint256 i; i < 5; ++i) total += d.cards.balanceOf(alice, ids[i]);
+        for (uint256 i; i < 5; ++i) {
+            total += d.cards.balanceOf(alice, ids[i]);
+        }
         assertGe(total, 5);
 
         vm.prank(alice);
@@ -117,7 +121,9 @@ contract CardsTest is Fixture {
 
     function testFuzz_rollAlwaysValidRarities(bytes32 rand) public view {
         uint256[5] memory ids = d.packs.roll(rand);
-        for (uint256 i; i < 3; ++i) assertEq(d.cards.cardInfo(ids[i]).rarity, 0);
+        for (uint256 i; i < 3; ++i) {
+            assertEq(d.cards.cardInfo(ids[i]).rarity, 0);
+        }
         assertEq(d.cards.cardInfo(ids[3]).rarity, 1);
         assertGe(d.cards.cardInfo(ids[4]).rarity, 2);
     }

@@ -51,6 +51,8 @@ export interface Match {
   clock: { turnStartedAt: number; bank: [number, number]; timeouts: [number, number] };
   endedAt?: number;
   result?: MatchResult;
+  /** Referee co-signature over the result (required on-chain for ranked / Human queue). */
+  refereeSig?: Hex;
 }
 
 export interface LobbyOptions {
@@ -278,7 +280,8 @@ export class Lobby {
       winner: s.winner === 'draw' || s.winner === null ? ZERO_ADDRESS : m.players[s.winner].address,
       deckA: a.deckId, deckB: b.deckId, mode: MODES[m.mode], season: m.season, turns: s.turn, logHash: m.head,
     };
-    for (const p of m.players) if (p.bot) p.resultSig = undefined; // house signs on demand
+    // The referee attests every result it refereed; house bots co-sign right away too.
+    void this.houseSignResult(m).then(() => this.changed(m));
   }
 
   // ─── Clock (call every second) ────────────────────────────────
@@ -326,6 +329,9 @@ export class Lobby {
   }
 
   private async houseSignResult(m: Match) {
+    if (m.result && !m.refereeSig) {
+      m.refereeSig = await this.opts.house.signTypedData({ domain: this.domain, types: RESULT_TYPES, primaryType: 'MatchResult', message: { ...m.result } });
+    }
     for (const p of m.players) {
       if (p.bot && !p.resultSig && m.result) {
         p.resultSig = await this.opts.house.signTypedData({ domain: this.domain, types: RESULT_TYPES, primaryType: 'MatchResult', message: { ...m.result } });
@@ -358,7 +364,9 @@ export class Lobby {
     if (!m.result) throw new ApiError(409, 'match not finished');
     const [a, b] = m.players;
     const base = { domain: { ...this.domain, chainId: Number(this.domain.chainId) }, result: m.result };
-    if (a.resultSig && b.resultSig) return { ...base, byReferee: false, sigA: a.resultSig, sigB: b.resultSig };
+    if (a.resultSig && b.resultSig && (m.refereeSig || m.mode === 'casual')) {
+      return { ...base, byReferee: false, sigA: a.resultSig, sigB: b.resultSig, refereeSig: m.refereeSig ?? '0x' };
+    }
     const winnerSeat = m.result.winner === a.address ? 0 : m.result.winner === b.address ? 1 : null;
     const graceOver = this.now() - (m.endedAt ?? 0) > this.graceMs || m.state?.endReason === 'timeout' || m.state?.endReason === 'concede';
     if (winnerSeat !== null && m.players[winnerSeat].resultSig && graceOver) {

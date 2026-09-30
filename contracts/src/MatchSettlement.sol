@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
 import {DeckRegistry} from "./DeckRegistry.sol";
 import {HumanRegistry} from "./HumanRegistry.sol";
@@ -60,8 +61,39 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
 
     // Elo expected score (x1000) for rating gaps 0, 25, 50, ... 800.
     uint16[33] private ELO = [
-        500, 536, 571, 606, 640, 673, 703, 733, 760, 785, 808, 830, 849, 867, 882, 896, 909,
-        920, 930, 939, 947, 954, 960, 965, 969, 973, 977, 980, 983, 985, 987, 989, 990
+        500,
+        536,
+        571,
+        606,
+        640,
+        673,
+        703,
+        733,
+        760,
+        785,
+        808,
+        830,
+        849,
+        867,
+        882,
+        896,
+        909,
+        920,
+        930,
+        939,
+        947,
+        954,
+        960,
+        965,
+        969,
+        973,
+        977,
+        980,
+        983,
+        985,
+        987,
+        989,
+        990
     ];
 
     error AlreadySettled(bytes32 matchId);
@@ -73,6 +105,7 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
     error Banned(address player);
     error NotHuman(address player);
     error UnknownMode(uint8 mode);
+    error MissingRefereeSignature();
 
     event MatchSettled(
         bytes32 indexed matchId,
@@ -87,7 +120,9 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
     event RatingChanged(uint32 indexed season, address indexed player, uint32 oldRating, uint32 newRating);
     event SeasonStarted(uint32 season);
 
-    constructor(address admin, AgentRegistry agents_, DeckRegistry decks_, HumanRegistry humans_) EIP712("Forkfall", "1") {
+    constructor(address admin, AgentRegistry agents_, DeckRegistry decks_, HumanRegistry humans_)
+        EIP712("Forkfall", "1")
+    {
         agentRegistry = agents_;
         deckRegistry = decks_;
         humanRegistry = humans_;
@@ -100,17 +135,35 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
         return _hashTypedDataV4(
             keccak256(
                 abi.encode(
-                    RESULT_TYPEHASH, r.matchId, r.playerA, r.playerB, r.winner, r.deckA, r.deckB, r.mode, r.season, r.turns, r.logHash
+                    RESULT_TYPEHASH,
+                    r.matchId,
+                    r.playerA,
+                    r.playerB,
+                    r.winner,
+                    r.deckA,
+                    r.deckB,
+                    r.mode,
+                    r.season,
+                    r.turns,
+                    r.logHash
                 )
             )
         );
     }
 
-    /// @notice Happy path: both players signed the final result.
-    function settle(MatchResult calldata r, bytes calldata sigA, bytes calldata sigB) external {
+    /// @notice Happy path: both players signed the final result. Ranked and Human-queue results also need the
+    ///         referee's co-signature, so two colluding wallets cannot fabricate matches to farm rating or rewards.
+    ///         Casual results need only the two players (pass empty `refereeSig`).
+    function settle(MatchResult calldata r, bytes calldata sigA, bytes calldata sigB, bytes calldata refereeSig)
+        external
+    {
         bytes32 digest = _precheck(r);
         if (!SignatureChecker.isValidSignatureNow(r.playerA, digest, sigA)) revert BadSignature(r.playerA);
         if (!SignatureChecker.isValidSignatureNow(r.playerB, digest, sigB)) revert BadSignature(r.playerB);
+        if (r.mode != MODE_CASUAL) {
+            (address referee, ECDSA.RecoverError err,) = ECDSA.tryRecover(digest, refereeSig);
+            if (err != ECDSA.RecoverError.NoError || !hasRole(REFEREE_ROLE, referee)) revert MissingRefereeSignature();
+        }
         _record(r, false);
     }
 

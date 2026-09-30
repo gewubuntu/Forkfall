@@ -32,6 +32,10 @@ contract SettlementTest is Fixture {
         });
     }
 
+    function refSig(MatchSettlement.MatchResult memory r) internal view returns (bytes memory) {
+        return sign(refereePk, r);
+    }
+
     function sign(uint256 pk, MatchSettlement.MatchResult memory r) internal view returns (bytes memory) {
         (uint8 v, bytes32 rr, bytes32 s) = vm.sign(pk, d.settlement.hashResult(r));
         return abi.encodePacked(rr, s, v);
@@ -39,7 +43,8 @@ contract SettlementTest is Fixture {
 
     function test_rankedSettleUpdatesElo() public {
         MatchSettlement.MatchResult memory r = result(1, alice);
-        d.settlement.settle(r, sign(alicePk, r), sign(bobPk, r));
+        bytes memory rs = refSig(r);
+        d.settlement.settle(r, sign(alicePk, r), sign(bobPk, r), rs);
         MatchSettlement.Stats memory a = d.settlement.stats(1, alice);
         MatchSettlement.Stats memory b = d.settlement.stats(1, bob);
         assertEq(a.wins, 1);
@@ -51,24 +56,26 @@ contract SettlementTest is Fixture {
         bytes memory sa = sign(alicePk, r);
         bytes memory sb = sign(bobPk, r);
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.AlreadySettled.selector, r.matchId));
-        d.settlement.settle(r, sa, sb);
+        d.settlement.settle(r, sa, sb, rs);
     }
 
     function test_forgedSignatureRejected() public {
         MatchSettlement.MatchResult memory r = result(1, alice);
+        bytes memory rs;
         bytes memory sa = sign(alicePk, r);
         bytes memory bad = sign(alicePk, r); // alice signs for bob
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.BadSignature.selector, bob));
-        d.settlement.settle(r, sa, bad);
+        d.settlement.settle(r, sa, bad, rs);
     }
 
     function test_tamperedResultRejected() public {
         MatchSettlement.MatchResult memory r = result(1, alice);
+        bytes memory rs;
         bytes memory sa = sign(alicePk, r);
         bytes memory sb = sign(bobPk, r);
         r.winner = bob;
         vm.expectRevert();
-        d.settlement.settle(r, sa, sb);
+        d.settlement.settle(r, sa, sb, rs);
     }
 
     function test_refereePathNeedsRoleAndWinnerSig() public {
@@ -83,29 +90,32 @@ contract SettlementTest is Fixture {
 
     function test_rankedRequiresValidDeck() public {
         MatchSettlement.MatchResult memory r = result(1, alice);
+        bytes memory rs;
         r.deckB = deckA;
         bytes memory sa = sign(alicePk, r);
         bytes memory sb = sign(bobPk, r);
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.InvalidDeck.selector, bob));
-        d.settlement.settle(r, sa, sb);
+        d.settlement.settle(r, sa, sb, rs);
     }
 
     function test_bannedPlayerCannotSettleRanked() public {
         vm.prank(admin);
         d.agents.setBan(bob, true, "collusion");
         MatchSettlement.MatchResult memory r = result(1, alice);
+        bytes memory rs;
         bytes memory sa = sign(alicePk, r);
         bytes memory sb = sign(bobPk, r);
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.Banned.selector, bob));
-        d.settlement.settle(r, sa, sb);
+        d.settlement.settle(r, sa, sb, rs);
     }
 
     function test_humanQueueRequiresVerifiedNonAgents() public {
         MatchSettlement.MatchResult memory r = result(2, alice);
+        bytes memory rs = refSig(r);
         bytes memory sa = sign(alicePk, r);
         bytes memory sb = sign(bobPk, r);
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.NotHuman.selector, alice));
-        d.settlement.settle(r, sa, sb);
+        d.settlement.settle(r, sa, sb, rs);
 
         vm.startPrank(admin);
         d.humans.attest(alice, keccak256("worldid"), 0);
@@ -114,18 +124,31 @@ contract SettlementTest is Fixture {
         vm.prank(bob);
         d.agents.register(bob, "bob-bot", "");
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.NotHuman.selector, bob));
-        d.settlement.settle(r, sa, sb);
+        d.settlement.settle(r, sa, sb, rs);
 
         vm.prank(bob);
         d.agents.deregister(bob);
-        d.settlement.settle(r, sa, sb);
+        d.settlement.settle(r, sa, sb, rs);
+    }
+
+    function test_rankedNeedsRefereeCoSignature() public {
+        MatchSettlement.MatchResult memory r = result(1, alice);
+        bytes memory sa = sign(alicePk, r);
+        bytes memory sb = sign(bobPk, r);
+        bytes memory fakeRef = sign(alicePk, r); // colluding player posing as referee
+        vm.expectRevert(MatchSettlement.MissingRefereeSignature.selector);
+        d.settlement.settle(r, sa, sb, "");
+        vm.expectRevert(MatchSettlement.MissingRefereeSignature.selector);
+        d.settlement.settle(r, sa, sb, fakeRef);
+        d.settlement.settle(r, sa, sb, refSig(r));
     }
 
     function test_casualSkipsDeckChecksAndElo() public {
         MatchSettlement.MatchResult memory r = result(0, address(0));
+        bytes memory rs;
         r.deckA = bytes32(0);
         r.deckB = bytes32(0);
-        d.settlement.settle(r, sign(alicePk, r), sign(bobPk, r));
+        d.settlement.settle(r, sign(alicePk, r), sign(bobPk, r), rs);
         assertEq(d.settlement.stats(0, alice).draws, 1);
         assertEq(d.settlement.stats(1, alice).rating, 1200);
     }

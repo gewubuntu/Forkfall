@@ -33,7 +33,9 @@ contract DeckRegistry is TestnetOnly {
     error TooManyCopies(uint256 cardId);
     error NotOwned(uint256 cardId, uint256 have, uint256 need);
 
-    event DeckRegistered(bytes32 indexed deckId, address indexed owner, uint8 race, uint16 rarityPoints, bool rankedLegal);
+    event DeckRegistered(
+        bytes32 indexed deckId, address indexed owner, uint8 race, uint16 rarityPoints, bool rankedLegal
+    );
 
     constructor(CardRegistry cards_) {
         cards = cards_;
@@ -93,7 +95,9 @@ contract DeckRegistry is TestnetOnly {
         uint256 run;
         for (uint256 i; i < ids.length; ++i) {
             run = (i > 0 && ids[i] == ids[i - 1]) ? run + 1 : 1;
-            if ((i + 1 == ids.length || ids[i + 1] != ids[i]) && cards.playableBalance(player, ids[i]) < run) return false;
+            if ((i + 1 == ids.length || ids[i + 1] != ids[i]) && cards.playableBalance(player, ids[i]) < run) {
+                return false;
+            }
         }
         return true;
     }

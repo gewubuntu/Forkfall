@@ -12,7 +12,10 @@
     "server": "tsx apps/server/src/main.ts",
     "web": "pnpm --filter @forkfall/web dev",
     "mcp": "tsx apps/mcp/src/main.ts",
-    "bot": "tsx packages/sdk/scripts/agent-bot.ts"
+    "bot": "tsx packages/sdk/scripts/agent-bot.ts",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:test": "cd contracts && forge test",
+    "web:build": "pnpm --filter @forkfall/web build"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
