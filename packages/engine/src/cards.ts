@@ -1,0 +1,333 @@
+import type { CardDef, Faction, PredictionCondition, Race, Rarity } from './types.ts';
+
+/** Token ids live outside the collectible range and never exist on-chain. */
+export const TOKEN_DRONE = 1000;
+export const TOKEN_BOND = 1001;
+
+/**
+ * Prototype set: 40 test cards (8 per race + 8 neutral) plus 2 tokens.
+ * Ids 1–40 map 1:1 to ERC-1155 token ids in CardRegistry.
+ * All numbers are playtest starting values.
+ */
+export const CARDS: CardDef[] = [
+  // ─── Agents (Base) ─────────────────────────────────────────────
+  {
+    id: 1, slug: 'launch-bot', name: 'Launch Bot', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 1.', onPlay: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 2, slug: 'compute-node', name: 'Compute Node', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 1, attack: 1, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Compute 1: your next card costs 1 less.', onPlay: [{ k: 'compute', n: 1 }],
+  },
+  {
+    id: 3, slug: 'cron-job', name: 'Cron Job', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1. Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'draw', n: 1 }, { k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
+  },
+  {
+    id: 4, slug: 'sentry-drone', name: 'Sentry Drone', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 3, rarity: 'common', keywords: ['guard', 'firewall'], collectible: true,
+    text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 5, slug: 'swarm-deployer', name: 'Swarm Deployer', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deploy 2.', onPlay: [{ k: 'deploy', n: 2 }],
+  },
+  {
+    id: 6, slug: 'firewall', name: 'Firewall', faction: 'agents', chain: 'base', type: 'asset',
+    cost: 1, rarity: 'uncommon', keywords: ['firewall'], collectible: true,
+    text: 'Asset. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 7, slug: 'mainframe', name: 'Mainframe', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 6, attack: 5, health: 6, rarity: 'rare', keywords: [], collectible: true,
+    text: 'At the start of your turn, Deploy 1.', startOfTurn: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 8, slug: 'the-launcher', name: 'The Launcher', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 8, attack: 6, health: 6, rarity: 'legendary', keywords: [], collectible: true,
+    text: 'Deploy 3. Automate: at the start of your next turn, give all friendly units +1/+1.',
+    onPlay: [{ k: 'deploy', n: 3 }, { k: 'automate', effects: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }] }],
+  },
+
+  // ─── Prophets (Base) ───────────────────────────────────────────
+  {
+    id: 9, slug: 'tea-leaves', name: 'Tea Leaves', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 2 damage per Odds tier to the enemy Treasury. Backfire: take 1.',
+    prediction: { damagePerTier: 2, backfire: 1 },
+  },
+  {
+    id: 10, slug: 'seers-acolyte', name: "Seer's Acolyte", faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 2, attack: 3, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, gain +1/+1.',
+    onPredictionHit: [{ k: 'buff', to: 'self', atk: 1, hp: 1 }],
+  },
+  {
+    id: 11, slug: 'star-chart', name: 'Star Chart', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Foresee. Correct: draw 1 card per Odds tier and deal 1 damage per tier. Backfire: take 1.',
+    prediction: { drawPerTier: 1, damagePerTier: 1, backfire: 1 },
+  },
+  {
+    id: 12, slug: 'oracle-guard', name: 'Oracle Guard', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. If you have an active prediction, draw 1.', onPlay: [{ k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 13, slug: 'called-it', name: 'Called It', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'Deal 3 damage to an enemy unit, or 5 if you have an active prediction.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 3, nIfPrediction: 5 }],
+  },
+  {
+    id: 14, slug: 'market-seer', name: 'Market Seer', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'uncommon', keywords: ['predictionBonus'], collectible: true,
+    text: 'Your predictions resolve one Odds tier higher.',
+  },
+  {
+    id: 15, slug: 'prophecy-of-ruin', name: 'Prophecy of Ruin', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 4, rarity: 'rare', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 3 damage per Odds tier to the enemy Treasury. Backfire: take 3.',
+    prediction: { damagePerTier: 3, backfire: 3 },
+  },
+  {
+    id: 16, slug: 'the-all-seeing-eye', name: 'The All-Seeing Eye', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 7, attack: 5, health: 7, rarity: 'legendary', keywords: ['noBackfire'], collectible: true,
+    text: 'Your predictions never backfire. Draw 2.', onPlay: [{ k: 'draw', n: 2 }],
+  },
+
+  // ─── Brokers (Robinhood Chain) ─────────────────────────────────
+  {
+    id: 17, slug: 'intern', name: 'Intern', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold.',
+  },
+  {
+    id: 18, slug: 'bond-desk', name: 'Bond Desk', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 0, health: 3, rarity: 'common', keywords: ['hold', 'guard'], collectible: true,
+    text: 'Hold. Guard.',
+  },
+  {
+    id: 19, slug: 'analyst', name: 'Analyst', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: draw 1.', dividend: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 20, slug: 'index-fund', name: 'Index Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 3, health: 4, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 21, slug: 'portfolio-manager', name: 'Portfolio Manager', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 2, health: 3, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    text: 'Hold. Portfolio: holds 2 Bonds (2/2) that drop to the board when this dies.',
+    portfolio: [TOKEN_BOND, TOKEN_BOND],
+  },
+  {
+    id: 22, slug: 'compound-interest', name: 'Compound Interest', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Give a friendly unit +2/+2 and Hold.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 2, addKeywords: ['hold'] }],
+  },
+  {
+    id: 23, slug: 'trust-vault', name: 'Trust Vault', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 6, attack: 3, health: 6, rarity: 'rare', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Portfolio: holds 2 Bonds.', portfolio: [TOKEN_BOND, TOKEN_BOND],
+  },
+  {
+    id: 24, slug: 'the-whale', name: 'The Whale', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 8, attack: 7, health: 9, rarity: 'legendary', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: draw 1 and gain 1 Gas.', dividend: [{ k: 'draw', n: 1 }, { k: 'gainGas', n: 1 }],
+  },
+
+  // ─── Degens (Robinhood Chain) ──────────────────────────────────
+  {
+    id: 25, slug: 'meme-critter', name: 'Meme Critter', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: ['swarm'], collectible: true,
+    text: 'Swarm: +1 attack for each other friendly Swarm unit.',
+  },
+  {
+    id: 26, slug: 'paper-hands', name: 'Paper Hands', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: ['rush'], collectible: true,
+    text: 'Rush.',
+  },
+  {
+    id: 27, slug: 'pump-frog', name: 'Pump Frog', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 1, health: 2, rarity: 'common', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
+  },
+  {
+    id: 28, slug: 'ape-in', name: 'Ape In', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Pump a friendly unit. It gains Rush this turn.',
+    onPlay: [{ k: 'pump', to: 'chosen' }, { k: 'grantRush', to: 'chosen' }],
+  },
+  {
+    id: 29, slug: 'rug-pull', name: 'Rug Pull', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 1, rarity: 'uncommon', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: "Sacrifice a friendly unit. Deal its attack +2 to the enemy Treasury.", onPlay: [{ k: 'rug', bonus: 2 }],
+  },
+  {
+    id: 30, slug: 'hype-man', name: 'Hype Man', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 3, rarity: 'uncommon', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Give all friendly Swarm units +1 attack.',
+    onPlay: [{ k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 0 }],
+  },
+  {
+    id: 31, slug: 'leverage', name: 'Leverage', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'rare', keywords: ['ape'], collectible: true, target: 'friendlyUnit',
+    text: "Ape. Double a friendly unit's attack.", onPlay: [{ k: 'doubleAttack', to: 'chosen' }],
+  },
+  {
+    id: 32, slug: 'sticker-dragon', name: 'Sticker Dragon', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 6, attack: 6, health: 5, rarity: 'legendary', keywords: ['rush', 'ape'], collectible: true,
+    text: 'Rush. Ape. Pump all friendly units.', onPlay: [{ k: 'pump', to: 'allFriendly' }],
+  },
+
+  // ─── Neutral ───────────────────────────────────────────────────
+  {
+    id: 33, slug: 'cold-wallet', name: 'Cold Wallet', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 2, attack: 1, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 34, slug: 'validator', name: 'Validator', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: '',
+  },
+  {
+    id: 35, slug: 'airdrop', name: 'Airdrop', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 2.', onPlay: [{ k: 'draw', n: 2 }],
+  },
+  {
+    id: 36, slug: 'liquidator', name: 'Liquidator', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 3, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 3 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 3 }],
+  },
+  {
+    id: 37, slug: 'bridge-runner', name: 'Bridge Runner', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 2, attack: 2, health: 1, rarity: 'common', keywords: ['rush'], collectible: true,
+    text: 'Rush.',
+  },
+  {
+    id: 38, slug: 'mev-searcher', name: 'MEV Searcher', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 4, attack: 4, health: 3, rarity: 'uncommon', keywords: ['rush'], collectible: true,
+    text: 'Rush.',
+  },
+  {
+    id: 39, slug: 'hard-fork', name: 'Hard Fork', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deal 2 damage to every unit.', onPlay: [{ k: 'damage', to: 'allUnits', n: 2 }],
+  },
+  {
+    id: 40, slug: 'genesis-block', name: 'Genesis Block', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 5, attack: 5, health: 5, rarity: 'rare', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+
+  // ─── Tokens (not collectible) ──────────────────────────────────
+  {
+    id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 0, attack: 1, health: 1, rarity: 'common', keywords: [], collectible: false, text: 'Deployed token.',
+  },
+  {
+    id: TOKEN_BOND, slug: 'bond-token', name: 'Bond', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 0, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: false, text: 'Portfolio token.',
+  },
+];
+
+const BY_ID = new Map(CARDS.map((c) => [c.id, c]));
+
+export function card(id: number): CardDef {
+  const c = BY_ID.get(id);
+  if (!c) throw new Error(`unknown card ${id}`);
+  return c;
+}
+
+export function hasCard(id: number): boolean {
+  return BY_ID.has(id);
+}
+
+export const COLLECTIBLE = CARDS.filter((c) => c.collectible);
+export const RACES: Race[] = ['agents', 'prophets', 'brokers', 'degens'];
+
+/** Home chain per race. */
+export const RACE_CHAIN: Record<Race, 'base' | 'robinhood'> = {
+  agents: 'base', prophets: 'base', brokers: 'robinhood', degens: 'robinhood',
+};
+
+/** Matchup cycle: key beats value. */
+export const BEATS: Record<Race, Race> = {
+  prophets: 'agents', agents: 'degens', degens: 'brokers', brokers: 'prophets',
+};
+
+export const PREDICTION_TIERS: Record<PredictionCondition, number> = {
+  attacks: 1,
+  attacks2: 2,
+  playsBigUnit: 2,
+  plays3Cards: 3,
+  summons3: 3,
+};
+
+export const PREDICTION_LABELS: Record<PredictionCondition, string> = {
+  attacks: 'Opponent attacks next turn',
+  attacks2: 'Opponent attacks with 2+ units next turn',
+  playsBigUnit: 'Opponent plays a unit costing 4+ next turn',
+  plays3Cards: 'Opponent plays 3+ cards next turn',
+  summons3: 'Opponent summons 3+ units next turn',
+};
+
+// ─── Deck rules ──────────────────────────────────────────────────
+export const DECK_SIZE = 30;
+export const MAX_COPIES = 2;
+export const MAX_LEGENDARY_COPIES = 1;
+/** Ranked rarity budget: money buys breadth, not power. */
+export const RARITY_POINTS: Record<Rarity, number> = { common: 0, uncommon: 1, rare: 2, legendary: 4 };
+export const RANKED_RARITY_CAP = 16;
+export const MAX_LEGENDARIES_RANKED = 1;
+
+export interface DeckCheck { ok: boolean; errors: string[]; rarityPoints: number }
+
+export function validateDeck(race: Race, deck: number[], ranked = false): DeckCheck {
+  const errors: string[] = [];
+  if (deck.length !== DECK_SIZE) errors.push(`deck must have ${DECK_SIZE} cards, has ${deck.length}`);
+  const counts = new Map<number, number>();
+  let rarityPoints = 0;
+  let legendaries = 0;
+  for (const id of deck) {
+    const c = BY_ID.get(id);
+    if (!c || !c.collectible) { errors.push(`card ${id} is not collectible`); continue; }
+    if (c.faction !== 'neutral' && c.faction !== race) errors.push(`${c.name} is not ${race} or neutral`);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+    rarityPoints += RARITY_POINTS[c.rarity];
+    if (c.rarity === 'legendary') legendaries++;
+  }
+  for (const [id, n] of counts) {
+    const c = card(id);
+    const max = c.rarity === 'legendary' ? MAX_LEGENDARY_COPIES : MAX_COPIES;
+    if (n > max) errors.push(`${c.name}: ${n} copies (max ${max})`);
+  }
+  if (ranked) {
+    if (rarityPoints > RANKED_RARITY_CAP) errors.push(`rarity points ${rarityPoints} exceed ranked cap ${RANKED_RARITY_CAP}`);
+    if (legendaries > MAX_LEGENDARIES_RANKED) errors.push(`ranked allows ${MAX_LEGENDARIES_RANKED} legendary`);
+  }
+  return { ok: errors.length === 0, errors, rarityPoints };
+}
+
+/** Free starter deck: 2x every non-legendary race card + 2x every neutral card. */
+export function starterDeck(race: Race): number[] {
+  const out: number[] = [];
+  for (const c of COLLECTIBLE) {
+    if ((c.faction === race || c.faction === 'neutral') && c.rarity !== 'legendary') out.push(c.id, c.id);
+  }
+  return out;
+}
+
+export function factionOf(id: number): Faction { return card(id).faction; }
+export const RARITIES: Rarity[] = ['common', 'uncommon', 'rare', 'legendary'];

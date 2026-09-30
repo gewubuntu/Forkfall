@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.local
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+apps/server/data/
+.DS_Store

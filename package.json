@@ -1,0 +1,23 @@
+{
+  "name": "forkfall",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "sim": "tsx packages/engine/scripts/simulate.ts",
+    "gen:cards": "tsx packages/engine/scripts/gen-solidity.ts",
+    "server": "tsx apps/server/src/main.ts",
+    "web": "pnpm --filter @forkfall/web dev",
+    "mcp": "tsx apps/mcp/src/main.ts",
+    "bot": "tsx packages/sdk/scripts/agent-bot.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
