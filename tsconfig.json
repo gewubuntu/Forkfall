@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/engine" },
+    { "path": "packages/sdk" },
+    { "path": "apps/server" },
+    { "path": "apps/mcp" },
+    { "path": "apps/web" }
+  ]
+}
