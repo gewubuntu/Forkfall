@@ -7,3 +7,4 @@ contracts/cache/
 contracts/broadcast/*/31337/
 apps/server/data/
 .DS_Store
+contracts/deployments/31337.json
