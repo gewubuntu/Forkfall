@@ -1,0 +1,15 @@
+{
+  "name": "@forkfall/art",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "export": "tsx scripts/export.ts"
+  },
+  "dependencies": {
+    "@forkfall/engine": "workspace:*"
+  }
+}

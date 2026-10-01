@@ -199,6 +199,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@forkfall/art':
+        specifier: workspace:*
+        version: link:../../packages/art
       '@forkfall/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -223,6 +226,9 @@ importers:
       '@fontsource/pixelify-sans':
         specifier: ^5.3.0
         version: 5.3.0
+      '@forkfall/art':
+        specifier: workspace:*
+        version: link:../../packages/art
       '@forkfall/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -266,6 +272,12 @@ importers:
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(tsx@4.23.15)
+
+  packages/art:
+    dependencies:
+      '@forkfall/engine':
+        specifier: workspace:*
+        version: link:../engine
 
   packages/engine:
     dependencies:

@@ -18,6 +18,16 @@ contract CardsTest is Fixture {
         assertEq(c.rarity, 3);
     }
 
+    function test_metadataUrisAreAdminSettable() public {
+        assertEq(d.cards.uri(1), "ipfs://cards/{id}.json");
+        vm.prank(admin);
+        d.cards.setContractURI("https://server/metadata/contract.json");
+        assertEq(d.cards.contractURI(), "https://server/metadata/contract.json");
+        vm.prank(alice);
+        vm.expectRevert();
+        d.cards.setContractURI("x");
+    }
+
     function test_starterClaimIsSoulbound() public {
         vm.prank(alice);
         d.starters.claim(1);

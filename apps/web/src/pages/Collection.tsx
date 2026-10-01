@@ -360,6 +360,7 @@ function CardDetail({ cd, owned, scrap, scrapValue, craftCost, busy, onClose, on
               <dt>Tradeable</dt><dd>{owned.tradeable}</dd>
               <dt>Soulbound</dt><dd>{owned.soulbound}</dd>
               <dt>Your Scrap</dt><dd>{scrap}</dd>
+              <dt>Token</dt><dd><a href={`/metadata/images/${cd.id}.svg`} target="_blank" rel="noreferrer">Card image ↗</a> · <a href={`/metadata/cards/${cd.id}.json`} target="_blank" rel="noreferrer">metadata ↗</a></dd>
             </dl>
             <div className="cd-action">
               <h3>Scrap</h3>

@@ -36,6 +36,11 @@ contract CardRegistry is ERC1155, AccessControl, TestnetOnly {
     error AlreadyDefined(uint256 id);
 
     event CardDefined(uint256 indexed id, uint8 race, uint8 rarity, uint8 chain);
+    /// @notice ERC-7572: collection metadata changed.
+    event ContractURIUpdated();
+
+    /// @notice ERC-7572 collection metadata (name, description, image) for wallets and marketplaces.
+    string public contractURI;
 
     constructor(address admin, string memory uri_) ERC1155(uri_) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -63,6 +68,11 @@ contract CardRegistry is ERC1155, AccessControl, TestnetOnly {
 
     function setURI(string calldata uri_) external onlyRole(CARD_ADMIN_ROLE) {
         _setURI(uri_);
+    }
+
+    function setContractURI(string calldata uri_) external onlyRole(CARD_ADMIN_ROLE) {
+        contractURI = uri_;
+        emit ContractURIUpdated();
     }
 
     function cardInfo(uint256 id) public view returns (CardInfo memory c) {

@@ -17,6 +17,7 @@
     "mcp": "tsx apps/mcp/src/main.ts",
     "bot": "tsx packages/sdk/scripts/agent-bot.ts",
     "agent:link": "tsx packages/sdk/scripts/agent-link.ts",
+    "art:export": "tsx packages/art/scripts/export.ts",
     "rewards:publish": "tsx apps/server/scripts/publish-rewards.ts",
     "contracts:build": "cd contracts && forge build",
     "contracts:test": "cd contracts && forge test",

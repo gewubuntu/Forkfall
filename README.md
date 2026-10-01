@@ -102,7 +102,7 @@ cast wallet import forkfall-deployer --interactive   # paste the key, choose a p
 
 Get Base Sepolia ETH from a faucet (for example the Coinbase Developer Platform faucet), and an Etherscan API v2 key from etherscan.io for Basescan verification.
 
-**2. Configure.** `cp .env.example .env`, then set `ETHERSCAN_API_KEY`, `REFEREE_ADDRESS` (the referee key's address) and `HOUSE_PRIVATE_KEY` (the referee key). Optional: `RPC_URL` / `BASE_SEPOLIA_RPC_URL` (a dedicated RPC is recommended over `https://sepolia.base.org`), `TREASURY_ADDRESS`, `PACK_PRICE_WEI`, `CARD_URI`.
+**2. Configure.** `cp .env.example .env`, then set `ETHERSCAN_API_KEY`, `REFEREE_ADDRESS` (the referee key's address) and `HOUSE_PRIVATE_KEY` (the referee key), plus `METADATA_BASE`: where card metadata lives, either your referee server (`https://<server>/metadata`) or a pinned `pnpm art:export` folder (`ipfs://<cid>`). The deploy refuses to run on a testnet without it, so the cards never ship with a dead URI. Optional: `RPC_URL` / `BASE_SEPOLIA_RPC_URL` (a dedicated RPC is recommended over `https://sepolia.base.org`), `TREASURY_ADDRESS`, `PACK_PRICE_WEI`, `CARD_URI` / `CONTRACT_URI` (override the derived URIs).
 
 **3. Deploy, verify, check.**
 
@@ -168,6 +168,12 @@ Finished matches are archived as JSON (log + signatures) in `apps/server/data/<c
 - *Humans* play every queue without verifying. Verifying (`POST /v1/human/verify`) records an attestation in `HumanRegistry` via the referee key (`ATTESTOR_ROLE`, granted at deploy).
 - *Season rewards*: after a season ends, `SEASON=<n> POOL=<tFALL> pnpm rewards:publish` reads every rated player from `RatingChanged` events, splits the pool by settled ranked wins among verified humans and registered agents (banned and unverified players are listed as excluded with the reason), mints the pool to `SeasonRewards`, publishes the Merkle root and writes `apps/server/data/rewards/<chainId>/season-<n>.json`. The server serves proofs at `GET /v1/rewards?address=`; players claim on the Profile page. `START_NEXT=1` also starts the next season; `REWARDS_ADMIN_PRIVATE_KEY` is the deployer/admin key.
 
+**Card art and metadata.** `packages/art` is the one source for card visuals, used by the web app, the referee server and the export:
+- *Sprites:* 32×32 pixel art per card, following the GDD pixel style guide: race palettes of 12 ramp colors plus 4 flat colors (16 max), one light from the top left with 3 shades, a 1 px outline in the race's darkest shade, transparent background, shared baseline. Race accents: Agents metallic glints and sensor dots, Prophets gold glow, Brokers symmetric suits, Degens off-model critters with a white sticker outline. Archetypes follow the card (robots, drones, oracles, suits, critters, vaults, towers; icons for actions, predictions and assets). These are prototype placeholders until the commissioned art lands.
+- *Card frame:* a vector frame tinted per race. Rarity sets the material (stone, silver, gold, an animated prismatic sheen for Legendary). It shows a Gas gem, a chain badge (text only: no real logos), name, type line, rules text and attack/health, with a ribbon on soulbound starter copies. The sprite is drawn at an integer 10× scale.
+- *Metadata:* ERC-1155 JSON for each card (token `n`) and each non-Legendary starter copy (`10000 + n`), with name, description, image and attributes (race, chain, type, rarity, Gas, attack, health, keywords, edition). Collection metadata follows ERC-7572 (`CardRegistry.contractURI`).
+- *Hosting:* the referee server serves `/metadata/cards/{id}.json` (64-hex `{id}` or decimal), `/metadata/images/<id>.svg` and `/metadata/contract.json`; `PUBLIC_URL` sets the absolute links. `pnpm art:export [dir]` writes the same metadata as static, self-contained files (images embedded) plus a preview gallery, ready to pin to IPFS.
+
 **Smart wallets before their first transaction.** A Base Account (or any counterfactual smart wallet) can sign in, sign results and settle before it exists on-chain: its signatures are ERC-6492-wrapped with the wallet's factory call. The referee server verifies them with viem; `MatchSettlement` runs the factory call (which deploys the wallet at its predicted address), then checks ERC-1271. That call only happens when the wallet is missing or rejects the inner signature, and settlement is `nonReentrant`, so a factory cannot settle a match twice. Replays verify smart-wallet session delegations too when given a chain client.
 
 **Referee auto-settlement.** When the winner has signed but the loser never does, the referee submits `settleByReferee` itself: right away after a timeout or concede, otherwise after the grace period (`RESULT_GRACE_SECONDS`, default 600). It checks `settled()` first, retries a failed attempt twice with backoff, skips practice games against the house bot and draws (those need both signatures), and logs every outcome. The winner sees a countdown and the result in the match dialog and on the Matches page. `AUTO_SETTLE=0` turns it off; it needs testnet ETH on the referee key.
@@ -191,6 +197,7 @@ pnpm 12 blocks dependency install scripts unless approved; the allowlist lives i
 ```
 packages/engine   rules engine, cards, RNG, bots, balance sim, Solidity card generator
 packages/sdk      EIP-712 protocol, API client, agent loop
+packages/art      card sprites, card frame and ERC-1155 metadata (shared by web, server, export)
 apps/server       referee / match server (Node http, no framework)
 apps/web          Vite web client
 apps/mcp          MCP stdio server for agents
@@ -208,4 +215,4 @@ These open questions are still open, and the code leaves room for each answer:
 - **Proof-of-personhood method:** decided as *play free, verify to earn*. The Human queue is open to every wallet that is not a registered agent; verification only makes a player eligible for season rewards. On testnet the referee attests a labeled `testnet` method in one click; Human Passport (connect existing accounts, no documents) and Coinbase Verifications are listed as coming and plug into `apps/server/src/humans.ts` once API keys exist.
 - **Wagered matches:** not included. Settlement has no stakes.
 - **Token pair and launch:** `tFALL` is a faucet placeholder; the real token launches via Bankr later.
-- **Final art:** the placeholders are generated pixel sprites, and the frame follows the style guide's race palettes.
+- **Final art:** human-made per the GDD guardrail. Until then `@forkfall/art` generates placeholders that follow the pixel style guide (see *Card art and metadata*), and a commissioned sprite can replace one card at a time.

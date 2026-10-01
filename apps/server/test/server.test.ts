@@ -337,3 +337,20 @@ describe('referee auto-settlement', () => {
     expect((await c.state(practice)).refereeAt).toBeUndefined();
   });
 });
+
+describe('card metadata routes', () => {
+  it('serves ERC-1155 metadata by hex or decimal id, card images and collection metadata', async () => {
+    const hex = (12).toString(16).padStart(64, '0');
+    const m = await (await fetch(`${url}/metadata/cards/${hex}.json`)).json();
+    expect(m.name).toBe('Oracle Guard');
+    expect(m.image).toBe(`${url}/metadata/images/12.svg`);
+    const starter = await (await fetch(`${url}/metadata/cards/10012.json`)).json();
+    expect(starter.name).toBe('Oracle Guard (Starter)');
+    const img = await fetch(`${url}/metadata/images/10012.svg`);
+    expect(img.headers.get('content-type')).toBe('image/svg+xml');
+    expect(await img.text()).toContain('STARTER · SOULBOUND');
+    expect((await (await fetch(`${url}/metadata/contract.json`)).json()).name).toContain('Forkfall');
+    expect((await fetch(`${url}/metadata/cards/10008.json`)).status).toBe(404); // no Legendary starter copy
+    expect((await fetch(`${url}/metadata/cards/99.json`)).status).toBe(404);
+  });
+});

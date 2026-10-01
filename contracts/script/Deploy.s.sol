@@ -23,7 +23,11 @@ import {Set1Cards} from "../src/generated/Set1Cards.sol";
 ///
 /// Env: REFEREE_ADDRESS  server key (REFEREE_ROLE) that co-signs ranked results; defaults to the deployer
 ///      TREASURY_ADDRESS receives pack sale proceeds; defaults to the deployer
-///      CARD_URI         ERC-1155 metadata template; PACK_PRICE_WEI pack price in wei
+///      METADATA_BASE    where card metadata is served: the referee server's /metadata
+///                       (https://<server>/metadata) or a pinned `pnpm art:export` folder (ipfs://<cid>);
+///                       defaults to http://localhost:8787/metadata on Anvil
+///      CARD_URI / CONTRACT_URI  override the derived <base>/cards/{id}.json and <base>/contract.json
+///      PACK_PRICE_WEI   pack price in wei
 contract Deploy is ForkfallScript {
     struct Deployed {
         CardRegistry cards;
@@ -44,18 +48,29 @@ contract Deploy is ForkfallScript {
         address deployer = msg.sender;
         address referee = vm.envOr("REFEREE_ADDRESS", deployer);
         address payable treasury = payable(vm.envOr("TREASURY_ADDRESS", deployer));
-        string memory uri = vm.envOr("CARD_URI", string("https://forkfall.example/cards/{id}.json"));
+        string memory base =
+            vm.envOr("METADATA_BASE", block.chainid == 31337 ? string("http://localhost:8787/metadata") : string(""));
+        string memory uri =
+            vm.envOr("CARD_URI", bytes(base).length > 0 ? string.concat(base, "/cards/{id}.json") : string(""));
+        string memory contractUri =
+            vm.envOr("CONTRACT_URI", bytes(base).length > 0 ? string.concat(base, "/contract.json") : string(""));
+        require(
+            bytes(uri).length > 0,
+            "Set METADATA_BASE (https://<referee server>/metadata or ipfs://<cid> from pnpm art:export) or CARD_URI"
+        );
         uint256 packPrice = vm.envOr("PACK_PRICE_WEI", uint256(0.0001 ether));
 
         console2.log("Deploying Forkfall hub to chain", block.chainid);
         console2.log("  deployer", deployer);
         console2.log("  referee ", referee);
         console2.log("  treasury", treasury);
+        console2.log("  card URI", uri);
 
         uint256 startBlock = block.number;
         vm.startBroadcast();
         d = deployAll(deployer, referee, uri, packPrice);
         if (treasury != deployer) d.packs.setTreasury(treasury);
+        if (bytes(contractUri).length > 0) d.cards.setContractURI(contractUri);
         vm.stopBroadcast();
 
         writeBook(d, deployer, referee, startBlock);

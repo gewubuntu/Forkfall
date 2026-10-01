@@ -114,7 +114,7 @@ const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
-const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards });
+const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, publicUrl: env.PUBLIC_URL });
 const port = Number(env.PORT ?? 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);

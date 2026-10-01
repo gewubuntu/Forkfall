@@ -1,0 +1,76 @@
+import { CARDS } from '@forkfall/engine';
+import { describe, expect, it } from 'vitest';
+import {
+  cardMetadata, cardSvg, collectionMetadata, erc1155IdHex, parseTokenId, PALETTES, SPRITE_SIZE, spritePixels, spriteSvg,
+  STARTER_OFFSET, tokenIds, wrap,
+} from '../src/index.ts';
+
+const N = SPRITE_SIZE;
+
+describe('sprites follow the pixel style guide', () => {
+  for (const c of CARDS) {
+    it(`${c.id} ${c.name}`, () => {
+      const px = spritePixels(c.id);
+      const colors = new Set(px.filter(Boolean));
+      expect(colors.size).toBeLessThanOrEqual(16); // at most 16 colors per sprite
+      const filled = px.filter(Boolean).length;
+      expect(filled).toBeGreaterThan(60);
+      expect(filled).toBeLessThan(N * N * 0.8);
+      // Transparent background: corners empty, and the 1 px outline (race's darkest shade) is present.
+      expect([px[0], px[N - 1], px[N * N - 1]]).toEqual([null, null, null]);
+      expect(colors.has(PALETTES[c.faction].outline)).toBe(true);
+      if (c.faction === 'degens') expect(colors.has('#ffffff')).toBe(true); // sticker outline
+      expect(spriteSvg(c.id)).toBe(spriteSvg(c.id)); // deterministic
+    });
+  }
+  it('every card gets its own sprite', () => {
+    const keys = new Set(CARDS.map((c) => spritePixels(c.id).join()));
+    expect(keys.size).toBe(CARDS.length);
+  });
+});
+
+describe('card frame', () => {
+  it('shows rarity material, chain badge, stats, escaped text and the starter ribbon', () => {
+    const legendary = cardSvg(8);
+    expect(legendary).toContain('animateTransform'); // animated Legendary frame
+    expect(legendary).toContain('>BASE<');
+    expect(cardSvg(25)).toContain('>RH<');
+    expect(cardSvg(33)).not.toMatch(/>BASE<|>RH</); // neutral: no chain badge
+    expect(cardSvg(1)).toContain('aria-label="attack"');
+    expect(cardSvg(3)).not.toContain('aria-label="attack"'); // actions have no stats
+    expect(cardSvg(4, { starter: true })).toContain('STARTER · SOULBOUND');
+    expect(cardSvg(4)).not.toContain('STARTER');
+    expect(cardSvg(16)).toContain('The All-Seeing Eye');
+  });
+  it('wraps rules text within the line budget', () => {
+    const lines = wrap('Deploy 3. Automate: at the start of your next turn, give all friendly units +1/+1.', 34, 4);
+    expect(lines.every((l) => l.length <= 34)).toBe(true);
+    expect(wrap('a '.repeat(200), 10, 2)).toHaveLength(2);
+    expect(wrap('a '.repeat(200), 10, 2)[1].endsWith('…')).toBe(true);
+  });
+});
+
+describe('ERC-1155 metadata', () => {
+  it('uses the {id} hex form and parses both forms', () => {
+    expect(erc1155IdHex(10032)).toBe('0'.repeat(60) + '2730');
+    expect(parseTokenId(erc1155IdHex(12) + '.json')).toBe(12);
+    expect(parseTokenId('10012.json')).toBe(10012);
+    expect(parseTokenId(String(STARTER_OFFSET + 8))).toBeNull(); // no Legendary starter copies
+    expect(parseTokenId('41')).toBeNull();
+    expect(parseTokenId('1000')).toBeNull(); // tokens (Drone) are never minted
+  });
+  it('describes every token with attributes, and starter copies as soulbound', () => {
+    expect(tokenIds()).toHaveLength(40 + 36);
+    const m = cardMetadata(24);
+    expect(m.name).toBe('The Whale');
+    expect(m.image.startsWith('data:image/svg+xml;base64,')).toBe(true);
+    expect(m.attributes).toEqual(expect.arrayContaining([
+      { trait_type: 'Race', value: 'Brokers' }, { trait_type: 'Rarity', value: 'Legendary' },
+      { trait_type: 'Attack', value: 7, display_type: 'number' }, { trait_type: 'Keyword', value: 'Hold' },
+    ]));
+    const s = cardMetadata(STARTER_OFFSET + 17, { imageBase: 'https://x/metadata/images', appUrl: 'https://x' });
+    expect(s).toMatchObject({ name: 'Intern (Starter)', image: 'https://x/metadata/images/10017.svg', external_url: 'https://x/collection' });
+    expect(s.properties.soulbound).toBe(true);
+    expect(collectionMetadata().name).toContain('Forkfall');
+  });
+});

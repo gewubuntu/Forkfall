@@ -9,6 +9,7 @@ import { verifySessionLogin } from './auth.ts';
 import { EXPLORER, type AddressBook } from './chain.ts';
 import type { HumanVerification } from './humans.ts';
 import type { Rewards } from './rewards.ts';
+import { serveMetadata } from './metadata.ts';
 import type { Delegation } from '@forkfall/sdk';
 
 interface Session {
@@ -28,7 +29,7 @@ const NONCE_TTL_MS = 5 * 60 * 1000;
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
   const sessions = new Map<string, Session>();
@@ -43,6 +44,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
     if (req.method === 'OPTIONS') { res.writeHead(204).end(); return; }
     const url = new URL(req.url ?? '/', 'http://x');
     try {
+      if (serveMetadata(req, res, url.pathname, opts.publicUrl)) return;
       if (!url.pathname.startsWith('/v1/')) return serveStatic(url.pathname, res, opts.staticDir);
       const session = authSession(req);
       if (session) rateLimit(session, Date.now());
