@@ -101,6 +101,24 @@ contract CardsTest is Fixture {
         assertGt(ids[0], 0);
     }
 
+    function test_packIdsOfTracksOwners() public {
+        vm.deal(alice, 1 ether);
+        vm.deal(bob, 1 ether);
+        vm.prank(alice);
+        d.packs.buyWithEth{value: 0.0002 ether}(2);
+        vm.prank(bob);
+        d.packs.buyWithEth{value: 0.0001 ether}(1);
+        vm.prank(alice);
+        d.packs.buyWithEth{value: 0.0001 ether}(1);
+        uint256[] memory a = d.packs.packIdsOf(alice);
+        assertEq(a.length, 3);
+        assertEq(a[0], 0);
+        assertEq(a[1], 1);
+        assertEq(a[2], 3);
+        assertEq(d.packs.packIdsOf(bob)[0], 2);
+        assertEq(d.packs.packIdsOf(makeAddr("nobody")).length, 0);
+    }
+
     function test_buyWithTestUsdc() public {
         vm.prank(alice);
         d.usdc.drip();

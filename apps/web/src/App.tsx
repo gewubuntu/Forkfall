@@ -4,6 +4,7 @@ import { Logo } from './components/Logo.tsx';
 import { WalletButton } from './components/WalletButton.tsx';
 import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
+import { Collection } from './pages/Collection.tsx';
 import { Match } from './pages/Match.tsx';
 import { Play } from './pages/Play.tsx';
 import { SignInGate } from './pages/SignInGate.tsx';
@@ -67,7 +68,7 @@ export function App() {
             <Route path="/" element={<Home />} />
             <Route path="/play" element={<Play />} />
             <Route path="/match/:id" element={<Match />} />
-            <Route path="/collection" element={<ComingSoon title="Collection" />} />
+            <Route path="/collection" element={<Collection />} />
             <Route path="/decks" element={<ComingSoon title="Decks" />} />
             <Route path="/matches" element={<ComingSoon title="Matches" />} />
             <Route path="*" element={<ComingSoon title="Not found" />} />

@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { getAddress, isAddress, verifyMessage, type Address, type Hex } from 'viem';
 import { ApiError, type Lobby } from './lobby.ts';
 import { verifySessionLogin } from './auth.ts';
+import { EXPLORER, type AddressBook } from './chain.ts';
 import type { Delegation } from '@forkfall/sdk';
 
 interface Session {
@@ -88,6 +89,8 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
           turnSeconds: lobby.turnMs / 1000,
           bankSeconds: lobby.bankMs / 1000,
           house: lobby.opts.house.address,
+          contracts: hubContracts(lobby.opts.chain.book),
+          explorer: EXPLORER[lobby.opts.chain.chainId] ?? null,
         };
       case 'GET /cards': return CARDS;
       case 'GET /auth/nonce': {
@@ -199,4 +202,14 @@ function serveStatic(path: string, res: ServerResponse, dir?: string) {
   if (!file.startsWith(dir) || !existsSync(file)) file = join(dir, 'index.html');
   res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
   res.end(readFileSync(file));
+}
+
+const CONTRACT_KEYS = [
+  'CardRegistry', 'StarterDecks', 'PackSale', 'Crafting', 'DeckRegistry', 'MatchSettlement',
+  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'TestUSDC', 'TestFALL',
+] as const;
+
+function hubContracts(book: AddressBook | null) {
+  if (!book) return null;
+  return Object.fromEntries(CONTRACT_KEYS.map((k) => [k, book[k]]));
 }

@@ -31,7 +31,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
 | **Agent SDK** (`packages/sdk`) | `ForkfallClient`, EIP-712 types shared with Solidity, `runMatch` loop, view-only greedy policy, CLI bot (`pnpm bot`). |
 | **MCP server + Bankr skill** (`apps/mcp`, `skills/forkfall`) | Tools: rules, practice, queue, state, move, suggest, settlement. |
-| **Web app** (`apps/web`) | React 19 + wagmi 3 with Forkfall's own connect modal. Wallet sign-in (EIP-6963 browser wallets, Base Account smart wallet, MetaMask, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Play lobby (practice, casual, ranked, Human queue, live matches) and the full match screen ship; Collection, Decks and Matches screens are next. |
+| **Web app** (`apps/web`) | React 19 + wagmi 3 with Forkfall's own connect modal. Wallet sign-in (EIP-6963 browser wallets, Base Account smart wallet, MetaMask, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Play lobby (practice, casual, ranked, Human queue, live matches), the full match screen, and Collection (claim starter decks, buy with ETH or test USDC, open packs with a reveal, card gallery, scrap and craft) ship; the deck builder and match history are next. |
 
 ### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
 

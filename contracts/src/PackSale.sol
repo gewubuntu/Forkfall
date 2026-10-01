@@ -35,6 +35,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
     }
 
     Pack[] public packs;
+    mapping(address => uint256[]) private _packsOf;
 
     error BadCount();
     error WrongPayment();
@@ -91,6 +92,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
         firstId = packs.length;
         uint64 reveal = uint64(block.number + REVEAL_DELAY);
         for (uint256 i; i < count; ++i) {
+            _packsOf[buyer].push(packs.length);
             packs.push(Pack(buyer, reveal, false));
         }
     }
@@ -134,6 +136,11 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
         bool upgrade = uint256(keccak256(abi.encode(rand, "legendary"))) % 10_000 < LEGENDARY_UPGRADE_BPS;
         uint256[] memory top = upgrade && legendaries.length > 0 ? legendaries : rares;
         ids[4] = top[uint256(keccak256(abi.encode(rand, 4))) % top.length];
+    }
+
+    /// @notice Every pack id ever bought by `owner` (opened or not), oldest first.
+    function packIdsOf(address owner) external view returns (uint256[] memory) {
+        return _packsOf[owner];
     }
 
     function packCount() external view returns (uint256) {

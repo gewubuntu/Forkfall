@@ -6,7 +6,7 @@ import { CHAIN_NAMES } from '../wagmi.ts';
 
 const NEXT: { to: string; title: string; sprite: number; text: string; ready?: boolean }[] = [
   { to: '/play', title: 'Play', sprite: 8, text: 'Practice against the house bot or queue for casual, ranked and the Human queue.', ready: true },
-  { to: '/collection', title: 'Collection', sprite: 24, text: 'Mint your soulbound starter decks, buy and open packs, and craft with Scrap.' },
+  { to: '/collection', title: 'Collection', sprite: 24, text: 'Mint your soulbound starter decks, buy and open packs, and craft with Scrap.', ready: true },
   { to: '/decks', title: 'Decks', sprite: 16, text: 'Build 30-card decks, check the ranked rarity budget, and register them on-chain.' },
   { to: '/matches', title: 'Matches', sprite: 32, text: 'Watch live games, replay signed logs, and settle results on-chain.' },
 ];
@@ -37,7 +37,7 @@ export function Home() {
       <div className="grid4">
         {NEXT.map((f) => (
           <Link className="panel feature" to={f.to} key={f.to}>
-            {f.ready ? <span className="badge soon live">Play now</span> : <span className="badge soon">Coming next</span>}
+            {f.ready ? <span className="badge soon live">Live</span> : <span className="badge soon">Coming next</span>}
             <img className="ico" src={spriteSvg(f.sprite)} alt="" />
             <h3>{f.title}</h3>
             <p>{f.text}</p>
@@ -45,7 +45,7 @@ export function Home() {
         ))}
       </div>
       <p className="muted" style={{ fontSize: 13, marginTop: 20 }}>
-        These screens are being rebuilt one feature at a time. Play and the match screen are live; Collection, Decks and Matches come next.
+        These screens are being rebuilt one feature at a time. Play, matches and your collection are live; the deck builder and match history come next.
       </p>
     </div>
   );

@@ -40,6 +40,11 @@ export interface Me {
 
 export interface ServerConfig {
   chainId: number;
+  /** Deployed hub contracts (null when the referee runs off-chain). */
+  contracts?: import('./abis.ts').HubContracts | null;
+  /** Block explorer base URL for the hub chain, if any. */
+  explorer?: string | null;
+  onchain?: boolean;
   settlement: `0x${string}`;
   domain: TypedDataDomain;
   season: number;
