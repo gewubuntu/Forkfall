@@ -7,6 +7,7 @@ import {CardRegistry} from "../src/CardRegistry.sol";
 import {StarterDecks} from "../src/StarterDecks.sol";
 import {PackSale} from "../src/PackSale.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
+import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 import {DeckRegistry} from "../src/DeckRegistry.sol";
 import {MatchSettlement} from "../src/MatchSettlement.sol";
 import {FaucetToken} from "../src/TestTokens.sol";
@@ -16,7 +17,7 @@ import {FaucetToken} from "../src/TestTokens.sol";
 ///   forge script script/Play.s.sol --sig "registerStarterDeck(uint8)" 1 ...
 ///   forge script script/Play.s.sol --sig "buyPacks(uint256)" 2 ...
 ///   forge script script/Play.s.sol --sig "openPack(uint256)" 0 ...
-///   forge script script/Play.s.sol --sig "registerAgent(address,string,string)" $OPERATOR "my-bot" "ipfs://..." ...
+///   forge script script/Play.s.sol --sig "registerAgent(string,string)" "my-bot" "What it plays and how" ...
 ///   forge script script/Play.s.sol --sig "settle(string)" settlements/<matchId>.json ...
 ///   forge script script/Play.s.sol --sig "status(address)" $ME --rpc-url base_sepolia
 contract Play is ForkfallScript {
@@ -88,11 +89,30 @@ contract Play is ForkfallScript {
         }
     }
 
-    function registerAgent(address operator, string calldata name, string calldata uri) external {
+    /// @notice Registers the broadcasting wallet as a self-owned agent (ERC-8004): it owns its own agent NFT and
+    ///         plays as the agent wallet. The registration file is stored on-chain as a base64 data URI.
+    ///         Operators who want to own their agents register them on the Profile page instead.
+    function registerAgent(string calldata name, string calldata description) external returns (uint256 agentId) {
         requireTestnet();
+        AgentRegistry reg = AgentRegistry(addr("AgentRegistry"));
+        uint256 next = reg.nextAgentId();
+        string memory json = string.concat(
+            '{"type":"https://eips.ethereum.org/EIPS/eip-8004#registration-v1","name":"',
+            name,
+            '","description":"',
+            description,
+            '","image":"","services":[],"active":true,"registrations":[{"agentId":',
+            vm.toString(next),
+            ',"agentRegistry":"eip155:',
+            vm.toString(block.chainid),
+            ":",
+            vm.toString(address(reg)),
+            '"}],"supportedTrust":[]}'
+        );
         vm.startBroadcast();
-        AgentRegistry(addr("AgentRegistry")).register(operator, name, uri);
+        agentId = reg.register(string.concat("data:application/json;base64,", Base64.encode(bytes(json))));
         vm.stopBroadcast();
+        console2.log("agentId:", agentId);
     }
 
     /// @notice Submit a settlement file exported by the match server (GET /v1/matches/:id/settlement).

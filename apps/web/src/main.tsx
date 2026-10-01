@@ -6,6 +6,7 @@ import './styles/game.css';
 import './styles/collection.css';
 import './styles/decks.css';
 import './styles/matches.css';
+import './styles/profile.css';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';

@@ -76,7 +76,7 @@ contract Deploy is ForkfallScript {
         d.agents = new AgentRegistry(admin);
         d.humans = new HumanRegistry(admin);
         d.decks = new DeckRegistry(d.cards);
-        d.settlement = new MatchSettlement(admin, d.agents, d.decks, d.humans);
+        d.settlement = new MatchSettlement(admin, d.agents, d.decks);
         d.rewards = new SeasonRewards(admin);
         d.usdc = new FaucetToken("Forkfall Test USDC", "tUSDC", 6, 100e6, admin);
         d.fall = new FaucetToken("Forkfall Test Token", "tFALL", 18, 1_000 ether, admin);
@@ -86,6 +86,10 @@ contract Deploy is ForkfallScript {
         d.cards.grantRole(d.cards.MINTER_ROLE(), address(d.crafting));
         d.cards.grantRole(d.cards.BURNER_ROLE(), address(d.crafting));
         d.settlement.grantRole(d.settlement.REFEREE_ROLE(), referee);
+        // Testnet human verification: the referee attests with the labeled "testnet" method until a real
+        // proof-of-personhood provider (Human Passport, Coinbase Verifications, World ID) is plugged in.
+        d.humans.setMethod(keccak256("testnet"), true);
+        d.humans.grantRole(d.humans.ATTESTOR_ROLE(), referee);
         d.packs.setTokenPrice(address(d.usdc), 2e6);
         d.packs.setTokenPrice(address(d.fall), 100 ether);
     }

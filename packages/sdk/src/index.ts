@@ -3,3 +3,4 @@ export * from './client.ts';
 export * from './agent.ts';
 export * from './abis.ts';
 export * from './replay.ts';
+export * from './agents.ts';

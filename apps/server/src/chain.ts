@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
+import { humanRegistryAbi, matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
 import {
   BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, parseAbi,
   type Address, type Hex, type LocalAccount, type PublicClient,
@@ -39,6 +39,7 @@ const deckAbi = parseAbi([
 ]);
 const agentAbi = parseAbi([
   'function isAgent(address) view returns (bool)',
+  'function agentOf(address) view returns (uint256)',
   'function bannedFromRanked(address) view returns (bool)',
 ]);
 const humanAbi = parseAbi(['function isVerifiedHuman(address) view returns (bool)']);
@@ -118,6 +119,16 @@ export class Chain {
     if (!this.client) return false;
     return this.client.readContract({ address: this.book!.AgentRegistry, abi: agentAbi, functionName: 'bannedFromRanked', args: [a] });
   }
+  /** Agent id this wallet plays as (0 = not an agent). */
+  async agentOf(a: Address): Promise<number> {
+    if (!this.client) return 0;
+    return Number(await this.client.readContract({ address: this.book!.AgentRegistry, abi: agentAbi, functionName: 'agentOf', args: [a] }));
+  }
+  async humanVerification(a: Address): Promise<{ method: Hex; verifiedAt: number; expiresAt: number } | null> {
+    if (!this.client) return null;
+    const [method, verifiedAt, expiresAt] = await this.client.readContract({ address: this.book!.HumanRegistry, abi: humanRegistryAbi, functionName: 'verification', args: [a] });
+    return verifiedAt === 0n ? null : { method, verifiedAt: Number(verifiedAt), expiresAt: Number(expiresAt) };
+  }
   async isHuman(a: Address) {
     if (!this.client) return false;
     return this.client.readContract({ address: this.book!.HumanRegistry, abi: humanAbi, functionName: 'isVerifiedHuman', args: [a] });
@@ -174,4 +185,31 @@ function revertReason(e: unknown): string {
     return e.shortMessage;
   }
   return (e as Error).message;
+}
+
+/** Referee attestations in HumanRegistry (needs ATTESTOR_ROLE and testnet ETH on the referee key). */
+export interface HumanAttestor {
+  attest(player: Address, method: Hex, expiresAt: number): Promise<Hex>;
+}
+
+export function humanAttestor(chain: Chain, referee: LocalAccount): HumanAttestor | null {
+  if (!chain.client || !chain.book || !chain.rpcUrl) return null;
+  const client = chain.client;
+  const address = chain.book.HumanRegistry;
+  const wallet = createWalletClient({ account: referee, transport: http(chain.rpcUrl) });
+  return {
+    async attest(player, method, expiresAt) {
+      try {
+        const { request } = await client.simulateContract({
+          account: referee, address, abi: humanRegistryAbi, functionName: 'attest', args: [player, method, BigInt(expiresAt)],
+        });
+        const hash = await wallet.writeContract({ ...request, chain: null });
+        const receipt = await client.waitForTransactionReceipt({ hash });
+        if (receipt.status !== 'success') throw new Error(`attest reverted (${hash})`);
+        return hash;
+      } catch (e) {
+        throw new Error(revertReason(e));
+      }
+    },
+  };
 }

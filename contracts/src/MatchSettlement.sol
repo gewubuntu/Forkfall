@@ -8,7 +8,6 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
 import {DeckRegistry} from "./DeckRegistry.sol";
-import {HumanRegistry} from "./HumanRegistry.sol";
 import {TestnetOnly} from "./TestnetOnly.sol";
 
 /// @title MatchSettlement
@@ -59,7 +58,6 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
 
     AgentRegistry public immutable agentRegistry;
     DeckRegistry public immutable deckRegistry;
-    HumanRegistry public immutable humanRegistry;
 
     uint32 public currentSeason = 1;
     mapping(bytes32 => bool) public settled;
@@ -126,12 +124,9 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     event RatingChanged(uint32 indexed season, address indexed player, uint32 oldRating, uint32 newRating);
     event SeasonStarted(uint32 season);
 
-    constructor(address admin, AgentRegistry agents_, DeckRegistry decks_, HumanRegistry humans_)
-        EIP712("Forkfall", "1")
-    {
+    constructor(address admin, AgentRegistry agents_, DeckRegistry decks_) EIP712("Forkfall", "1") {
         agentRegistry = agents_;
         deckRegistry = decks_;
-        humanRegistry = humans_;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(SEASON_ADMIN_ROLE, admin);
     }
@@ -218,7 +213,8 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     function _checkRankedPlayer(address p, bytes32 deck, uint8 mode) internal view {
         if (agentRegistry.bannedFromRanked(p)) revert Banned(p);
         if (!deckRegistry.isValidFor(deck, p, true)) revert InvalidDeck(p);
-        if (mode == MODE_HUMAN && (!humanRegistry.isVerifiedHuman(p) || agentRegistry.isAgent(p))) revert NotHuman(p);
+        // Human queue: open to every wallet that is not a registered agent (verification only gates rewards).
+        if (mode == MODE_HUMAN && agentRegistry.isAgent(p)) revert NotHuman(p);
     }
 
     function _record(MatchResult calldata r, bool byReferee) internal {

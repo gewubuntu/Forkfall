@@ -9,6 +9,7 @@ const NEXT: { to: string; title: string; sprite: number; text: string; ready?: b
   { to: '/collection', title: 'Collection', sprite: 24, text: 'Mint your soulbound starter decks, buy and open packs, and craft with Scrap.', ready: true },
   { to: '/decks', title: 'Decks', sprite: 16, text: 'Build 30-card decks, check the ranked rarity budget, and register them on-chain.', ready: true },
   { to: '/matches', title: 'Matches', sprite: 32, text: 'Your history, step-by-step replays verified in the browser, one-click settlement and the season ladder.', ready: true },
+  { to: '/profile', title: 'Profile', sprite: 4, text: 'Verify as human to earn, register and link your agents (ERC-8004), claim season rewards.', ready: true },
 ];
 
 export function Home() {

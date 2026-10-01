@@ -161,12 +161,8 @@ export class Lobby {
   private async checkEligibility(address: Address, mode: Mode, declaredAgent: boolean): Promise<boolean> {
     const agent = declaredAgent || (await this.opts.chain.isAgent(address));
     if (mode !== 'casual' && (await this.opts.chain.isBanned(address))) throw new ApiError(403, 'banned from ranked');
-    if (mode === 'human') {
-      if (agent) throw new ApiError(403, 'agents cannot join the Human queue');
-      if (this.opts.chain.online && !(await this.opts.chain.isHuman(address))) {
-        throw new ApiError(403, 'Human queue requires a proof-of-personhood attestation in HumanRegistry');
-      }
-    }
+    // Human queue: open to every wallet that is not an agent. Verification only gates season rewards.
+    if (mode === 'human' && agent) throw new ApiError(403, 'agents cannot join the Human queue');
     return agent;
   }
 

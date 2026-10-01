@@ -29,6 +29,8 @@ interface AuthState {
   disconnect: () => Promise<void>;
   switchToHub: () => Promise<void>;
   clearError: () => void;
+  /** Re-read badges (agent, verified human, ban) after an on-chain identity change. */
+  refreshMe: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -152,6 +154,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { await switchChainAsync({ chainId: hubChainId as never }); } catch (e) { setError(friendly(e)); }
   }, [hubChainId, switchChainAsync]);
 
+  const refreshMe = useCallback(async () => {
+    if (client) setMe(await client.me());
+  }, [client]);
+
   const status: AuthStatus = offline ? 'offline'
     : !config ? 'loading'
     : !isConnected || !address ? 'disconnected'
@@ -162,8 +168,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthState>(() => ({
     status, config, wallet: address, me, client, expiresAt, error,
-    signIn, signOut, disconnect, switchToHub, clearError: () => setError(null),
-  }), [status, config, address, me, client, expiresAt, error, signIn, signOut, disconnect, switchToHub]);
+    signIn, signOut, disconnect, switchToHub, clearError: () => setError(null), refreshMe,
+  }), [status, config, address, me, client, expiresAt, error, signIn, signOut, disconnect, switchToHub, refreshMe]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

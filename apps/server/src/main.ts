@@ -3,7 +3,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
-import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, refereeSettler } from './chain.ts';
+import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, refereeSettler } from './chain.ts';
+import { HumanVerification } from './humans.ts';
+import { Rewards, rewardsDir } from './rewards.ts';
 import { createApi } from './http.ts';
 import { Lobby, type ArchivedMatch } from './lobby.ts';
 
@@ -109,7 +111,10 @@ const settleLoop = async () => {
 if (settler) settleLoop();
 
 const staticDir = join(root, 'apps/web/dist');
-const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined });
+// Human verification (optional; gates season rewards) and published season rewards.
+const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
+const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
+const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards });
 const port = Number(env.PORT ?? 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);
@@ -120,6 +125,7 @@ server.listen(port, () => {
     console.log(`  MatchSettlement ${chain.settlement}${ex ? `  ${ex}/address/${chain.settlement}` : ''}`);
   }
   console.log(`  house bot / referee address ${house.address}${env.HOUSE_PRIVATE_KEY ? '' : ' (ephemeral key)'}`);
+  console.log(`  human verification: ${humans.verifiers.filter((v) => v.available).map((v) => v.id).join(', ') || 'none'}${chain.online ? '' : ' (off-chain: status only)'}`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);
   console.log(`  match archive → ${archiveDir} (${restored} restored)`);

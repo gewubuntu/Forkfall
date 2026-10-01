@@ -1,0 +1,50 @@
+/* ─── Profile: identity, agents, rewards ─────────────── */
+.profile-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
+.profile-head > .avatar { width: 72px; height: 72px; border-radius: 16px; }
+.ph-main { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 6px; }
+.ph-addr { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; font-size: 13.5px; color: var(--muted); word-break: break-all; }
+.ph-addr:hover { color: var(--text); }
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+@media (max-width: 860px) { .profile-grid { grid-template-columns: 1fr; } }
+.profile-page .panel { margin-bottom: 14px; }
+.profile-page .panel h2 { margin: 0 0 4px; font-size: 18px; }
+.profile-page .panel > p.muted.small { margin: 0 0 12px; }
+.id-status { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--bg-2); border: 1px solid var(--line); margin-bottom: 12px; }
+.id-status.ok { border-color: #1f5a3c; background: #0d2219; }
+.id-status.ok b { color: var(--ok); }
+.id-status.agent { border-color: #1b4d58; background: #0b2229; }
+.id-status.agent b { color: var(--agents); }
+.note { font-size: 14px; color: var(--muted); }
+.methods { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.methods li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--line); }
+.methods li.soon { opacity: .7; }
+.methods .badge { white-space: nowrap; }
+.methods li b { margin-right: 6px; }
+.methods li p { margin: 2px 0 0; }
+.methods .btn { flex-shrink: 0; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.card-head > div { flex: 1; min-width: 260px; }
+.agent-list, .reward-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.agent-row { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; padding: 12px; border-radius: var(--r); background: var(--bg-2); border: 1px solid var(--line); border-left: 3px solid var(--agents); }
+.agent-row .alert, .agent-row .ar-link { grid-column: 1 / -1; margin: 0; }
+.ar-title { display: flex; align-items: center; gap: 8px; }
+.ar-main p { margin: 2px 0 4px; }
+.ar-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.btn-ghost.danger { color: var(--danger); }
+.warn-text { color: var(--warn); }
+.register-agent { margin: 12px 0; padding: 14px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--bg-2); display: flex; flex-direction: column; gap: 10px; }
+.register-agent .seg.two { grid-template-columns: 1fr 1fr; margin: 0; }
+.register-agent .opts input, .ar-link textarea, .register-agent textarea { width: 100%; }
+pre.cmd { margin: 0; padding: 10px 12px; border-radius: var(--r-sm); background: #05070c; border: 1px solid var(--line); font-family: var(--font-mono); font-size: 12.5px; white-space: pre-wrap; word-break: break-all; color: #cfe1ff; }
+textarea.proof { font-family: var(--font-mono); font-size: 12.5px; color: var(--text); background: #05070c; border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 8px 10px; resize: vertical; }
+.ar-link { display: flex; flex-direction: column; gap: 8px; }
+.reward-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-radius: var(--r); background: var(--bg-2); border: 1px solid var(--line); }
+.reward-row p { margin: 2px 0 0; }
+.reward-amt { font-family: var(--font-pixel); font-size: 20px; margin-top: 2px; }
+.reward-amt .small { font-family: var(--font-ui); font-size: 13px; }
+.rewards-card .st.ok { color: var(--ok); font-weight: 600; }
+@media (max-width: 640px) {
+  .agent-row { grid-template-columns: 1fr; }
+  .ar-actions { justify-content: flex-start; }
+  .reward-row { flex-direction: column; align-items: flex-start; }
+}
