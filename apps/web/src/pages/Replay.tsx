@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { Hex } from 'viem';
+import { usePublicClient } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useHub } from '../chain/useHub.ts';
 import { useSettled } from '../chain/useSettlement.ts';
@@ -174,8 +175,14 @@ function describeStep(frames: ReplayFrame[], i: number, races: [Race, Race]): st
 }
 
 function Verification({ log, checks }: { log: MatchLog; checks: ReturnType<typeof replayLog>['checks'] }) {
-  const { contracts, explorer } = useHub();
-  const sigs = useQuery({ queryKey: ['sigs', log.matchId], queryFn: () => verifyMoveSignatures(log), staleTime: Infinity });
+  const { chainId, contracts, explorer } = useHub();
+  // A hub-chain client lets smart-wallet delegations (ERC-1271, or ERC-6492 before deployment) be checked too.
+  const client = usePublicClient({ chainId: chainId as never });
+  const sigs = useQuery({
+    queryKey: ['sigs', log.matchId, !!client],
+    queryFn: () => verifyMoveSignatures(log, { client: contracts && client ? client : undefined }),
+    staleTime: Infinity,
+  });
   const { settled } = useSettled([log.matchId]);
   const onchain = settled.get(log.matchId);
   const s = sigs.data;

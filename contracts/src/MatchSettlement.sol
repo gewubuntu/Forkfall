@@ -5,6 +5,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
 import {DeckRegistry} from "./DeckRegistry.sol";
 import {HumanRegistry} from "./HumanRegistry.sol";
@@ -16,13 +17,18 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 ///         If the loser refuses to sign or times out, a REFEREE (who replays the full signed move log with the
 ///         same engine) may settle with the winner's signature alone. That referee trust is the testnet
 ///         stand-in for the GDD's on-chain replay dispute path.
-contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
+///         Smart-wallet players may sign before their wallet exists: ERC-6492 signatures carry the wallet's
+///         factory call, which this contract runs (deploying the wallet) before the ERC-1271 check.
+contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardTransient {
     bytes32 public constant REFEREE_ROLE = keccak256("REFEREE_ROLE");
     bytes32 public constant SEASON_ADMIN_ROLE = keccak256("SEASON_ADMIN_ROLE");
 
     uint8 public constant MODE_CASUAL = 0;
     uint8 public constant MODE_RANKED = 1;
     uint8 public constant MODE_HUMAN = 2;
+
+    /// @dev ERC-6492 suffix marking a signature wrapped as abi.encode(factory, factoryCalldata, signature).
+    bytes32 private constant ERC6492_MAGIC = 0x6492649264926492649264926492649264926492649264926492649264926492;
 
     uint256 public constant START_RATING = 1200;
     uint256 public constant K_FACTOR = 32;
@@ -156,10 +162,11 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
     ///         Casual results need only the two players (pass empty `refereeSig`).
     function settle(MatchResult calldata r, bytes calldata sigA, bytes calldata sigB, bytes calldata refereeSig)
         external
+        nonReentrant
     {
         bytes32 digest = _precheck(r);
-        if (!SignatureChecker.isValidSignatureNow(r.playerA, digest, sigA)) revert BadSignature(r.playerA);
-        if (!SignatureChecker.isValidSignatureNow(r.playerB, digest, sigB)) revert BadSignature(r.playerB);
+        if (!_isValidSignature(r.playerA, digest, sigA)) revert BadSignature(r.playerA);
+        if (!_isValidSignature(r.playerB, digest, sigB)) revert BadSignature(r.playerB);
         if (r.mode != MODE_CASUAL) {
             (address referee, ECDSA.RecoverError err,) = ECDSA.tryRecover(digest, refereeSig);
             if (err != ECDSA.RecoverError.NoError || !hasRole(REFEREE_ROLE, referee)) revert MissingRefereeSignature();
@@ -168,10 +175,14 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
     }
 
     /// @notice Dispute / timeout path: the referee replayed the move log and co-signs with the winner.
-    function settleByReferee(MatchResult calldata r, bytes calldata winnerSig) external onlyRole(REFEREE_ROLE) {
+    function settleByReferee(MatchResult calldata r, bytes calldata winnerSig)
+        external
+        onlyRole(REFEREE_ROLE)
+        nonReentrant
+    {
         bytes32 digest = _precheck(r);
         if (r.winner == address(0)) revert BadWinner();
-        if (!SignatureChecker.isValidSignatureNow(r.winner, digest, winnerSig)) revert BadSignature(r.winner);
+        if (!_isValidSignature(r.winner, digest, winnerSig)) revert BadSignature(r.winner);
         _record(r, true);
     }
 
@@ -186,6 +197,22 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly {
             _checkRankedPlayer(r.playerB, r.deckB, r.mode);
         }
         return hashResult(r);
+    }
+
+    /// @dev EOA (ECDSA), deployed smart wallet (ERC-1271), or not-yet-deployed smart wallet (ERC-6492).
+    ///      For 6492, the factory call is the wallet's own deterministic deployment, so anyone may run it; it
+    ///      only runs if the wallet is missing or rejects the inner signature (6492 "prepare" case). Settlement
+    ///      is nonReentrant, so the factory cannot re-enter to settle twice.
+    function _isValidSignature(address signer, bytes32 digest, bytes calldata sig) internal returns (bool) {
+        if (sig.length < 32 || bytes32(sig[sig.length - 32:]) != ERC6492_MAGIC) {
+            return SignatureChecker.isValidSignatureNow(signer, digest, sig);
+        }
+        (address factory, bytes memory factoryCalldata, bytes memory inner) =
+            abi.decode(sig[:sig.length - 32], (address, bytes, bytes));
+        if (signer.code.length > 0 && SignatureChecker.isValidERC1271SignatureNow(signer, digest, inner)) return true;
+        (bool ok,) = factory.call(factoryCalldata);
+        if (!ok || signer.code.length == 0) return false;
+        return SignatureChecker.isValidERC1271SignatureNow(signer, digest, inner);
     }
 
     function _checkRankedPlayer(address p, bytes32 deck, uint8 mode) internal view {

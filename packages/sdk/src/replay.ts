@@ -106,17 +106,23 @@ export interface SignatureReport {
   verified: number;
   /** Referee-forced turn ends (timeouts), unsigned by design. */
   forced: number;
-  /** Signed by a smart wallet's session key whose delegation needs an RPC (ERC-1271) to check. */
+  /** Signed by a smart wallet's session key whose delegation needs an RPC (ERC-1271 / ERC-6492) to check. */
   unchecked: number;
   failed: number[];
 }
 
+/** Anything with viem's PublicClient.verifyMessage (ERC-1271 and ERC-6492 aware). */
+export interface MessageVerifier {
+  verifyMessage(args: { address: Address; message: string; signature: Hex }): Promise<boolean>;
+}
+
 /**
  * Checks every move signature in a log. EOAs and session keys are checked by recovery; a session
- * key counts only if the player's wallet signed its delegation (EOA wallets; smart wallets are
- * reported as unchecked because ERC-1271 needs a chain call).
+ * key counts only if the player's wallet signed its delegation. Smart-wallet delegations (deployed
+ * ERC-1271 or not-yet-deployed ERC-6492) need a chain call: pass `client` (a viem PublicClient on the
+ * hub chain) to check them, otherwise they are reported as unchecked.
  */
-export async function verifyMoveSignatures(log: MatchLog): Promise<SignatureReport> {
+export async function verifyMoveSignatures(log: MatchLog, opts: { client?: MessageVerifier } = {}): Promise<SignatureReport> {
   const rep: SignatureReport = { verified: 0, forced: 0, unchecked: 0, failed: [] };
   const keys = await Promise.all(log.players.map(async (p) => {
     const out = new Map<string, boolean>(); // session key → delegation proven by recovery
@@ -125,7 +131,10 @@ export async function verifyMoveSignatures(log: MatchLog): Promise<SignatureRepo
       const parsed = parseSiweMessage(d.message);
       if (!key || parsed.address?.toLowerCase() !== p.address.toLowerCase()) continue;
       const signer = await recoverMessageAddress({ message: d.message, signature: d.signature }).catch(() => null);
-      out.set(key.toLowerCase(), signer?.toLowerCase() === p.address.toLowerCase());
+      let ok = signer?.toLowerCase() === p.address.toLowerCase();
+      if (!ok && opts.client) ok = await opts.client.verifyMessage({ address: p.address, message: d.message, signature: d.signature }).catch(() => false);
+      // false = only a chain call could prove it (no client given); a client that says no makes it fail
+      if (ok || !opts.client) out.set(key.toLowerCase(), ok);
     }
     return out;
   }));
