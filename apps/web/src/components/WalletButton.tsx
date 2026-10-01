@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { useConnection } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { avatarSvg } from '../lib/art.ts';
@@ -82,6 +83,7 @@ function AccountMenu() {
             <div className="menu-row"><span>Session ends in</span><b>{auth.expiresAt ? timeLeft(auth.expiresAt - Date.now()) : '–'}</b></div>
           </>}
           <hr />
+          {me && <Link className="item" role="menuitem" to="/profile" onClick={() => setOpen(false)}>Profile <span className="muted">(identity, agents, rewards)</span></Link>}
           <button className="item" role="menuitem" onClick={copy}>{copied ? 'Copied ✓' : 'Copy address'}</button>
           {me && <button className="item" role="menuitem" onClick={() => { setOpen(false); auth.signOut(); }}>Sign out <span className="muted">(keep wallet connected)</span></button>}
           <button className="item btn-danger" role="menuitem" onClick={() => { setOpen(false); auth.disconnect(); }}>Disconnect wallet</button>

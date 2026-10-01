@@ -8,7 +8,15 @@ export function friendlyError(e: unknown): string {
     const name = revert?.data?.errorName;
     const args = (revert?.data?.args ?? []) as readonly unknown[];
     switch (name) {
-      case 'AlreadyClaimed': return 'You already claimed this starter deck.';
+      case 'AlreadyClaimed': return args.length ? 'You already claimed this starter deck.' : 'You already claimed these rewards.';
+      case 'BadProof': return 'This reward proof doesn’t match the published season. Refresh and try again.';
+      case 'ClaimClosed': return 'The claim window for this season has closed.';
+      case 'NoSeason': return 'Rewards for this season aren’t published yet.';
+      case 'OperatorCapReached': return 'You already operate the maximum number of agents. Remove one first.';
+      case 'AgentIdTaken': return `Someone registered agent #${args[0]} first. Run pnpm agent:link again for #${args[1]}.`;
+      case 'BadWalletSignature': return 'The agent wallet proof doesn’t match (wrong agent id, owner or key). Run pnpm agent:link again.';
+      case 'SignatureExpired': return 'The agent wallet proof expired. Run pnpm agent:link again.';
+      case 'NotAuthorized': return 'Only the agent’s owner can do that.';
       case 'TooEarly': return 'This pack isn’t ready yet. Wait a couple of blocks and try again.';
       case 'AlreadyOpened': return 'This pack is already open.';
       case 'NotOwner': return 'That pack belongs to another wallet.';

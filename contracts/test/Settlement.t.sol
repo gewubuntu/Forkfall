@@ -109,26 +109,23 @@ contract SettlementTest is Fixture {
         d.settlement.settle(r, sa, sb, rs);
     }
 
-    function test_humanQueueRequiresVerifiedNonAgents() public {
+    function test_humanQueueIsOpenToEveryoneButAgents() public {
         MatchSettlement.MatchResult memory r = result(2, alice);
         bytes memory rs = refSig(r);
         bytes memory sa = sign(alicePk, r);
         bytes memory sb = sign(bobPk, r);
-        vm.expectRevert(abi.encodeWithSelector(MatchSettlement.NotHuman.selector, alice));
-        d.settlement.settle(r, sa, sb, rs);
 
-        vm.startPrank(admin);
-        d.humans.attest(alice, keccak256("worldid"), 0);
-        d.humans.attest(bob, keccak256("coinbase"), 0);
-        vm.stopPrank();
+        // bob's wallet becomes an agent (self-owned ERC-8004 agent): the Human queue rejects it.
         vm.prank(bob);
-        d.agents.register(bob, "bob-bot", "");
+        uint256 agentId = d.agents.register("ipfs://bob-bot");
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.NotHuman.selector, bob));
         d.settlement.settle(r, sa, sb, rs);
 
+        // Deregistered: no verification needed to play the Human queue.
         vm.prank(bob);
-        d.agents.deregister(bob);
+        d.agents.burn(agentId);
         d.settlement.settle(r, sa, sb, rs);
+        assertEq(d.settlement.stats(1, alice).wins, 1);
     }
 
     function test_rankedNeedsRefereeCoSignature() public {

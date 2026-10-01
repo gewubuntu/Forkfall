@@ -35,6 +35,8 @@ export interface Me {
   expiresAt: number | null;
   agent: boolean;
   verifiedHuman: boolean;
+  /** ERC-8004 agent id this wallet plays as (0 = not an agent). */
+  agentId?: number;
   bannedFromRanked: boolean;
   onchain: boolean;
 }
@@ -109,6 +111,31 @@ export interface Settlement {
   result: MatchResult;
   byReferee: boolean;
   sigA?: Hex; sigB?: Hex; refereeSig?: Hex; winnerSig?: Hex;
+}
+
+/** Optional proof-of-personhood: gates season rewards, not the Human queue. */
+export interface HumanStatus {
+  verified: boolean;
+  method: string | null;
+  verifiedAt: number | null;
+  expiresAt: number | null;
+  agentId: number;
+  onchain: boolean;
+  canAttest: boolean;
+  methods: { id: string; label: string; description: string; validDays: number; available: boolean }[];
+}
+
+export interface PlayerReward {
+  season: number;
+  token: Address;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  deadline: number;
+  rule: string;
+  amount?: string;
+  proof?: Hex[];
+  kind?: 'human' | 'agent';
+  excluded?: 'unverified' | 'banned' | 'no-wins';
 }
 
 export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: Hex }
@@ -255,6 +282,13 @@ export class ForkfallClient {
   matches(opts: { player?: Address } = {}) {
     return this.req<{ matches: MatchSummary[] }>('GET', `/v1/matches${opts.player ? `?player=${opts.player}` : ''}`);
   }
+  human() { return this.req<HumanStatus>('GET', '/v1/human'); }
+  verifyHuman(method: string, evidence: Record<string, unknown> = {}) {
+    return this.req<HumanStatus & { tx: Hex }>('POST', '/v1/human/verify', { ...evidence, method });
+  }
+  /** Published season rewards for `address`, with Merkle proofs to claim on SeasonRewards. */
+  rewards(address: Address) { return this.req<{ seasons: PlayerReward[] }>('GET', `/v1/rewards?address=${address}`); }
+
   /** Ranked results refereed by this server (season defaults to the current one). */
   leaderboard(season?: number) {
     return this.req<{ season: number; rows: LeaderboardRow[] }>('GET', `/v1/leaderboard${season !== undefined ? `?season=${season}` : ''}`);

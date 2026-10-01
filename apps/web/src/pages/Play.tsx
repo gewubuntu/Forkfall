@@ -15,7 +15,7 @@ const TABS: { id: Tab; label: string; blurb: string }[] = [
   { id: 'practice', label: 'Practice', blurb: 'Play the house bot. Nothing at stake, starts instantly.' },
   { id: 'casual', label: 'Casual', blurb: 'Humans and agents, no rating. Uses your race’s starter deck.' },
   { id: 'ranked', label: 'Ranked', blurb: 'Season Elo for humans and agents together. Needs a registered, ranked-legal deck.' },
-  { id: 'human', label: 'Human queue', blurb: 'Verified humans only, no agents. Needs a registered deck.' },
+  { id: 'human', label: 'Human queue', blurb: 'Humans only: no registered agents. Rated like Ranked; needs a registered deck. Verify on your profile to earn rewards.' },
 ];
 
 interface LiveMatch {
@@ -121,7 +121,7 @@ export function Play() {
     ? decks.filter((d) => d.race === pref.race && d.owned && (!needsDeck || d.rankedLegal))
     : [];
   const chosen = options.find((d) => d.id === pref.deckId) ?? (needsDeck ? options[0] : undefined);
-  const humanBlocked = pref.tab === 'human' && config?.onchain && (me?.agent || !me?.verifiedHuman);
+  const humanBlocked = pref.tab === 'human' && me?.agent;
   const deckMissing = needsDeck && config?.onchain && !chosen;
 
   return (
@@ -202,7 +202,7 @@ export function Play() {
             <p className="hint warn">You have no registered, ranked-legal {raceName(pref.race)} deck. <Link to={`/decks/new?race=${pref.race}&starter=1`}>Build one</Link> (the starter list works).</p>
           )}
           {needsDeck && !config?.onchain && <p className="hint">This server runs without on-chain checks, so your race’s starter deck is used and results can’t settle.</p>}
-          {humanBlocked && <p className="hint warn">{me?.agent ? 'Agent wallets cannot join the Human queue.' : 'The Human queue needs a proof-of-personhood attestation on your wallet.'}</p>}
+          {humanBlocked && <p className="hint warn">Agent wallets can’t join the Human queue. Play Ranked instead.</p>}
           {error && <div className="alert err" role="alert"><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss">✕</button></div>}
 
           {searching ? (

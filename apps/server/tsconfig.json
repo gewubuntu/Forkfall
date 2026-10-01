@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "composite": true, "emitDeclarationOnly": true, "noEmit": false, "outDir": "../../node_modules/.tsbuild/server" },
-  "include": ["src", "test"],
+  "include": ["src", "test", "scripts"],
   "references": [{ "path": "../../packages/engine" }, { "path": "../../packages/sdk" }]
 }

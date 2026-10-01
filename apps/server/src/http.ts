@@ -7,6 +7,8 @@ import { getAddress, isAddress, verifyMessage, type Address, type Hex } from 'vi
 import { ApiError, type Lobby } from './lobby.ts';
 import { verifySessionLogin } from './auth.ts';
 import { EXPLORER, type AddressBook } from './chain.ts';
+import type { HumanVerification } from './humans.ts';
+import type { Rewards } from './rewards.ts';
 import type { Delegation } from '@forkfall/sdk';
 
 interface Session {
@@ -26,7 +28,7 @@ const NONCE_TTL_MS = 5 * 60 * 1000;
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
   const sessions = new Map<string, Session>();
@@ -134,14 +136,15 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'GET /auth/me': {
         const s = need(session);
         const chain = lobby.opts.chain;
-        const [agent, human, banned] = await Promise.all([
+        const [agent, human, banned, agentId] = await Promise.all([
           chain.isAgent(s.address).catch(() => false),
           chain.isHuman(s.address).catch(() => false),
           chain.isBanned(s.address).catch(() => false),
+          chain.agentOf(s.address).catch(() => 0),
         ]);
         return {
           address: s.address, sessionKey: s.sessionKey ?? null, expiresAt: s.expiresAt ?? null,
-          agent: s.agent || agent, verifiedHuman: human, bannedFromRanked: banned, onchain: chain.online,
+          agent: s.agent || agent, agentId, verifiedHuman: human, bannedFromRanked: banned, onchain: chain.online,
         };
       }
       case 'POST /auth/logout': {
@@ -153,6 +156,19 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'GET /queue': return lobby.queueStatus(need(session).address);
       case 'DELETE /queue': lobby.leaveQueue(need(session).address); return { ok: true };
       case 'POST /practice': { const s = need(session); return lobby.practice(s.address, body, s.agent); }
+      case 'GET /human': {
+        if (!opts.humans) throw new ApiError(404, 'human verification is not enabled on this server');
+        return opts.humans.status(need(session).address);
+      }
+      case 'POST /human/verify': {
+        if (!opts.humans) throw new ApiError(404, 'human verification is not enabled on this server');
+        return opts.humans.verify(need(session).address, String(body.method ?? ''), body);
+      }
+      case 'GET /rewards': {
+        const a = url.searchParams.get('address') ?? '';
+        if (!isAddress(a)) throw new ApiError(400, 'address required');
+        return { seasons: opts.rewards?.forPlayer(getAddress(a)) ?? [] };
+      }
       case 'GET /matches': {
         const player = url.searchParams.get('player');
         if (player && !isAddress(player)) throw new ApiError(400, 'player must be an address');

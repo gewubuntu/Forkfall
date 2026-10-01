@@ -58,6 +58,7 @@ export const faucetTokenAbi = parseAbi([
   'function drip()',
   'function lastDrip(address) view returns (uint256)',
   'function dripAmount() view returns (uint256)',
+  'function mint(address to, uint256 amount)',
   'error Cooldown(uint256 readyAt)',
 ]);
 
@@ -96,10 +97,54 @@ export const matchSettlementAbi = parseAbi([
   'function settleByReferee(MatchResult r, bytes winnerSig)',
   'function settled(bytes32 matchId) view returns (bool)',
   'function currentSeason() view returns (uint32)',
+  'function startSeason(uint32 season)',
   'function stats(uint32 season, address player) view returns ((uint32 wins, uint32 losses, uint32 draws, uint32 rating))',
   'event MatchSettled(bytes32 indexed matchId, address indexed winner, address indexed loser, uint8 mode, uint32 season, uint16 turns, bytes32 logHash, bool byReferee)',
   'event RatingChanged(uint32 indexed season, address indexed player, uint32 oldRating, uint32 newRating)',
   'error AlreadySettled(bytes32 matchId)', 'error BadPlayers()', 'error BadWinner()', 'error BadSignature(address signer)',
   'error WrongSeason(uint32 season)', 'error InvalidDeck(address player)', 'error Banned(address player)',
   'error NotHuman(address player)', 'error UnknownMode(uint8 mode)', 'error MissingRefereeSignature()',
+]);
+
+/** ERC-8004 Identity Registry (agents) + Forkfall extensions. */
+export const agentRegistryAbi = parseAbi([
+  'struct MetadataEntry { string metadataKey; bytes metadataValue; }',
+  'function register(string agentURI) returns (uint256 agentId)',
+  'function register(string agentURI, MetadataEntry[] metadata) returns (uint256 agentId)',
+  'function registerWithWallet(string agentURI, uint256 expectedAgentId, address wallet, uint256 deadline, bytes signature) returns (uint256 agentId)',
+  'function nextAgentId() view returns (uint256)',
+  'function setAgentURI(uint256 agentId, string newURI)',
+  'function getMetadata(uint256 agentId, string metadataKey) view returns (bytes)',
+  'function setMetadata(uint256 agentId, string metadataKey, bytes metadataValue)',
+  'function getAgentWallet(uint256 agentId) view returns (address)',
+  'function setAgentWallet(uint256 agentId, address newWallet, uint256 deadline, bytes signature)',
+  'function unsetAgentWallet(uint256 agentId)',
+  'function agentWalletDigest(uint256 agentId, address newWallet, address owner, uint256 deadline) view returns (bytes32)',
+  'function burn(uint256 agentId)',
+  'function isAgent(address who) view returns (bool)',
+  'function agentOf(address wallet) view returns (uint256)',
+  'function bannedFromRanked(address) view returns (bool)',
+  'function maxAgentsPerOperator() view returns (uint256)',
+  'function balanceOf(address owner) view returns (uint256)',
+  'function ownerOf(uint256 tokenId) view returns (address)',
+  'function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)',
+  'function tokenURI(uint256 tokenId) view returns (string)',
+  'event Registered(uint256 indexed agentId, string agentURI, address indexed owner)',
+  'error OperatorCapReached(address operator)', 'error NotAuthorized()', 'error ReservedKey()',
+  'error SignatureExpired()', 'error BadWalletSignature()', 'error AgentIdTaken(uint256 expected, uint256 next)',
+]);
+
+export const humanRegistryAbi = parseAbi([
+  'function verification(address) view returns (bytes32 method, uint64 verifiedAt, uint64 expiresAt)',
+  'function isVerifiedHuman(address player) view returns (bool)',
+  'function attest(address player, bytes32 method, uint64 expiresAt)',
+  'function methodEnabled(bytes32) view returns (bool)',
+]);
+
+export const seasonRewardsAbi = parseAbi([
+  'function seasons(uint32) view returns (bytes32 root, address token, uint64 claimDeadline)',
+  'function claimed(uint32 season, address player) view returns (bool)',
+  'function claim(uint32 season, uint256 amount, bytes32[] proof)',
+  'function publishSeason(uint32 season, bytes32 root, address token, uint64 claimDeadline)',
+  'error NoSeason(uint32 season)', 'error AlreadyClaimed()', 'error BadProof()', 'error ClaimClosed()',
 ]);

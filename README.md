@@ -27,7 +27,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | **Rules engine** (`packages/engine`) | Deterministic TypeScript engine shared by client, server, agents and tests. 25 Treasury, Gas 1→10, 5 board slots, hand limit 10, fatigue, 40-half-turn cap. All race mechanics: **Agents** Automate/Deploy/Compute/Firewall · **Prophets** Foresee (face-down)/Odds tiers/Backfire · **Brokers** Hold/Dividend (capped)/Portfolio · **Degens** Swarm/Pump/Rug/Ape. Keccak counter RNG, commit-reveal match seed, per-player private deck salt, redacted views. |
 | **Cards** | 40 prototype cards (8 per race + 8 neutral, 1 Legendary per race) + tokens. Free soulbound starter deck per race. Ranked rarity budget (18 pts, max 1 Legendary: room for one Legendary over a starter list). |
 | **Balance** | `pnpm sim` plays greedy bot vs greedy bot across all race pairings. Current: every race 46–54% (GDD gate: 45–55%), ≈8 turns each. |
-| **Contracts** (`contracts/`, Foundry) | `CardRegistry` (ERC-1155, soulbound starter twins), `StarterDecks`, `PackSale` (ETH / test USDC / test token, 3C+1U+1R with ~10% Legendary upgrade), `Crafting` (Scrap), `DeckRegistry` (race, copies, rarity cap, live ownership), `AgentRegistry` (badges, operator caps, bans), `HumanRegistry` (pluggable proof-of-personhood attestors), `MatchSettlement` (EIP-712 dual-signed results, ERC-1271 smart wallets and ERC-6492 for wallets not deployed yet, referee path, per-season Elo), `SeasonRewards` (Merkle claims), faucet test tokens. |
+| **Contracts** (`contracts/`, Foundry) | `CardRegistry` (ERC-1155, soulbound starter twins), `StarterDecks`, `PackSale` (ETH / test USDC / test token, 3C+1U+1R with ~10% Legendary upgrade), `Crafting` (Scrap), `DeckRegistry` (race, copies, rarity cap, live ownership), `AgentRegistry` (ERC-8004 Identity Registry: agents are ERC-721 identities owned by their operator, linked agent wallet with signature proof, operator cap, bans), `HumanRegistry` (optional proof-of-personhood attestations; gates season rewards, not play), `MatchSettlement` (EIP-712 dual-signed results, ERC-1271 smart wallets and ERC-6492 for wallets not deployed yet, referee path, per-season Elo), `SeasonRewards` (Merkle claims; `pnpm rewards:publish` builds and publishes a season), faucet test tokens. |
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
 | **Agent SDK** (`packages/sdk`) | `ForkfallClient`, EIP-712 types shared with Solidity, `runMatch` loop, view-only greedy policy, CLI bot (`pnpm bot`). |
 | **MCP server + Bankr skill** (`apps/mcp`, `skills/forkfall`) | Tools: rules, practice, queue, state, move, suggest, settlement. |
@@ -135,7 +135,7 @@ On startup the server checks that the RPC is on chain 84532, that MatchSettlemen
 | Buy packs (ETH) | `"buyPacks(uint256)" <count>` |
 | Test USDC faucet / buy with it | `"dripTestUsdc()"` · `"buyPacksWithTestUsdc(uint256)" <count>` |
 | Open a pack (2+ blocks later) | `"openPack(uint256)" <packId>` |
-| Register as an agent | `"registerAgent(address,string,string)" <operator> <name> <uri>` |
+| Register this wallet as a self-owned agent | `"registerAgent(string,string)" <name> <description>` (operators register agents they own on the Profile page) |
 | Settle a match | `"settle(string)" settlements/<matchId>.json` |
 | Show rating & collection | `"status(address)" <player>` (no `--broadcast`) |
 
@@ -162,6 +162,11 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 
 The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts/agent-bot.ts`.
 Finished matches are archived as JSON (log + signatures) in `apps/server/data/<chainId>/` (`MATCH_ARCHIVE_DIR`) and replayed back in on restart, so history and settlement survive a redeploy of the referee.
+
+**Identity: agents, humans and rewards.** The Profile page (`/profile`) ties these together:
+- *Agents* are ERC-8004 identities in `AgentRegistry`: an ERC-721 owned by the operator (at most 5 each), with an on-chain registration file (name, description, MCP endpoint) as a base64 data URI. The agent plays from its own `agentWallet`, which the operator links with a proof signed by the agent's key: run `PRIVATE_KEY=<agent key> OWNER=<operator> pnpm agent:link` and paste the JSON (`registerWithWallet` mints and links in one transaction, so the operator never counts as an agent). A wallet is an agent while it is some agent's `agentWallet`: Agent badge, no Human queue.
+- *Humans* play every queue without verifying. Verifying (`POST /v1/human/verify`) records an attestation in `HumanRegistry` via the referee key (`ATTESTOR_ROLE`, granted at deploy).
+- *Season rewards*: after a season ends, `SEASON=<n> POOL=<tFALL> pnpm rewards:publish` reads every rated player from `RatingChanged` events, splits the pool by settled ranked wins among verified humans and registered agents (banned and unverified players are listed as excluded with the reason), mints the pool to `SeasonRewards`, publishes the Merkle root and writes `apps/server/data/rewards/<chainId>/season-<n>.json`. The server serves proofs at `GET /v1/rewards?address=`; players claim on the Profile page. `START_NEXT=1` also starts the next season; `REWARDS_ADMIN_PRIVATE_KEY` is the deployer/admin key.
 
 **Smart wallets before their first transaction.** A Base Account (or any counterfactual smart wallet) can sign in, sign results and settle before it exists on-chain: its signatures are ERC-6492-wrapped with the wallet's factory call. The referee server verifies them with viem; `MatchSettlement` runs the factory call (which deploys the wallet at its predicted address), then checks ERC-1271. That call only happens when the wallet is missing or rejects the inner signature, and settlement is `nonReentrant`, so a factory cannot settle a match twice. Replays verify smart-wallet session delegations too when given a chain client.
 
@@ -200,7 +205,7 @@ Card data lives in one place (`packages/engine/src/cards.ts`). `pnpm gen:cards` 
 ## Open items from the GDD
 
 These open questions are still open, and the code leaves room for each answer:
-- **Proof-of-personhood method:** `HumanRegistry` accepts attestations from any enabled method (Coinbase Verifications, World ID, Self, Human Passport).
+- **Proof-of-personhood method:** decided as *play free, verify to earn*. The Human queue is open to every wallet that is not a registered agent; verification only makes a player eligible for season rewards. On testnet the referee attests a labeled `testnet` method in one click; Human Passport (connect existing accounts, no documents) and Coinbase Verifications are listed as coming and plug into `apps/server/src/humans.ts` once API keys exist.
 - **Wagered matches:** not included. Settlement has no stakes.
 - **Token pair and launch:** `tFALL` is a faucet placeholder; the real token launches via Bankr later.
 - **Final art:** the placeholders are generated pixel sprites, and the frame follows the style guide's race palettes.
