@@ -1,6 +1,6 @@
 import { BEATS, RACES, type Race } from '@forkfall/engine';
 import type { Mode } from '@forkfall/sdk';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import type { Address, Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
@@ -44,15 +44,18 @@ export function Play() {
   const { decks } = useMyDecks(me?.address as Address | undefined);
   const [params, setParams] = useSearchParams();
 
-  // Arriving from Decks with ?deck=<id>: select that deck, its race, and the best mode for it.
+  // Arriving from Decks with ?deck=<id>: select that deck, its race, and the best mode for it (once,
+  // after the deck list loads), then drop the param so a reload doesn't re-apply it.
+  const wantDeck = params.get('deck')?.toLowerCase() ?? null;
+  const appliedDeck = useRef<string | null>(null);
   useEffect(() => {
-    const want = params.get('deck');
-    if (!want) return;
-    const d = decks.find((x) => x.id.toLowerCase() === want.toLowerCase());
+    if (!wantDeck || appliedDeck.current === wantDeck) return;
+    const d = decks.find((x) => x.id.toLowerCase() === wantDeck);
     if (!d) return;
+    appliedDeck.current = wantDeck;
     update({ race: d.race, deckId: d.id, tab: d.rankedLegal ? 'ranked' : 'casual' });
     setParams({}, { replace: true });
-  }, [params, decks]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wantDeck, decks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (p: Partial<typeof pref>) => setPref((old) => {
     const next = { ...old, ...p };

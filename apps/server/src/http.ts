@@ -153,8 +153,15 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'GET /queue': return lobby.queueStatus(need(session).address);
       case 'DELETE /queue': lobby.leaveQueue(need(session).address); return { ok: true };
       case 'POST /practice': { const s = need(session); return lobby.practice(s.address, body, s.agent); }
-      case 'GET /matches': return { matches: lobby.list() };
-      case 'GET /leaderboard': return lobby.leaderboard();
+      case 'GET /matches': {
+        const player = url.searchParams.get('player');
+        if (player && !isAddress(player)) throw new ApiError(400, 'player must be an address');
+        return { matches: lobby.list(player as Address | null) };
+      }
+      case 'GET /leaderboard': {
+        const season = url.searchParams.get('season');
+        return lobby.leaderboard(season === null ? undefined : Number(season));
+      }
       case 'GET /matches/:id': return lobby.snapshot(lobby.get(matchId), session?.address ?? null);
       case 'GET /matches/:id/events':
         return lobby.eventsSince(lobby.get(matchId), session?.address ?? null, Number(url.searchParams.get('since') ?? 0));

@@ -31,7 +31,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
 | **Agent SDK** (`packages/sdk`) | `ForkfallClient`, EIP-712 types shared with Solidity, `runMatch` loop, view-only greedy policy, CLI bot (`pnpm bot`). |
 | **MCP server + Bankr skill** (`apps/mcp`, `skills/forkfall`) | Tools: rules, practice, queue, state, move, suggest, settlement. |
-| **Web app** (`apps/web`) | React 19 + wagmi 3 with Forkfall's own connect modal. Wallet sign-in (EIP-6963 browser wallets, Base Account smart wallet, MetaMask, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Play lobby (practice, casual, ranked, Human queue, live matches), the full match screen, and Collection (claim starter decks, buy with ETH or test USDC, open packs with a reveal, card gallery, scrap and craft) and Decks (deck builder with live rule checks, ranked rarity meter and mana curve; on-chain registration; deck list with rename, status badges and one-click play) ship; match history is next. |
+| **Web app** (`apps/web`) | React 19 + wagmi 3 with Forkfall's own connect modal. Wallet sign-in (EIP-6963 browser wallets, Base Account smart wallet, MetaMask, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Play lobby (practice, casual, ranked, Human queue, live matches), the full match screen, and Collection (claim starter decks, buy with ETH or test USDC, open packs with a reveal, card gallery, scrap and craft) and Decks (deck builder with live rule checks, ranked rarity meter and mana curve; on-chain registration; deck list with rename, status badges and one-click play) and Matches (history with sign and one-click on-chain settle, step-by-step replays re-run and verified in the browser, season ladder with on-chain Elo) ship. |
 
 ### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
 
@@ -157,9 +157,11 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 | `POST /matches/:id/moves {seq,action,signature}` | EIP-712 `Move(matchId,seq,prevHash,actionHash)` |
 | `GET /matches/:id/events?since=` | event stream for your seat |
 | `GET/POST /matches/:id/result` | typed `MatchResult` to co-sign |
-| `GET /matches/:id/settlement` · `GET /matches/:id/log` | settlement JSON · full signed log after the match |
+| `GET /matches/:id/settlement` · `GET /matches/:id/log` | settlement JSON · full signed log after the match (replay it with `replayLog` / `verifyMoveSignatures` from the SDK) |
+| `GET /matches?player=` · `GET /leaderboard?season=` | recent matches or one player's history (with signature and settlement status) · ranked records per season |
 
 The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts/agent-bot.ts`.
+Finished matches are archived as JSON (log + signatures) in `apps/server/data/<chainId>/` (`MATCH_ARCHIVE_DIR`) and replayed back in on restart, so history and settlement survive a redeploy of the referee.
 For MCP clients: `FORKFALL_SERVER=… FORKFALL_PRIVATE_KEY=… pnpm mcp`, documented in `skills/forkfall/SKILL.md`.
 
 ## Toolchain versions

@@ -7,6 +7,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
+import { friendlyError } from '../chain/errors.ts';
+import { useHub } from '../chain/useHub.ts';
+import { useSettled, useSettleMatch } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
 import { describeEvent, KEYWORD_HELP, KEYWORD_LABEL, RACE_INFO, raceName } from '../game/meta.ts';
 import { useMatch } from '../game/useMatch.ts';
@@ -255,7 +258,7 @@ const costOf = (v: NonNullable<MatchSnapshot['view']>, uid: number) => {
 };
 
 // ─── Player side: identity, Treasury, Gas, deck, hand, predictions ────────────
-function Side({ s, side, isMe, hits, children, onTreasury, treasuryTarget }: {
+export function Side({ s, side, isMe, hits, children, onTreasury, treasuryTarget }: {
   s: MatchSnapshot; side: 0 | 1; isMe: boolean; hits: Set<string>; children: React.ReactNode;
   onTreasury?: () => void; treasuryTarget?: boolean;
 }) {
@@ -345,7 +348,7 @@ function TurnBar({ s, now, myTurn, sending, hint, onEnd, onConcede, onShowResult
   );
 }
 
-function Preview({ cardId }: { cardId: number | null }) {
+export function Preview({ cardId }: { cardId: number | null }) {
   if (cardId === null) {
     return <div className="preview empty muted small">Hover or focus a card to read it here.</div>;
   }
@@ -363,7 +366,7 @@ function Preview({ cardId }: { cardId: number | null }) {
   );
 }
 
-function Log({ events, seat, races }: { events: GameEvent[]; seat: number | null; races: [Race, Race] }) {
+export function Log({ events, seat, races }: { events: GameEvent[]; seat: number | null; races: [Race, Race] }) {
   const lines = useMemo(() => events.map((e) => describeEvent(e, seat, races)).filter((x): x is string => !!x), [events, seat, races]);
   const ref = useRef<HTMLOListElement>(null);
   useEffect(() => { ref.current?.scrollTo({ top: ref.current.scrollHeight }); }, [lines.length]);
@@ -436,17 +439,41 @@ function Result({ s, onClose }: { s: MatchSnapshot; onClose: () => void }) {
                 </button>
               </>
             ) : both ? (
-              <p className="ok">✓ Both players signed. {settle ? 'Ready to settle on-chain.' : ''} One-click settlement arrives with the Matches screen; until then use <span className="mono">settle(string)</span> from the player guide.</p>
+              <SettleNow matchId={s.matchId} ready={!!settle && !settle.byReferee} />
             ) : (
               <p className="ok">✓ You signed. Waiting for your opponent’s signature{s.mode !== 'casual' ? ' (the referee can settle without it after 10 minutes)' : ''}.</p>
             )}
           </div>
         )}
         <div className="row-end">
+          <Link className="btn btn-ghost" to={`/matches/${s.matchId}`}>Replay</Link>
           <button className="btn" onClick={onClose}>View board</button>
           <Link className="btn btn-primary" to="/play">Play again</Link>
         </div>
       </div>
     </div>
+  );
+}
+
+function SettleNow({ matchId, ready }: { matchId: Hex; ready: boolean }) {
+  const { contracts } = useHub();
+  const settle = useSettleMatch();
+  const { settled } = useSettled([matchId]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (settled.get(matchId)) return <p className="ok">✓ Settled on-chain. It counts in your record{' '}<Link to="/matches">on the Matches page</Link>.</p>;
+  if (!contracts) return <p className="ok">✓ Both players signed. This server runs off-chain, so there is nothing to settle.</p>;
+  const go = async () => {
+    setErr(null); setBusy(true);
+    try { await settle(matchId); } catch (e) { setErr(friendlyError(e)); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <p className="ok">✓ Both players signed. Anyone can now submit the result to MatchSettlement (one transaction, testnet gas).</p>
+      {err && <div className="alert err">{err}</div>}
+      <button className="btn btn-primary btn-block" onClick={go} disabled={busy || !ready}>
+        {busy ? <><span className="spinner" /> Settling…</> : ready ? 'Settle on-chain' : 'Preparing settlement…'}
+      </button>
+    </>
   );
 }

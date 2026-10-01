@@ -89,3 +89,16 @@ export const deckRegistryAbi = parseAbi([
   'error TooManyCopies(uint256 cardId)',
   'error NotOwned(uint256 cardId, uint256 have, uint256 need)',
 ]);
+
+export const matchSettlementAbi = parseAbi([
+  'struct MatchResult { bytes32 matchId; address playerA; address playerB; address winner; bytes32 deckA; bytes32 deckB; uint8 mode; uint32 season; uint16 turns; bytes32 logHash; }',
+  'function settle(MatchResult r, bytes sigA, bytes sigB, bytes refereeSig)',
+  'function settled(bytes32 matchId) view returns (bool)',
+  'function currentSeason() view returns (uint32)',
+  'function stats(uint32 season, address player) view returns ((uint32 wins, uint32 losses, uint32 draws, uint32 rating))',
+  'event MatchSettled(bytes32 indexed matchId, address indexed winner, address indexed loser, uint8 mode, uint32 season, uint16 turns, bytes32 logHash, bool byReferee)',
+  'event RatingChanged(uint32 indexed season, address indexed player, uint32 oldRating, uint32 newRating)',
+  'error AlreadySettled(bytes32 matchId)', 'error BadPlayers()', 'error BadWinner()', 'error BadSignature(address signer)',
+  'error WrongSeason(uint32 season)', 'error InvalidDeck(address player)', 'error Banned(address player)',
+  'error NotHuman(address player)', 'error UnknownMode(uint8 mode)', 'error MissingRefereeSignature()',
+]);

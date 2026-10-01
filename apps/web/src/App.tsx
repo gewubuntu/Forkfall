@@ -8,7 +8,9 @@ import { Collection } from './pages/Collection.tsx';
 import { DeckBuilder } from './pages/DeckBuilder.tsx';
 import { Decks } from './pages/Decks.tsx';
 import { Match } from './pages/Match.tsx';
+import { Matches } from './pages/Matches.tsx';
 import { Play } from './pages/Play.tsx';
+import { Replay } from './pages/Replay.tsx';
 import { SignInGate } from './pages/SignInGate.tsx';
 
 const NAV = [
@@ -73,7 +75,8 @@ export function App() {
             <Route path="/collection" element={<Collection />} />
             <Route path="/decks" element={<Decks />} />
             <Route path="/decks/new" element={<DeckBuilder />} />
-            <Route path="/matches" element={<ComingSoon title="Matches" />} />
+            <Route path="/matches" element={<Matches />} />
+            <Route path="/matches/:id" element={<Replay />} />
             <Route path="*" element={<ComingSoon title="Not found" />} />
           </Routes>
         );

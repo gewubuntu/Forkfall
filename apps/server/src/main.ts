@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
 import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER } from './chain.ts';
 import { createApi } from './http.ts';
-import { Lobby } from './lobby.ts';
+import { Lobby, type ArchivedMatch } from './lobby.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const env = process.env;
@@ -47,6 +47,7 @@ const chain = offchain ? new Chain(null, undefined, chainId) : Chain.load(bookFi
 const houseKey = (env.HOUSE_PRIVATE_KEY as Hex | undefined) ?? generatePrivateKey();
 const house = privateKeyToAccount(houseKey);
 const settlementDir = env.SETTLEMENT_DIR ?? join(root, 'contracts/settlements');
+const archiveDir = env.MATCH_ARCHIVE_DIR ?? join(root, 'apps/server/data', String(chainId));
 
 if (chain.online) {
   const pf = await chain.preflight(house.address);
@@ -61,9 +62,23 @@ const lobby = new Lobby({
   bankSeconds: Number(env.BANK_SECONDS ?? 60),
 });
 
+// Finished matches (log + signatures) are archived so history, replays and settlement survive a restart.
+let restored = 0;
+if (existsSync(archiveDir)) {
+  for (const f of readdirSync(archiveDir).filter((x) => x.endsWith('.json'))) {
+    try { if (lobby.restore(JSON.parse(readFileSync(join(archiveDir, f), 'utf8')) as ArchivedMatch)) restored++; } catch (e) {
+      console.warn(`  skipping archived match ${f}: ${(e as Error).message}`);
+    }
+  }
+}
+
 // Export a Foundry-ready settlement file as soon as a match has enough signatures.
 lobby.onChange = (m) => {
   if (m.phase !== 'ended') return;
+  try {
+    mkdirSync(archiveDir, { recursive: true });
+    writeFileSync(join(archiveDir, `${m.id}.json`), JSON.stringify(lobby.archive(m.id)));
+  } catch (e) { console.error('archive failed', e); }
   try {
     const s = lobby.settlement(m.id);
     mkdirSync(settlementDir, { recursive: true });
@@ -91,4 +106,5 @@ server.listen(port, () => {
   }
   console.log(`  house bot / referee address ${house.address}${env.HOUSE_PRIVATE_KEY ? '' : ' (ephemeral key)'}`);
   console.log(`  settlement files → ${settlementDir}`);
+  console.log(`  match archive → ${archiveDir} (${restored} restored)`);
 });

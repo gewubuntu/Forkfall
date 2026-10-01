@@ -4,8 +4,8 @@ import {
   type Action, type GameEvent, type GameState, type Race, type Seat,
 } from '@forkfall/engine';
 import {
-  actionHash, commitSeed, MODES, MOVE_TYPES, RESULT_TYPES, moveDigest, nextHead, resultDigest, viewGreedy, ZERO32, ZERO_ADDRESS,
-  type Delegation, type MatchResult, type MatchSnapshot, type Mode,
+  actionHash, commitSeed, MODES, MOVE_TYPES, RESULT_TYPES, moveDigest, nextHead, replayLog, resultDigest, viewGreedy, ZERO32, ZERO_ADDRESS,
+  type Delegation, type MatchLog, type MatchResult, type MatchSnapshot, type MatchSummary, type Mode,
 } from '@forkfall/sdk';
 import { recoverAddress, type Address, type Hex, type LocalAccount, type TypedDataDomain } from 'viem';
 import type { Chain } from './chain.ts';
@@ -70,6 +70,14 @@ export interface LobbyOptions {
   queueTtlSeconds?: number;
   now?: () => number;
   botDelayMs?: number;
+}
+
+/** What the server keeps on disk for a finished match: the public log plus the collected signatures. */
+export interface ArchivedMatch {
+  log: MatchLog;
+  refereeSig?: Hex;
+  resultSigs: [Hex | null, Hex | null];
+  bots: [BotKind | null, BotKind | null];
 }
 
 interface QueueEntry {
@@ -409,14 +417,54 @@ export class Lobby {
     throw new ApiError(409, 'waiting for result signatures');
   }
 
-  log(matchId: Hex) {
+  log(matchId: Hex): MatchLog {
     const m = this.get(matchId);
     if (m.phase !== 'ended') throw new ApiError(409, 'full log (with seed reveals) is public after the match ends');
     return {
-      matchId: m.id, mode: m.mode, domain: this.domain,
-      players: m.players.map((p) => ({ address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations ?? [] })),
-      moves: m.moves, head: m.head, result: m.result,
+      matchId: m.id, mode: m.mode, season: m.season, createdAt: m.createdAt, endedAt: m.endedAt, endReason: m.state?.endReason,
+      domain: { ...this.domain, chainId: Number(this.domain.chainId) },
+      players: m.players.map((p) => ({ address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit, seedShare: p.seedShare!, deckSalt: p.deckSalt!, delegations: p.delegations ?? [] })),
+      moves: m.moves, head: m.head, result: m.result!,
     };
+  }
+
+  // ─── Archive (finished matches survive a restart) ─────────────
+  archive(matchId: Hex): ArchivedMatch {
+    const m = this.get(matchId);
+    return {
+      log: this.log(matchId),
+      refereeSig: m.refereeSig,
+      resultSigs: [m.players[0].resultSig ?? null, m.players[1].resultSig ?? null],
+      bots: [m.players[0].bot ?? null, m.players[1].bot ?? null],
+    };
+  }
+
+  /** Re-load an archived match by replaying its log. Returns false if it belongs to another deployment or fails to replay. */
+  restore(rec: ArchivedMatch): boolean {
+    const { log } = rec;
+    if (this.matches.has(log.matchId)) return true;
+    const d = log.domain;
+    if (Number(d.chainId) !== Number(this.domain.chainId) || String(d.verifyingContract).toLowerCase() !== String(this.domain.verifyingContract).toLowerCase()) return false;
+    const replay = replayLog(log);
+    if (!replay.ok) return false;
+    const players = log.players.map((p, i) => ({
+      address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent,
+      seedCommit: p.seedCommit, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations,
+      resultSig: rec.resultSigs[i] ?? undefined, bot: rec.bots[i] ?? undefined,
+    })) as [Seatholder, Seatholder];
+    this.matches.set(log.matchId, {
+      id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
+      phase: 'ended', players, state: replay.final, events: replay.frames.flatMap((f) => f.events),
+      moves: log.moves, head: log.head, clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
+      result: log.result, refereeSig: rec.refereeSig,
+    });
+    return true;
+  }
+
+  /** Who can settle right now: nobody yet, anyone with the signatures, or only the referee. */
+  settlementStatus(m: Match): MatchSummary['settlement'] {
+    if (m.phase !== 'ended' || !m.result) return 'none';
+    try { return this.settlement(m.id).byReferee ? 'referee' : 'ready'; } catch { return 'waiting'; }
   }
 
   // ─── Views ────────────────────────────────────────────────────
@@ -461,29 +509,36 @@ export class Lobby {
     return { events: eventsFor(slice, seat), next: m.events.length };
   }
 
-  list() {
+  /** Recent matches, or one player's full history (newest first). */
+  list(player?: Address | null): MatchSummary[] {
+    const mine = player ? (m: Match) => this.seatOf(m, player) !== null : () => true;
     return [...this.matches.values()]
-      .filter((m) => m.phase !== 'cancelled')
+      .filter((m) => m.phase !== 'cancelled' && mine(m))
       .sort((a, b) => b.createdAt - a.createdAt)
-      .slice(0, 50)
+      .slice(0, player ? 500 : 50)
       .map((m) => ({
-        matchId: m.id, mode: m.mode, phase: m.phase, turn: m.state?.turn ?? 0,
-        players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent })),
+        matchId: m.id, mode: m.mode, phase: m.phase, turn: m.state?.turn ?? 0, season: m.season,
+        createdAt: m.createdAt, endedAt: m.endedAt, endReason: m.state?.endReason,
+        practice: m.players.some((p) => !!p.bot),
+        players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent, deckId: p.deckId })),
         winner: m.result?.winner,
+        resultSigned: [!!m.players[0].resultSig, !!m.players[1].resultSig],
+        settlement: this.settlementStatus(m),
       }));
   }
 
-  leaderboard() {
-    const rows = new Map<string, { address: string; agent: boolean; wins: number; losses: number; draws: number }>();
+  async leaderboard(season?: number) {
+    const s = season ?? (await this.opts.chain.season());
+    const rows = new Map<string, { address: Address; agent: boolean; wins: number; losses: number; draws: number }>();
     for (const m of this.matches.values()) {
-      if (m.phase !== 'ended' || !m.result || m.mode === 'casual') continue;
+      if (m.phase !== 'ended' || !m.result || m.mode === 'casual' || m.season !== s) continue;
       for (const p of m.players) {
         const r = rows.get(p.address) ?? { address: p.address, agent: p.agent, wins: 0, losses: 0, draws: 0 };
         if (m.result.winner === ZERO_ADDRESS) r.draws++; else if (m.result.winner === p.address) r.wins++; else r.losses++;
         rows.set(p.address, r);
       }
     }
-    return { rows: [...rows.values()].sort((a, b) => b.wins - a.wins || a.losses - b.losses) };
+    return { season: s, rows: [...rows.values()].sort((a, b) => b.wins - a.wins || a.losses - b.losses) };
   }
 
   private changed(m: Match) { this.onChange?.(m); }

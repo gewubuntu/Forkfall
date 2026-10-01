@@ -5,6 +5,7 @@ import {
   actionHash, commitSeed, MOVE_TYPES, RESULT_TYPES, sessionProofMessage, type Delegation, type MatchResult, type Mode,
 } from './protocol.ts';
 import type { Address } from 'viem';
+import type { MatchLog } from './replay.ts';
 
 /** Signs the final MatchResult with the player's wallet (wallet clients, smart wallets, etc.). */
 export type ResultSigner = (typedData: {
@@ -70,6 +71,35 @@ export interface MatchSnapshot {
   now?: number;
   /** Which seats have co-signed the final result. */
   resultSigned?: [boolean, boolean];
+}
+
+/** One row of `GET /v1/matches` (newest first). */
+export interface MatchSummary {
+  matchId: Hex;
+  mode: Mode;
+  phase: MatchSnapshot['phase'];
+  turn: number;
+  season: number;
+  createdAt: number;
+  endedAt?: number;
+  endReason?: string;
+  /** Practice game against a house bot. */
+  practice: boolean;
+  players: { address: Address; race: Race; agent: boolean; deckId: Hex }[];
+  winner?: Address;
+  resultSigned: [boolean, boolean];
+  /** none = still playing · waiting = needs signatures · ready = anyone can settle · referee = only the referee can settle */
+  settlement: 'none' | 'waiting' | 'ready' | 'referee';
+}
+
+export interface LeaderboardRow { address: Address; agent: boolean; wins: number; losses: number; draws: number }
+
+/** Foundry/wallet-ready settlement payload (`GET /v1/matches/:id/settlement`). */
+export interface Settlement {
+  domain: TypedDataDomain;
+  result: MatchResult;
+  byReferee: boolean;
+  sigA?: Hex; sigB?: Hex; refereeSig?: Hex; winnerSig?: Hex;
 }
 
 export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: Hex }
@@ -210,8 +240,14 @@ export class ForkfallClient {
     return this.req<{ ok: true; complete: boolean }>('POST', `/v1/matches/${matchId}/result`, { signature });
   }
 
-  settlement(matchId: Hex) { return this.req<Record<string, unknown>>('GET', `/v1/matches/${matchId}/settlement`); }
-  log(matchId: Hex) { return this.req<Record<string, unknown>>('GET', `/v1/matches/${matchId}/log`); }
-  matches() { return this.req<{ matches: unknown[] }>('GET', '/v1/matches'); }
-  leaderboard() { return this.req<{ rows: unknown[] }>('GET', '/v1/leaderboard'); }
+  settlement(matchId: Hex) { return this.req<Settlement>('GET', `/v1/matches/${matchId}/settlement`); }
+  log(matchId: Hex) { return this.req<MatchLog>('GET', `/v1/matches/${matchId}/log`); }
+  /** Recent matches; pass `player` for that address's full history. */
+  matches(opts: { player?: Address } = {}) {
+    return this.req<{ matches: MatchSummary[] }>('GET', `/v1/matches${opts.player ? `?player=${opts.player}` : ''}`);
+  }
+  /** Ranked results refereed by this server (season defaults to the current one). */
+  leaderboard(season?: number) {
+    return this.req<{ season: number; rows: LeaderboardRow[] }>('GET', `/v1/leaderboard${season !== undefined ? `?season=${season}` : ''}`);
+  }
 }

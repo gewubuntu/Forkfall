@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { recoverTypedDataAddress, type Hex } from 'viem';
-import { ForkfallClient, runMatch, RESULT_TYPES, MOVE_TYPES, actionHash, ZERO32 } from '@forkfall/sdk';
+import { ForkfallClient, runMatch, RESULT_TYPES, MOVE_TYPES, actionHash, replayLog, verifyMoveSignatures, ZERO32, type MatchLog } from '@forkfall/sdk';
 import { Chain } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
 import { Lobby } from '../src/lobby.ts';
@@ -152,5 +152,80 @@ describe('referee server', () => {
       method: 'POST', headers: { authorization: `Bearer ${c.token}` }, body: JSON.stringify({ mode: 'casual', race: 'agents' }),
     });
     expect(r2.status).toBe(400);
+  });
+});
+
+describe('match history, replay and archive', () => {
+  async function playRanked() {
+    const a = newClient(); const b = newClient();
+    await a.connect({ agent: true }); await b.connect({ agent: true });
+    await a.queue({ mode: 'ranked', race: 'prophets' });
+    const { matchId } = await b.queue({ mode: 'ranked', race: 'brokers' });
+    await Promise.all([runMatch(a, matchId!, { pollMs: 5 }), runMatch(b, matchId!, { pollMs: 5 })]);
+    await lobby.stepBots(); // referee co-signature
+    return { a, b, matchId: matchId! };
+  }
+
+  it('replays the public log to the signed result and verifies every move signature', async () => {
+    const { a, b, matchId } = await playRanked();
+    const log = await a.log(matchId);
+    const r = replayLog(log);
+    expect(r.checks).toMatchObject({ seeds: { ok: true }, chain: { ok: true }, outcome: { ok: true } });
+    expect(r.frames.length).toBe(log.moves.length + 1);
+    const sigs = await verifyMoveSignatures(log);
+    expect(sigs).toEqual({ verified: log.moves.length, forced: 0, unchecked: 0, failed: [] });
+
+    // Tampering with any move breaks the chain; a fake seed share breaks the commitment.
+    const i = log.moves.findIndex((m) => m.action.type !== 'endTurn');
+    const forged: MatchLog = structuredClone(log);
+    forged.moves[i].action = { type: 'endTurn' };
+    expect(replayLog(forged).checks.chain.ok).toBe(false);
+    const badSeed: MatchLog = structuredClone(log);
+    badSeed.players[0].seedShare = ZERO32;
+    expect(replayLog(badSeed).ok).toBe(false);
+
+    // History: both players see it, ready to settle; the leaderboard counts it for the season.
+    const mine = (await b.matches({ player: b.address })).matches;
+    expect(mine[0]).toMatchObject({ matchId, mode: 'ranked', phase: 'ended', settlement: 'ready', resultSigned: [true, true], practice: false });
+    expect((await a.matches({ player: newClient().address })).matches).toEqual([]);
+    const lb = await a.leaderboard();
+    expect(lb.season).toBe(lobby.get(matchId).season);
+    expect(lb.rows.some((x) => x.address === a.address)).toBe(true);
+  });
+
+  it('replays timeout forfeits and restores archived matches into a fresh referee', async () => {
+    const a = newClient(); const b = newClient();
+    await a.connect(); await b.connect();
+    await a.queue({ mode: 'casual', race: 'agents' });
+    const { matchId } = await b.queue({ mode: 'casual', race: 'degens' });
+    await a.reveal(matchId!); await b.reveal(matchId!);
+    const m = lobby.get(matchId!);
+    const idle = m.state!.active;
+    for (let i = 0; i < 10 && m.phase === 'active'; i++) {
+      if (m.state!.active === idle) { clock += 200_000; lobby.tick(); }
+      else {
+        const c = m.players[m.state!.active].address === a.address ? a : b;
+        await c.move(matchId!, await c.state(matchId!), { type: 'endTurn' });
+      }
+    }
+    const log = await a.log(matchId!);
+    const r = replayLog(log);
+    expect(r.ok).toBe(true);
+    expect(r.final.endReason).toBe('timeout');
+    expect((await verifyMoveSignatures(log)).forced).toBeGreaterThan(0);
+
+    await a.signResult(matchId!); await b.signResult(matchId!);
+    const rec = JSON.parse(JSON.stringify(lobby.archive(matchId!)));
+    const fresh = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => clock });
+    expect(fresh.restore(rec)).toBe(true);
+    expect(fresh.list(a.address)[0]).toMatchObject({ matchId, phase: 'ended', settlement: 'ready', endReason: 'timeout' });
+    expect(fresh.settlement(matchId!)).toEqual(lobby.settlement(matchId!));
+    expect(fresh.snapshot(fresh.get(matchId!), a.address).view!.winner).toBe(m.state!.winner);
+
+    // A log from another deployment, or one that doesn't replay, is refused.
+    const other = new Lobby({ chain: new Chain(null, undefined, 84532), house: privateKeyToAccount(generatePrivateKey()) });
+    expect(other.restore(rec)).toBe(false);
+    rec.log.matchId = ZERO32;
+    expect(new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()) }).restore(rec)).toBe(false);
   });
 });
