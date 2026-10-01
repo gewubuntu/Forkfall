@@ -127,6 +127,23 @@ describe('referee server', () => {
     expect(m.state!.winner).toBe(idle === 0 ? 1 : 0);
   });
 
+  it('drops queue entries whose client stopped polling, and reports cancelled matches', async () => {
+    const ghost = newClient(); const live = newClient(); const late = newClient();
+    await ghost.connect(); await live.connect(); await late.connect();
+    await ghost.queue({ mode: 'human', race: 'agents' });
+    clock += 31_000; // ghost never polls again
+    const r = await live.queue({ mode: 'human', race: 'brokers' });
+    expect(r.status).toBe('queued');
+    expect((await ghost.queueStatus()).status).toBe('idle');
+    // A real pairing whose second player never reveals is cancelled after 60 s.
+    const { matchId } = await late.queue({ mode: 'human', race: 'degens' });
+    expect(matchId).toBeTruthy();
+    await live.reveal(matchId!);
+    clock += 61_000;
+    lobby.tick();
+    expect((await live.state(matchId!)).phase).toBe('cancelled');
+  });
+
   it('requires auth and a seed commitment', async () => {
     const r = await fetch(`${url}/v1/queue`, { method: 'POST', body: '{}' });
     expect(r.status).toBe(401);

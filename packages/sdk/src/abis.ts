@@ -75,3 +75,17 @@ export interface HubContracts {
   TestUSDC: `0x${string}`;
   TestFALL: `0x${string}`;
 }
+
+export const deckRegistryAbi = parseAbi([
+  'function register(uint8 race, uint16[] ids) returns (bytes32 deckId)',
+  'function getDeck(bytes32 deckId) view returns ((address owner, uint8 race, uint16 rarityPoints, uint8 legendaries, uint16[] cardIds))',
+  'function decksOf(address owner) view returns (bytes32[])',
+  'function isValidFor(bytes32 deckId, address player, bool ranked) view returns (bool)',
+  'event DeckRegistered(bytes32 indexed deckId, address indexed owner, uint8 race, uint16 rarityPoints, bool rankedLegal)',
+  'error BadSize(uint256 n)',
+  'error NotSorted()',
+  'error BadRace(uint8 race)',
+  'error WrongRace(uint256 cardId)',
+  'error TooManyCopies(uint256 cardId)',
+  'error NotOwned(uint256 cardId, uint256 have, uint256 need)',
+]);

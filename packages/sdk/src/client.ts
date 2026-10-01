@@ -54,7 +54,8 @@ export interface ServerConfig {
 
 export interface MatchSnapshot {
   matchId: Hex;
-  phase: 'reveal' | 'active' | 'ended';
+  /** cancelled = a player didn't reveal in time; nothing was played. */
+  phase: 'reveal' | 'active' | 'ended' | 'cancelled';
   mode: Mode;
   seat: 0 | 1 | null;
   players: { address: string; race: Race; agent: boolean }[];

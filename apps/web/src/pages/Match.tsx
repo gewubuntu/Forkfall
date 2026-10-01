@@ -56,6 +56,15 @@ export function Match() {
     return <div className="page"><div className="panel empty"><h2>Match not found</h2><p>It may have been cancelled because a player didn’t reveal in time.</p><Link className="btn" to="/play">Back to Play</Link></div></div>;
   }
   if (!s) return <div className="gate"><span className="spinner" aria-label="Loading match" /></div>;
+  if (s.phase === 'cancelled') {
+    return (
+      <div className="page"><div className="panel empty">
+        <h2>Match cancelled</h2>
+        <p>{s.seat === null ? 'A player' : 'Your opponent'} didn’t connect in time, so the match was called off before it started. Nothing was played or recorded.</p>
+        <Link className="btn btn-primary" to="/play">Back to Play</Link>
+      </div></div>
+    );
+  }
   if (!s.view) {
     return (
       <div className="gate"><div className="card" role="status">

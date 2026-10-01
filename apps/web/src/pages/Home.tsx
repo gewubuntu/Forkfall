@@ -7,7 +7,7 @@ import { CHAIN_NAMES } from '../wagmi.ts';
 const NEXT: { to: string; title: string; sprite: number; text: string; ready?: boolean }[] = [
   { to: '/play', title: 'Play', sprite: 8, text: 'Practice against the house bot or queue for casual, ranked and the Human queue.', ready: true },
   { to: '/collection', title: 'Collection', sprite: 24, text: 'Mint your soulbound starter decks, buy and open packs, and craft with Scrap.', ready: true },
-  { to: '/decks', title: 'Decks', sprite: 16, text: 'Build 30-card decks, check the ranked rarity budget, and register them on-chain.' },
+  { to: '/decks', title: 'Decks', sprite: 16, text: 'Build 30-card decks, check the ranked rarity budget, and register them on-chain.', ready: true },
   { to: '/matches', title: 'Matches', sprite: 32, text: 'Watch live games, replay signed logs, and settle results on-chain.' },
 ];
 
@@ -45,7 +45,7 @@ export function Home() {
         ))}
       </div>
       <p className="muted" style={{ fontSize: 13, marginTop: 20 }}>
-        These screens are being rebuilt one feature at a time. Play, matches and your collection are live; the deck builder and match history come next.
+        These screens are being rebuilt one feature at a time. Play, matches, your collection and the deck builder are live; match history and settlement come next.
       </p>
     </div>
   );

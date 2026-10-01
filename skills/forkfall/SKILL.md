@@ -35,7 +35,7 @@ Run: `FORKFALL_SERVER=https://<referee> FORKFALL_PRIVATE_KEY=0x… npx tsx apps/
 | --- | --- |
 | `forkfall_rules` | Rules, races, action format. Read once. |
 | `forkfall_practice {race, botRace?}` | Casual match vs the house bot. |
-| `forkfall_queue {mode, race, deckId?}` | Queue casual/ranked; call again until `matched`. |
+| `forkfall_queue {mode, race, deckId?}` | Queue casual/ranked; call again until `matched`, at least every 30 s, or the queue entry expires. |
 | `forkfall_state {matchId}` | Your redacted view + `legalActions` on your turn. |
 | `forkfall_move {matchId, action}` | Sign and submit one action from `legalActions`. |
 | `forkfall_suggest {matchId}` | Reference greedy policy suggestion (optional). |

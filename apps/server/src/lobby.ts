@@ -66,6 +66,8 @@ export interface LobbyOptions {
   /** After this long without the loser's signature, the referee path opens. */
   resultGraceSeconds?: number;
   maxTimeouts?: number;
+  /** Queue entries whose client stops polling for this long are dropped (default 30 s). */
+  queueTtlSeconds?: number;
   now?: () => number;
   botDelayMs?: number;
 }
@@ -80,6 +82,8 @@ interface QueueEntry {
   agent: boolean;
   seedCommit: Hex;
   at: number;
+  /** Last time the client checked its queue status; entries that go quiet are dropped. */
+  seen: number;
 }
 
 /**
@@ -97,6 +101,7 @@ export class Lobby {
   readonly revealMs: number;
   readonly graceMs: number;
   readonly maxTimeouts: number;
+  readonly queueTtlMs: number;
   readonly now: () => number;
   readonly domain: TypedDataDomain;
   onChange?: (m: Match) => void;
@@ -107,6 +112,7 @@ export class Lobby {
     this.revealMs = (opts.revealSeconds ?? 60) * 1000;
     this.graceMs = (opts.resultGraceSeconds ?? 600) * 1000;
     this.maxTimeouts = opts.maxTimeouts ?? 3;
+    this.queueTtlMs = (opts.queueTtlSeconds ?? 30) * 1000;
     this.now = opts.now ?? Date.now;
     this.domain = { name: 'Forkfall', version: '1', chainId: opts.chain.chainId, verifyingContract: opts.chain.settlement };
   }
@@ -148,8 +154,9 @@ export class Lobby {
     const isAgent = await this.checkEligibility(address, body.mode, agent);
     const { deck, deckId } = await this.resolveDeck(address, body.mode, body.race, body.deck, body.deckId);
     const ticket = keccakHex(address, String(this.now()), randomHex32());
-    const me: QueueEntry = { ticket, address, mode: body.mode, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit, at: this.now() };
+    const me: QueueEntry = { ticket, address, mode: body.mode, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit, at: this.now(), seen: this.now() };
     this.byAddressTicket.set(address, ticket);
+    this.pruneQueue();
     const idx = this.queue.findIndex((q) => q.mode === me.mode && q.address !== address);
     if (idx < 0) {
       this.queue.push(me);
@@ -172,7 +179,16 @@ export class Lobby {
     if (!ticket) return { status: 'idle' as const };
     const matchId = this.matchedTickets.get(ticket);
     if (matchId) return { status: 'matched' as const, ticket, matchId };
-    return this.queue.some((q) => q.ticket === ticket) ? { status: 'queued' as const, ticket } : { status: 'idle' as const };
+    const entry = this.queue.find((q) => q.ticket === ticket);
+    if (!entry) return { status: 'idle' as const };
+    entry.seen = this.now();
+    return { status: 'queued' as const, ticket };
+  }
+
+  /** Drop queue entries whose client stopped polling, so nobody gets matched with a ghost. */
+  private pruneQueue() {
+    const cutoff = this.now() - this.queueTtlMs;
+    this.queue = this.queue.filter((q) => q.seen >= cutoff);
   }
 
   leaveQueue(address: Address) {
@@ -298,6 +314,7 @@ export class Lobby {
   // ─── Clock (call every second) ────────────────────────────────
   tick() {
     const now = this.now();
+    this.pruneQueue();
     for (const m of this.matches.values()) {
       if (m.phase === 'reveal' && now - m.createdAt > this.revealMs) { m.phase = 'cancelled'; this.changed(m); continue; }
       if (m.phase !== 'active') continue;
@@ -420,7 +437,7 @@ export class Lobby {
     const s = m.state;
     return {
       matchId: m.id,
-      phase: m.phase === 'cancelled' ? 'ended' : m.phase,
+      phase: m.phase,
       mode: m.mode,
       seat,
       players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent })),

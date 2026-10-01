@@ -1,25 +1,23 @@
 import { card, COLLECTIBLE, MAX_COPIES, MAX_LEGENDARY_COPIES, RACES, RARITIES, type CardDef, type Faction, type Race, type Rarity } from '@forkfall/engine';
-import { cardRegistryAbi, craftingAbi, faucetTokenAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
+import { craftingAbi, faucetTokenAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { formatEther, formatUnits, maxUint256, parseEventLogs, type Address } from 'viem';
-import { useBalance, useBlockNumber, useReadContract, useReadContracts } from 'wagmi';
+import { useBalance, useBlockNumber, useReadContracts } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useTx } from '../chain/Tx.tsx';
 import { useHub } from '../chain/useHub.ts';
+import { useOwned, type Owned } from '../chain/useOwned.ts';
 import { GameCard } from '../components/GameCard.tsx';
 import { PackReveal } from '../components/PackReveal.tsx';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
 import { LOGO_MARK, spriteSvg } from '../lib/art.ts';
 
-const STARTER_OFFSET = 10_000n;
-const IDS = COLLECTIBLE.map((c) => BigInt(c.id));
 const RACE_CODE: Record<Race, number> = { agents: 1, prophets: 2, brokers: 3, degens: 4 };
 const RARITY_CODE: Record<Rarity, number> = { common: 0, uncommon: 1, rare: 2, legendary: 3 };
 const ETH_FAUCET = 'https://portal.cdp.coinbase.com/products/faucet';
 
-export interface Owned { tradeable: number; soulbound: number }
 
 export function Collection() {
   const { contracts, chainId } = useHub();
@@ -46,16 +44,8 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const cid = chainId as never;
 
   // ─── Reads ────────────────────────────────────────────────────
-  const balances = useReadContract({
-    address: c.CardRegistry, abi: cardRegistryAbi, functionName: 'balanceOfBatch', chainId: cid,
-    args: [[...IDS, ...IDS].map(() => player), [...IDS, ...IDS.map((i) => i + STARTER_OFFSET)]],
-  });
-  const owned = useMemo(() => {
-    const m = new Map<number, Owned>();
-    const b = balances.data;
-    COLLECTIBLE.forEach((cd, i) => m.set(cd.id, { tradeable: Number(b?.[i] ?? 0n), soulbound: Number(b?.[i + IDS.length] ?? 0n) }));
-    return m;
-  }, [balances.data]);
+  const balances = useOwned(player);
+  const owned = balances.owned;
 
   const reads = useReadContracts({
     contracts: [

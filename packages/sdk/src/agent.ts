@@ -19,7 +19,7 @@ export async function runMatch(client: ForkfallClient, matchId: Hex, opts: Agent
   const decide = opts.decide ?? viewGreedy;
   let snap = await client.state(matchId);
   if (snap.phase === 'reveal') { await client.reveal(matchId); snap = await client.state(matchId); }
-  while (snap.phase !== 'ended') {
+  while (snap.phase !== 'ended' && snap.phase !== 'cancelled') {
     if (snap.phase === 'active' && snap.view && snap.view.active === snap.seat && snap.legalActions.length) {
       const action = await decide(snap);
       log(`turn ${snap.view.turn}: ${JSON.stringify(action)}`);
@@ -32,7 +32,7 @@ export async function runMatch(client: ForkfallClient, matchId: Hex, opts: Agent
       return snap;
     });
   }
-  await client.signResult(matchId).catch((e) => log(`result sign failed: ${e}`));
+  if (snap.phase === 'ended') await client.signResult(matchId).catch((e) => log(`result sign failed: ${e}`));
   return client.state(matchId);
 }
 

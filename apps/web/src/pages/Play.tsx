@@ -1,9 +1,11 @@
 import { BEATS, RACES, type Race } from '@forkfall/engine';
 import type { Mode } from '@forkfall/sdk';
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import type { Hex } from 'viem';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import type { Address, Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
+import { useMyDecks } from '../chain/useMyDecks.ts';
+import { deckName } from '../lib/deckNames.ts';
 import { RACE_INFO, raceName } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { shortAddr } from '../lib/format.ts';
@@ -38,6 +40,19 @@ export function Play() {
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveMatch[]>([]);
   const [, tick] = useState(0);
+
+  const { decks } = useMyDecks(me?.address as Address | undefined);
+  const [params, setParams] = useSearchParams();
+
+  // Arriving from Decks with ?deck=<id>: select that deck, its race, and the best mode for it.
+  useEffect(() => {
+    const want = params.get('deck');
+    if (!want) return;
+    const d = decks.find((x) => x.id.toLowerCase() === want.toLowerCase());
+    if (!d) return;
+    update({ race: d.race, deckId: d.id, tab: d.rankedLegal ? 'ranked' : 'casual' });
+    setParams({}, { replace: true });
+  }, [params, decks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const update = (p: Partial<typeof pref>) => setPref((old) => {
     const next = { ...old, ...p };
@@ -82,13 +97,13 @@ export function Play() {
   }, []);
 
   const startPractice = () => run(async () => {
-    const id = await client!.practice({ race: pref.race, bot: botLevel, ...(botRace !== 'random' ? { botRace } : {}) });
+    const id = await client!.practice({ race: pref.race, bot: botLevel, ...(botRace !== 'random' ? { botRace } : {}), ...(chosen ? { deck: chosen.cardIds } : {}) });
     navigate(`/match/${id}`);
   });
 
   const findMatch = () => run(async () => {
     const mode = pref.tab as Mode;
-    const deckId = mode !== 'casual' && pref.deckId.trim() ? (pref.deckId.trim() as Hex) : undefined;
+    const deckId = chosen?.id as Hex | undefined;
     const r = await client!.queue({ mode, race: pref.race, deckId });
     if (r.status === 'matched' && r.matchId) { navigate(`/match/${r.matchId}`); return; }
     setSearching({ mode, since: Date.now() });
@@ -98,8 +113,13 @@ export function Play() {
 
   const tab = TABS.find((t) => t.id === pref.tab)!;
   const needsDeck = pref.tab === 'ranked' || pref.tab === 'human';
+  // Deck choices: your registered, still-owned decks of this race (ranked-legal only for rated queues).
+  const options = config?.onchain
+    ? decks.filter((d) => d.race === pref.race && d.owned && (!needsDeck || d.rankedLegal))
+    : [];
+  const chosen = options.find((d) => d.id === pref.deckId) ?? (needsDeck ? options[0] : undefined);
   const humanBlocked = pref.tab === 'human' && config?.onchain && (me?.agent || !me?.verifiedHuman);
-  const deckMissing = needsDeck && config?.onchain && !/^0x[0-9a-fA-F]{64}$/.test(pref.deckId.trim());
+  const deckMissing = needsDeck && config?.onchain && !chosen;
 
   return (
     <div className="page play">
@@ -163,18 +183,21 @@ export function Play() {
             </div>
           )}
 
-          {needsDeck && (
+          {config?.onchain && (
             <div className="opts">
-              <label className="grow">Deck id
-                <input
-                  value={pref.deckId} onChange={(e) => update({ deckId: e.target.value })} disabled={!!searching}
-                  placeholder={config?.onchain ? '0x… (registered in DeckRegistry)' : 'optional: the server runs off-chain'}
-                  spellCheck={false}
-                />
+              <label className="grow">Deck
+                <select value={chosen?.id ?? ''} onChange={(e) => update({ deckId: e.target.value })} disabled={!!searching}>
+                  {!needsDeck && <option value="">{raceName(pref.race)} starter list</option>}
+                  {options.map((d) => (
+                    <option key={d.id} value={d.id}>{deckName(d.id, d.race)} · {d.rarityPoints} pts{d.rankedLegal ? '' : ' · casual only'}</option>
+                  ))}
+                </select>
               </label>
             </div>
           )}
-          {needsDeck && config?.onchain && <p className="hint">The deck builder is coming next. Until then, register a deck with <span className="mono">pnpm</span> / Foundry (see the player guide) and paste its id.</p>}
+          {needsDeck && config?.onchain && options.length === 0 && (
+            <p className="hint warn">You have no registered, ranked-legal {raceName(pref.race)} deck. <Link to={`/decks/new?race=${pref.race}&starter=1`}>Build one</Link> (the starter list works).</p>
+          )}
           {needsDeck && !config?.onchain && <p className="hint">This server runs without on-chain checks, so your race’s starter deck is used and results can’t settle.</p>}
           {humanBlocked && <p className="hint warn">{me?.agent ? 'Agent wallets cannot join the Human queue.' : 'The Human queue needs a proof-of-personhood attestation on your wallet.'}</p>}
           {error && <div className="alert err" role="alert"><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss">✕</button></div>}
