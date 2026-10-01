@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAction, card, createMatch, eventsFor, IllegalAction, keccakHex, legalActions, playOut,
-  randomBot, RACES, RANKED_RARITY_CAP, starterDeck, validateDeck, viewFor, greedyBot,
+  randomBot, RACES, RANKED_RARITY_CAP, COLLECTIBLE, starterDeck, validateDeck, viewFor, greedyBot,
   type GameState, type Race, type Seat, type UnitState,
 } from '../src/index.ts';
 
@@ -44,6 +44,16 @@ describe('decks', () => {
       const chk = validateDeck(r, starterDeck(r), true);
       expect(chk.errors).toEqual([]);
       expect(chk.rarityPoints).toBeLessThanOrEqual(RANKED_RARITY_CAP);
+    }
+  });
+  it('ranked fits one Legendary in place of a Rare from the starter list', () => {
+    for (const r of RACES) {
+      const deck = starterDeck(r);
+      const legend = COLLECTIBLE.find((c) => c.faction === r && c.rarity === 'legendary')!;
+      deck[deck.findIndex((id) => card(id).rarity === 'rare')] = legend.id;
+      const chk = validateDeck(r, deck, true);
+      expect(chk.errors).toEqual([]);
+      expect(chk.rarityPoints).toBe(RANKED_RARITY_CAP);
     }
   });
   it('rejects off-race cards and too many copies', () => {

@@ -3,21 +3,32 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@12.8.1",
   "scripts": {
     "typecheck": "tsc -b",
     "test": "vitest run",
     "sim": "tsx packages/engine/scripts/simulate.ts",
     "gen:cards": "tsx packages/engine/scripts/gen-solidity.ts",
-    "server": "tsx apps/server/src/main.ts",
+    "server": "sh scripts/with-env.sh tsx apps/server/src/main.ts",
+    "server:offchain": "OFFCHAIN=1 sh scripts/with-env.sh tsx apps/server/src/main.ts",
+    "server:local": "CHAIN_ID=31337 RPC_URL=http://127.0.0.1:8545 HOUSE_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 tsx apps/server/src/main.ts",
     "web": "pnpm --filter @forkfall/web dev",
+    "web:build": "pnpm --filter @forkfall/web build",
     "mcp": "tsx apps/mcp/src/main.ts",
-    "bot": "tsx packages/sdk/scripts/agent-bot.ts"
+    "bot": "tsx packages/sdk/scripts/agent-bot.ts",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:test": "cd contracts && forge test",
+    "deploy:local": "cd contracts && forge script script/Deploy.s.sol --rpc-url local --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    "deploy:base-sepolia": "sh scripts/with-env.sh sh -c 'cd contracts && forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify --account ${DEPLOYER_ACCOUNT:-forkfall-deployer}'",
+    "check:base-sepolia": "sh scripts/with-env.sh sh -c 'cd contracts && forge script script/CheckDeployment.s.sol --rpc-url base_sepolia'"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=26.0.0"
   }
 }

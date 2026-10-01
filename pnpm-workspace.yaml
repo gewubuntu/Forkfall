@@ -1,3 +1,21 @@
 packages:
   - packages/*
   - apps/*
+
+# pnpm 12 blocks dependency install scripts unless approved.
+allowBuilds:
+  esbuild: true            # native binary for tsx
+  '@reown/appkit': false   # only a version-check postinstall
+  protobufjs: false        # optional postinstall, not needed
+
+peerDependencyRules:
+  # Solana packages pulled in by WalletConnect declare typescript ^5 for their types only.
+  allowAny:
+    - typescript
+
+# Packages published less than pnpm's minimum release age that we pin deliberately.
+minimumReleaseAgeExclude:
+  - '@vitest/mocker@5.0.3'
+  - '@vitest/spy@5.0.3'
+  - viem@2.57.2
+  - vitest@5.0.3

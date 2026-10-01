@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4          # version comes from "packageManager" (pnpm 12)
+      - uses: actions/setup-node@v5
+        with: { node-version-file: .nvmrc, cache: pnpm }   # Node 26
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck                  # TypeScript 7
+      - run: pnpm test
+      - run: pnpm sim 200
+      - run: pnpm web:build
+
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v5
+        with: { submodules: recursive }
+      - uses: foundry-rs/foundry-toolchain@v1
+        with: { version: v1.8.3 }
+      - run: forge fmt --check
+      - run: forge build --sizes
+      - run: forge test -vv
