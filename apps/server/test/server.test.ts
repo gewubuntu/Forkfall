@@ -229,3 +229,111 @@ describe('match history, replay and archive', () => {
     expect(new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()) }).restore(rec)).toBe(false);
   });
 });
+
+describe('referee auto-settlement', () => {
+  const calls: { matchId: Hex; winnerSig: Hex }[] = [];
+  const onchain = new Set<Hex>();
+  let failNext = 0;
+  let t = 5_000_000;
+  const settler = {
+    isSettled: async (id: Hex) => onchain.has(id),
+    settleByReferee: async (r: { matchId: Hex }, winnerSig: Hex) => {
+      calls.push({ matchId: r.matchId, winnerSig });
+      if (failNext > 0) { failNext--; throw new Error('InvalidDeck(0xabc)'); }
+      onchain.add(r.matchId);
+      return ('0x' + 'ab'.repeat(32)) as Hex;
+    },
+  };
+  const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => t, settler, resultGraceSeconds: 600 });
+  const api = createApi(lob, { ratePerSec: 10_000 });
+  let base = '';
+  beforeAll(async () => {
+    await new Promise<void>((r) => api.server.listen(0, r));
+    base = `http://127.0.0.1:${(api.server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => api.server.close());
+  const client = () => new ForkfallClient(base, privateKeyToAccount(generatePrivateKey()));
+
+  /** a concedes to b; only the players listed in `sign` co-sign the result. */
+  async function concededMatch(sign: ('a' | 'b')[]) {
+    const a = client(); const b = client();
+    await a.connect(); await b.connect();
+    await a.queue({ mode: 'casual', race: 'agents' });
+    const { matchId } = await b.queue({ mode: 'casual', race: 'degens' });
+    await a.reveal(matchId!); await b.reveal(matchId!);
+    await a.move(matchId!, await a.state(matchId!), { type: 'concede' });
+    for (const who of sign) await (who === 'a' ? a : b).signResult(matchId!);
+    return { a, b, matchId: matchId! };
+  }
+
+  it('settles with the winner signature as soon as a conceded match is signed by the winner', async () => {
+    const { a, b, matchId } = await concededMatch(['b']);
+    const before = (await a.matches({ player: a.address })).matches[0];
+    expect(before.refereeAt).toBe(lob.get(matchId).endedAt);
+    expect(before.settlement).toBe('referee');
+    const r = await lob.settleDue();
+    expect(r.settled).toContain(matchId);
+    expect(calls.at(-1)).toEqual({ matchId, winnerSig: lob.get(matchId).players[1].resultSig });
+    const after = (await a.state(matchId));
+    expect(after.referee).toMatchObject({ state: 'settled', tx: '0x' + 'ab'.repeat(32) });
+    // Idempotent: never submitted twice.
+    const n = calls.length;
+    await lob.settleDue();
+    expect(calls.length).toBe(n);
+    expect(b.address).toBeTruthy();
+  });
+
+  it('waits out the grace period for a normal ending, and leaves fully signed or unsigned results alone', async () => {
+    const normal = await concededMatch(['b']);
+    const m = lob.get(normal.matchId);
+    m.state = { ...m.state!, endReason: 'treasury' }; // as if the Treasury ran dry: the loser gets the grace period
+    const signedByBoth = await concededMatch(['a', 'b']);
+    const unsigned = await concededMatch([]);
+    const n = calls.length;
+    await lob.settleDue();
+    expect(calls.length).toBe(n);
+    t += 600_001;
+    const r = await lob.settleDue();
+    expect(r.settled).toEqual([normal.matchId]);
+    expect(lob.get(signedByBoth.matchId).referee).toBeUndefined();
+    expect(lob.get(unsigned.matchId).referee).toBeUndefined();
+  });
+
+  it('retries a failed settlement with backoff, then gives up after 3 attempts', async () => {
+    const { a, matchId } = await concededMatch(['b']);
+    failNext = 1;
+    expect((await lob.settleDue()).failed).toEqual([{ matchId, error: 'InvalidDeck(0xabc)' }]);
+    expect((await a.state(matchId)).referee).toMatchObject({ state: 'failed', error: 'InvalidDeck(0xabc)', willRetry: true });
+    const n = calls.length;
+    await lob.settleDue(); // backoff not over yet
+    expect(calls.length).toBe(n);
+    t += 61_000;
+    expect((await lob.settleDue()).settled).toEqual([matchId]);
+
+    const stuck = await concededMatch(['b']);
+    failNext = 3;
+    for (let i = 0; i < 5; i++) { await lob.settleDue(); t += 10 * 60_000; }
+    expect(lob.get(stuck.matchId).referee).toMatchObject({ state: 'failed', attempts: 3, retryAt: undefined });
+    expect((await a.matches({ player: stuck.a.address })).matches[0].referee).toMatchObject({ state: 'failed', willRetry: false });
+  });
+
+  it('skips settlement already on-chain and practice games against the house bot', async () => {
+    const { matchId } = await concededMatch(['b']);
+    onchain.add(matchId);
+    const n = calls.length;
+    expect((await lob.settleDue()).settled).toEqual([matchId]);
+    expect(calls.length).toBe(n); // marked settled without a transaction
+    expect(lob.get(matchId).referee).toMatchObject({ state: 'settled' });
+    expect(lob.get(matchId).referee!.tx).toBeUndefined();
+
+    const c = client();
+    await c.connect();
+    const practice = await c.practice({ race: 'brokers', botRace: 'prophets' });
+    await c.reveal(practice);
+    await c.move(practice, await c.state(practice), { type: 'concede' });
+    await lob.stepBots(); // house bot (the winner) co-signs
+    await lob.settleDue();
+    expect(lob.get(practice).referee).toBeUndefined();
+    expect((await c.state(practice)).refereeAt).toBeUndefined();
+  });
+});

@@ -11,3 +11,9 @@ export function timeLeft(ms: number): string {
 export function chainDotClass(chainId?: number): string {
   return chainId === 84532 ? 'base' : chainId === 46630 ? 'rh' : 'local';
 }
+
+/** "in 7 min" / "shortly" for a future timestamp. */
+export function inTime(ts: number): string {
+  const min = Math.ceil((ts - Date.now()) / 60000);
+  return min <= 0 ? 'shortly' : `in ${min} min`;
+}

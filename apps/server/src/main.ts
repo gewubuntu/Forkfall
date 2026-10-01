@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
-import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER } from './chain.ts';
+import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, refereeSettler } from './chain.ts';
 import { createApi } from './http.ts';
 import { Lobby, type ArchivedMatch } from './lobby.ts';
 
@@ -55,11 +55,16 @@ if (chain.online) {
   if (!pf.ok) fail(pf.errors);
 }
 
+// The referee settles results the loser never signed (AUTO_SETTLE=0 turns it off; it needs testnet ETH).
+const settler = chain.online && env.AUTO_SETTLE !== '0' ? refereeSettler(chain, house) : null;
+
 const lobby = new Lobby({
   chain,
   house,
+  settler,
   turnSeconds: Number(env.TURN_SECONDS ?? 45),
   bankSeconds: Number(env.BANK_SECONDS ?? 60),
+  resultGraceSeconds: Number(env.RESULT_GRACE_SECONDS ?? 600),
 });
 
 // Finished matches (log + signatures) are archived so history, replays and settlement survive a restart.
@@ -93,6 +98,16 @@ const botLoop = async () => {
 };
 botLoop();
 
+const settleLoop = async () => {
+  try {
+    const r = await lobby.settleDue();
+    for (const id of r.settled) console.log(`referee settled ${id} (loser never signed)`);
+    for (const f of r.failed) console.warn(`referee could not settle ${f.matchId}: ${f.error}`);
+  } catch (e) { console.error('settle loop error', e); }
+  setTimeout(settleLoop, Number(env.SETTLE_INTERVAL_MS ?? 5000));
+};
+if (settler) settleLoop();
+
 const staticDir = join(root, 'apps/web/dist');
 const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined });
 const port = Number(env.PORT ?? 8787);
@@ -105,6 +120,7 @@ server.listen(port, () => {
     console.log(`  MatchSettlement ${chain.settlement}${ex ? `  ${ex}/address/${chain.settlement}` : ''}`);
   }
   console.log(`  house bot / referee address ${house.address}${env.HOUSE_PRIVATE_KEY ? '' : ' (ephemeral key)'}`);
+  console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);
   console.log(`  match archive → ${archiveDir} (${restored} restored)`);
 });

@@ -32,6 +32,10 @@
 .mr-status .btn { white-space: nowrap; }
 .mr-status .st { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
 .mr-status .st.ok { color: var(--ok); }
+.mr-status .st.warn { color: var(--warn); cursor: help; }
+.mr-status .st { display: inline-flex; align-items: center; gap: 6px; }
+.mr-status .st .spinner { width: 12px; height: 12px; }
+@media (min-width: 861px) { .mr-status .st { white-space: normal; text-align: right; max-width: 230px; } }
 .mr-links { display: flex; justify-content: flex-end; }
 
 @media (max-width: 860px) {

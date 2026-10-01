@@ -93,6 +93,7 @@ export const deckRegistryAbi = parseAbi([
 export const matchSettlementAbi = parseAbi([
   'struct MatchResult { bytes32 matchId; address playerA; address playerB; address winner; bytes32 deckA; bytes32 deckB; uint8 mode; uint32 season; uint16 turns; bytes32 logHash; }',
   'function settle(MatchResult r, bytes sigA, bytes sigB, bytes refereeSig)',
+  'function settleByReferee(MatchResult r, bytes winnerSig)',
   'function settled(bytes32 matchId) view returns (bool)',
   'function currentSeason() view returns (uint32)',
   'function stats(uint32 season, address player) view returns ((uint32 wins, uint32 losses, uint32 draws, uint32 rating))',

@@ -1,5 +1,9 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { createPublicClient, http, parseAbi, type Address, type Hex, type PublicClient } from 'viem';
+import { matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
+import {
+  BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, parseAbi,
+  type Address, type Hex, type LocalAccount, type PublicClient,
+} from 'viem';
 
 const TESTNETS = new Set([31337, 84532, 46630, 11155111]);
 
@@ -52,6 +56,7 @@ export interface Preflight { ok: boolean; errors: string[]; warnings: string[]; 
  */
 export class Chain {
   readonly client?: PublicClient;
+  readonly rpcUrl?: string;
   /**
    * @param book address book from contracts/deployments/<chainId>.json (null = not deployed / off-chain)
    * @param rpcUrl enables on-chain checks; ignored without a book
@@ -60,7 +65,10 @@ export class Chain {
   constructor(readonly book: AddressBook | null, rpcUrl?: string, readonly hubChainId = ANVIL) {
     const id = book?.chainId ?? hubChainId;
     if (!TESTNETS.has(id)) throw new Error(`chain ${id} is not an allowed testnet`);
-    if (book && rpcUrl) this.client = createPublicClient({ transport: http(rpcUrl) }) as PublicClient;
+    if (book && rpcUrl) {
+      this.rpcUrl = rpcUrl;
+      this.client = createPublicClient({ transport: http(rpcUrl) }) as PublicClient;
+    }
   }
 
   static load(bookFile?: string, rpcUrl?: string, hubChainId = ANVIL): Chain {
@@ -96,7 +104,7 @@ export class Chain {
       r.notes.push(`season ${season}`);
     }
     const bal = await this.client.getBalance({ address: referee }).catch(() => 0n);
-    if (bal === 0n) r.warnings.push(`referee ${referee} has no ETH: it can co-sign results, but cannot submit dispute settlements (settleByReferee) itself`);
+    if (bal === 0n) r.warnings.push(`referee ${referee} has no ETH: it can co-sign results, but cannot auto-settle matches the loser never signed (settleByReferee). Fund it with testnet ETH.`);
     r.ok = r.errors.length === 0;
     return r;
   }
@@ -125,4 +133,45 @@ export class Chain {
     const d = await this.client.readContract({ address: this.book!.DeckRegistry, abi: deckAbi, functionName: 'getDeck', args: [deckId] });
     return { race: d.race, cardIds: d.cardIds.map(Number) };
   }
+}
+
+/** Referee writes: settle a result with only the winner's signature when the loser never signs. */
+export interface RefereeSettler {
+  isSettled(matchId: Hex): Promise<boolean>;
+  /** Submits `settleByReferee` and resolves with the tx hash once it is mined successfully. */
+  settleByReferee(result: MatchResult, winnerSig: Hex): Promise<Hex>;
+}
+
+export function refereeSettler(chain: Chain, referee: LocalAccount): RefereeSettler | null {
+  if (!chain.client || !chain.book || !chain.rpcUrl) return null;
+  const client = chain.client;
+  const address = chain.book.MatchSettlement;
+  const wallet = createWalletClient({ account: referee, transport: http(chain.rpcUrl) });
+  return {
+    isSettled: (matchId) => client.readContract({ address, abi: matchSettlementAbi, functionName: 'settled', args: [matchId] }),
+    async settleByReferee(result, winnerSig) {
+      const r = { ...result, mode: Number(result.mode), season: Number(result.season), turns: Number(result.turns) };
+      try {
+        // Simulate first so a revert (deck no longer owned, wrong season…) surfaces with its reason, without spending gas.
+        const { request } = await client.simulateContract({
+          account: referee, address, abi: matchSettlementAbi, functionName: 'settleByReferee', args: [r, winnerSig],
+        });
+        const hash = await wallet.writeContract({ ...request, chain: null });
+        const receipt = await client.waitForTransactionReceipt({ hash });
+        if (receipt.status !== 'success') throw new Error(`settleByReferee reverted (${hash})`);
+        return hash;
+      } catch (e) {
+        throw new Error(revertReason(e));
+      }
+    },
+  };
+}
+
+function revertReason(e: unknown): string {
+  if (e instanceof BaseError) {
+    const rev = e.walk((x) => x instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null;
+    if (rev?.data?.errorName) return `${rev.data.errorName}(${(rev.data.args ?? []).join(', ')})`;
+    return e.shortMessage;
+  }
+  return (e as Error).message;
 }

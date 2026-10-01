@@ -8,7 +8,7 @@ import {
   type Delegation, type MatchLog, type MatchResult, type MatchSnapshot, type MatchSummary, type Mode,
 } from '@forkfall/sdk';
 import { recoverAddress, type Address, type Hex, type LocalAccount, type TypedDataDomain } from 'viem';
-import type { Chain } from './chain.ts';
+import type { Chain, RefereeSettler } from './chain.ts';
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -55,6 +55,17 @@ export interface Match {
   result?: MatchResult;
   /** Referee co-signature over the result (required on-chain for ranked / Human queue). */
   refereeSig?: Hex;
+  /** Auto-settlement by the referee when the loser never signs. */
+  referee?: RefereeSettlement;
+}
+
+export interface RefereeSettlement {
+  state: 'submitting' | 'settled' | 'failed';
+  tx?: Hex;
+  error?: string;
+  attempts: number;
+  /** Retry after a failed attempt (ms timestamp). */
+  retryAt?: number;
 }
 
 export interface LobbyOptions {
@@ -70,12 +81,17 @@ export interface LobbyOptions {
   queueTtlSeconds?: number;
   now?: () => number;
   botDelayMs?: number;
+  /** When set, the referee submits `settleByReferee` itself once the loser's grace period is over. */
+  settler?: RefereeSettler | null;
+  /** Attempts before giving up on auto-settling a match (default 3). */
+  settleAttempts?: number;
 }
 
 /** What the server keeps on disk for a finished match: the public log plus the collected signatures. */
 export interface ArchivedMatch {
   log: MatchLog;
   refereeSig?: Hex;
+  referee?: RefereeSettlement;
   resultSigs: [Hex | null, Hex | null];
   bots: [BotKind | null, BotKind | null];
 }
@@ -410,8 +426,8 @@ export class Lobby {
       return { ...base, byReferee: false, sigA: a.resultSig, sigB: b.resultSig, refereeSig: m.refereeSig ?? '0x' };
     }
     const winnerSeat = m.result.winner === a.address ? 0 : m.result.winner === b.address ? 1 : null;
-    const graceOver = this.now() - (m.endedAt ?? 0) > this.graceMs || m.state?.endReason === 'timeout' || m.state?.endReason === 'concede';
-    if (winnerSeat !== null && m.players[winnerSeat].resultSig && graceOver) {
+    const opensAt = this.refereeOpensAt(m);
+    if (winnerSeat !== null && m.players[winnerSeat].resultSig && opensAt !== null && this.now() >= opensAt) {
       return { ...base, byReferee: true, winnerSig: m.players[winnerSeat].resultSig, note: 'submit with the REFEREE key' };
     }
     throw new ApiError(409, 'waiting for result signatures');
@@ -434,6 +450,7 @@ export class Lobby {
     return {
       log: this.log(matchId),
       refereeSig: m.refereeSig,
+      referee: m.referee?.state === 'submitting' ? undefined : m.referee,
       resultSigs: [m.players[0].resultSig ?? null, m.players[1].resultSig ?? null],
       bots: [m.players[0].bot ?? null, m.players[1].bot ?? null],
     };
@@ -456,9 +473,61 @@ export class Lobby {
       id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
       phase: 'ended', players, state: replay.final, events: replay.frames.flatMap((f) => f.events),
       moves: log.moves, head: log.head, clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
-      result: log.result, refereeSig: rec.refereeSig,
+      result: log.result, refereeSig: rec.refereeSig, referee: rec.referee,
     });
     return true;
+  }
+
+  /**
+   * When the referee may settle with the winner's signature alone: right away after a timeout or
+   * concede, otherwise once the loser's grace period is over. Null for draws (both must sign).
+   */
+  refereeOpensAt(m: Match): number | null {
+    if (!m.result || m.result.winner === ZERO_ADDRESS || m.endedAt === undefined) return null;
+    const instant = m.state?.endReason === 'timeout' || m.state?.endReason === 'concede';
+    return instant ? m.endedAt : m.endedAt + this.graceMs;
+  }
+
+  /** Matches the referee settles on its own: rated or casual between real players (not house-bot practice). */
+  private autoSettles(m: Match): boolean {
+    return !!this.opts.settler && !m.players.some((p) => p.bot);
+  }
+
+  /**
+   * Submit `settleByReferee` for every finished match whose loser never signed and whose grace period
+   * is over. Idempotent: checks `settled` on-chain first. Call periodically.
+   */
+  async settleDue(): Promise<{ settled: Hex[]; failed: { matchId: Hex; error: string }[] }> {
+    const out = { settled: [] as Hex[], failed: [] as { matchId: Hex; error: string }[] };
+    const settler = this.opts.settler;
+    if (!settler) return out;
+    const maxAttempts = this.opts.settleAttempts ?? 3;
+    for (const m of this.matches.values()) {
+      if (m.phase !== 'ended' || !m.result || !this.autoSettles(m)) continue;
+      const r = m.referee;
+      if (r && (r.state !== 'failed' || r.attempts >= maxAttempts || (r.retryAt ?? 0) > this.now())) continue;
+      let s;
+      try { s = this.settlement(m.id); } catch { continue; } // still waiting for the winner's signature
+      if (!('winnerSig' in s)) continue; // fully signed: the players settle it themselves
+      m.referee = { state: 'submitting', attempts: (r?.attempts ?? 0) + 1 };
+      this.changed(m);
+      try {
+        if (await settler.isSettled(m.id)) {
+          m.referee = { ...m.referee, state: 'settled' };
+        } else {
+          const tx = await settler.settleByReferee(m.result, s.winnerSig);
+          m.referee = { ...m.referee, state: 'settled', tx };
+        }
+        out.settled.push(m.id);
+      } catch (e) {
+        const error = (e as Error).message;
+        const attempts = m.referee.attempts;
+        m.referee = { state: 'failed', attempts, error, retryAt: attempts < maxAttempts ? this.now() + 60_000 * attempts : undefined };
+        out.failed.push({ matchId: m.id, error });
+      }
+      this.changed(m);
+    }
+    return out;
   }
 
   /** Who can settle right now: nobody yet, anyone with the signatures, or only the referee. */
@@ -500,6 +569,17 @@ export class Lobby {
       result: m.result,
       now: this.now(),
       resultSigned: [!!m.players[0].resultSig, !!m.players[1].resultSig],
+      ...this.refereeInfo(m),
+    };
+  }
+
+  /** Auto-settlement schedule and status, for players waiting on an opponent who never signs. */
+  private refereeInfo(m: Match): Pick<MatchSummary, 'refereeAt' | 'referee'> {
+    if (m.phase !== 'ended' || !this.autoSettles(m)) return {};
+    const r = m.referee;
+    return {
+      refereeAt: this.refereeOpensAt(m),
+      ...(r ? { referee: { state: r.state, tx: r.tx, error: r.error, willRetry: r.state === 'failed' && r.retryAt !== undefined } } : {}),
     };
   }
 
@@ -524,6 +604,7 @@ export class Lobby {
         winner: m.result?.winner,
         resultSigned: [!!m.players[0].resultSig, !!m.players[1].resultSig],
         settlement: this.settlementStatus(m),
+        ...this.refereeInfo(m),
       }));
   }
 

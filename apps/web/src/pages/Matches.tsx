@@ -9,7 +9,7 @@ import { useHub } from '../chain/useHub.ts';
 import { useSeasonStats, useSettled, useSettleMatch } from '../chain/useSettlement.ts';
 import { RACE_INFO, raceName } from '../game/meta.ts';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
-import { shortAddr } from '../lib/format.ts';
+import { inTime, shortAddr } from '../lib/format.ts';
 
 type Tab = 'history' | 'leaderboard';
 type Filter = 'all' | 'rated' | 'casual' | 'practice' | 'action';
@@ -147,14 +147,22 @@ function MatchRow({ m, seat, settled, onchain, busy, onSign, onSettle }: {
     : m.winner.toLowerCase() === mine.address.toLowerCase() ? { cls: 'win', text: 'Victory' } : { cls: 'loss', text: 'Defeat' };
   const signed = m.resultSigned[seat];
 
+  const ref = m.referee;
+  const iWon = outcome.cls === 'win';
   let status: React.ReactNode;
   if (live) status = <Link className="btn btn-primary" to={`/match/${m.matchId}`}>Resume</Link>;
-  else if (settled) status = <span className="st ok">✓ Settled on-chain</span>;
-  else if (!signed) status = <button className="btn btn-primary" onClick={onSign} disabled={busy}>{busy ? <span className="spinner" /> : 'Sign result'}</button>;
+  else if (settled) status = <span className="st ok">✓ Settled on-chain{ref?.state === 'settled' ? ' by referee' : ''}</span>;
+  else if (ref?.state === 'submitting') status = <span className="st muted"><span className="spinner" /> Referee settling…</span>;
+  else if (ref?.state === 'failed') {
+    status = <span className="st warn" title={ref.error}>Referee couldn’t settle{ref.willRetry ? ' · retrying' : ''}</span>;
+  } else if (!signed) status = <button className="btn btn-primary" onClick={onSign} disabled={busy}>{busy ? <span className="spinner" /> : 'Sign result'}</button>;
   else if (!onchain) status = <span className="st muted">Signed · off-chain server</span>;
   else if (m.settlement === 'ready') status = <button className="btn btn-primary" onClick={onSettle} disabled={busy}>{busy ? <span className="spinner" /> : 'Settle on-chain'}</button>;
-  else if (m.settlement === 'referee') status = <span className="st muted" title="Your opponent didn't sign; the referee submits it with your signature">Referee settles</span>;
-  else status = <span className="st muted">Waiting for opponent</span>;
+  else if (m.settlement === 'referee') {
+    status = <span className="st muted" title="Your opponent didn't sign; the referee submits the result with your signature">{m.refereeAt != null ? 'Referee settles shortly' : 'Referee settles'}</span>;
+  } else if (iWon && m.refereeAt != null) {
+    status = <span className="st muted" title="If your opponent never signs, the referee settles the result with your signature">Opponent hasn’t signed · auto-settles {inTime(m.refereeAt)}</span>;
+  } else status = <span className="st muted">Waiting for opponent</span>;
 
   return (
     <li className={`match-row ${outcome.cls}`}>

@@ -92,7 +92,7 @@ The referee server, the web app and every script default to it.
 | Key | Holds | Needs ETH |
 | --- | --- | --- |
 | Deployer | Admin roles on every contract | Yes, about 0.05 Base Sepolia ETH covers the whole deployment (it is usually far cheaper) |
-| Referee (`HOUSE_PRIVATE_KEY`) | `REFEREE_ROLE`: co-signs ranked results, runs the house bot | Only to submit dispute settlements itself |
+| Referee (`HOUSE_PRIVATE_KEY`) | `REFEREE_ROLE`: co-signs ranked results, runs the house bot, auto-settles results the loser never signs | Yes, a little: each auto-settlement (`settleByReferee`) is one transaction |
 
 Store the deployer in an encrypted Foundry keystore instead of a plain-text key:
 
@@ -162,6 +162,8 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 
 The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts/agent-bot.ts`.
 Finished matches are archived as JSON (log + signatures) in `apps/server/data/<chainId>/` (`MATCH_ARCHIVE_DIR`) and replayed back in on restart, so history and settlement survive a redeploy of the referee.
+
+**Referee auto-settlement.** When the winner has signed but the loser never does, the referee submits `settleByReferee` itself: right away after a timeout or concede, otherwise after the grace period (`RESULT_GRACE_SECONDS`, default 600). It checks `settled()` first, retries a failed attempt twice with backoff, skips practice games against the house bot and draws (those need both signatures), and logs every outcome. The winner sees a countdown and the result in the match dialog and on the Matches page. `AUTO_SETTLE=0` turns it off; it needs testnet ETH on the referee key.
 For MCP clients: `FORKFALL_SERVER=… FORKFALL_PRIVATE_KEY=… pnpm mcp`, documented in `skills/forkfall/SKILL.md`.
 
 ## Toolchain versions

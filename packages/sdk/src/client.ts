@@ -71,6 +71,9 @@ export interface MatchSnapshot {
   now?: number;
   /** Which seats have co-signed the final result. */
   resultSigned?: [boolean, boolean];
+  /** See MatchSummary. */
+  refereeAt?: number | null;
+  referee?: RefereeStatus;
 }
 
 /** One row of `GET /v1/matches` (newest first). */
@@ -90,7 +93,13 @@ export interface MatchSummary {
   resultSigned: [boolean, boolean];
   /** none = still playing · waiting = needs signatures · ready = anyone can settle · referee = only the referee can settle */
   settlement: 'none' | 'waiting' | 'ready' | 'referee';
+  /** Set when this server auto-settles: when the referee may settle with the winner's signature alone (null for draws). */
+  refereeAt?: number | null;
+  /** The referee's own settlement attempt, if it made one. */
+  referee?: RefereeStatus;
 }
+
+export interface RefereeStatus { state: 'submitting' | 'settled' | 'failed'; tx?: Hex; error?: string; willRetry?: boolean }
 
 export interface LeaderboardRow { address: Address; agent: boolean; wins: number; losses: number; draws: number }
 

@@ -14,7 +14,7 @@ import { CardBack, GameCard } from '../components/GameCard.tsx';
 import { describeEvent, KEYWORD_HELP, KEYWORD_LABEL, RACE_INFO, raceName } from '../game/meta.ts';
 import { useMatch } from '../game/useMatch.ts';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
-import { shortAddr } from '../lib/format.ts';
+import { inTime, shortAddr } from '../lib/format.ts';
 
 type PlayAction = Extract<Action, { type: 'play' }>;
 type Selection = { kind: 'hand' | 'unit'; uid: number } | null;
@@ -441,7 +441,7 @@ function Result({ s, onClose }: { s: MatchSnapshot; onClose: () => void }) {
             ) : both ? (
               <SettleNow matchId={s.matchId} ready={!!settle && !settle.byReferee} />
             ) : (
-              <p className="ok">✓ You signed. Waiting for your opponent’s signature{s.mode !== 'casual' ? ' (the referee can settle without it after 10 minutes)' : ''}.</p>
+              <RefereeWait s={s} />
             )}
           </div>
         )}
@@ -476,4 +476,19 @@ function SettleNow({ matchId, ready }: { matchId: Hex; ready: boolean }) {
       </button>
     </>
   );
+}
+
+/** You signed, your opponent hasn't: explain what the referee does about it. */
+function RefereeWait({ s }: { s: MatchSnapshot }) {
+  const r = s.referee;
+  const won = s.view?.winner === s.seat;
+  if (r?.state === 'settled') return <p className="ok">✓ Your opponent didn’t sign, so the referee settled the result on-chain with your signature. It counts in your record.</p>;
+  if (r?.state === 'submitting') return <p className="ok"><span className="spinner" /> Your opponent didn’t sign. The referee is settling the result on-chain now…</p>;
+  if (r?.state === 'failed') {
+    return <div className="alert err">The referee couldn’t settle this result{r.willRetry ? ' yet and will retry' : ''}: {r.error}</div>;
+  }
+  if (won && s.refereeAt != null) {
+    return <p className="ok">✓ You signed. Waiting for your opponent’s signature. If they don’t sign, the referee settles it on-chain with yours {inTime(s.refereeAt)}.</p>;
+  }
+  return <p className="ok">✓ You signed. Waiting for your opponent’s signature.</p>;
 }
