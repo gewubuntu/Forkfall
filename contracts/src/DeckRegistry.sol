@@ -10,7 +10,7 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 ///         Ownership is re-checked live at settlement time, so selling a card invalidates the deck.
 contract DeckRegistry is TestnetOnly {
     uint256 public constant DECK_SIZE = 30;
-    uint256 public constant RANKED_RARITY_CAP = 16;
+    uint256 public constant RANKED_RARITY_CAP = 18;
     uint256 public constant MAX_LEGENDARIES_RANKED = 1;
 
     CardRegistry public immutable cards;

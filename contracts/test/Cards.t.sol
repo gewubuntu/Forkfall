@@ -40,6 +40,37 @@ contract CardsTest is Fixture {
         assertFalse(d.decks.isValidFor(deckId, bob, true));
     }
 
+    function test_rankedDeckFitsOneLegendary() public {
+        // Agents starter (16 pts) with one Mainframe (7, Rare) swapped for The Launcher (8, Legendary): 18 pts.
+        vm.startPrank(alice);
+        d.starters.claim(1);
+        vm.stopPrank();
+        uint256 launcher = 8;
+        bytes32 minter = d.cards.MINTER_ROLE();
+        vm.prank(admin);
+        d.cards.grantRole(minter, address(this));
+        d.cards.mint(alice, launcher, 1);
+        uint16[] memory ids = starterIds(1);
+        bool swapped;
+        for (uint256 i; i < ids.length; ++i) {
+            if (ids[i] == 7 && !swapped) {
+                // keep the list sorted: drop this 7 and append the 8 after the last 7
+                for (uint256 j = i; j + 1 < ids.length && ids[j + 1] <= 8; ++j) {
+                    ids[j] = ids[j + 1];
+                    ids[j + 1] = 8;
+                }
+                swapped = true;
+            }
+        }
+        assertTrue(swapped);
+        vm.prank(alice);
+        bytes32 deckId = d.decks.register(1, ids);
+        DeckRegistry.Deck memory deck = d.decks.getDeck(deckId);
+        assertEq(deck.rarityPoints, 18);
+        assertEq(deck.legendaries, 1);
+        assertTrue(d.decks.isValidFor(deckId, alice, true));
+    }
+
     function test_deckRejectsUnownedAndOffRace() public {
         uint16[] memory starter = starterIds(1);
         vm.prank(alice);

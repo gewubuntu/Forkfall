@@ -289,7 +289,7 @@ export const MAX_COPIES = 2;
 export const MAX_LEGENDARY_COPIES = 1;
 /** Ranked rarity budget: money buys breadth, not power. */
 export const RARITY_POINTS: Record<Rarity, number> = { common: 0, uncommon: 1, rare: 2, legendary: 4 };
-export const RANKED_RARITY_CAP = 16;
+export const RANKED_RARITY_CAP = 18;
 export const MAX_LEGENDARIES_RANKED = 1;
 
 export interface DeckCheck { ok: boolean; errors: string[]; rarityPoints: number }
