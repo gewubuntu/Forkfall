@@ -1,4 +1,5 @@
-import { encodeAbiParameters, hashTypedData, keccak256, stringToHex, type Address, type Hex, type TypedDataDomain } from 'viem';
+import { encodeAbiParameters, getAddress, hashTypedData, isAddress, keccak256, stringToHex, type Address, type Hex, type TypedDataDomain } from 'viem';
+import { createSiweMessage, parseSiweMessage } from 'viem/siwe';
 import type { Action, Seat } from '@forkfall/engine';
 
 /**
@@ -83,4 +84,53 @@ export function resultDigest(domain: TypedDataDomain, r: MatchResult): Hex {
 /** Seed share commitment for the commit-reveal match seed. */
 export function commitSeed(share: Hex): Hex {
   return keccak256(share);
+}
+
+// ─── Wallet login + session keys ────────────────────────────────
+// The wallet signs one SIWE (EIP-4361) message that authorizes an in-browser session key.
+// The session key then signs moves without wallet popups; the wallet still signs match results.
+
+/** SIWE resource URI carrying the authorized session key. */
+export const SESSION_RESOURCE_PREFIX = 'urn:forkfall:session-key:';
+/** Longest session a delegation may authorize. */
+export const MAX_SESSION_SECONDS = 24 * 60 * 60;
+export const DEFAULT_SESSION_SECONDS = 8 * 60 * 60;
+
+export interface Delegation { message: string; signature: Hex }
+
+export function buildSessionMessage(p: {
+  domain: string;
+  uri: string;
+  wallet: Address;
+  sessionKey: Address;
+  chainId: number;
+  nonce: string;
+  issuedAt?: Date;
+  expiresAt: Date;
+}): string {
+  return createSiweMessage({
+    domain: p.domain,
+    uri: p.uri,
+    address: p.wallet,
+    chainId: p.chainId,
+    nonce: p.nonce,
+    version: '1',
+    issuedAt: p.issuedAt ?? new Date(),
+    expirationTime: p.expiresAt,
+    statement: `Sign in to Forkfall (testnet). This authorizes a temporary session key to sign your game moves until it expires. It cannot move funds or sign match results.`,
+    resources: [`${SESSION_RESOURCE_PREFIX}${p.sessionKey}`],
+  });
+}
+
+/** The session key signs this with a fresh server nonce to prove it holds the key. */
+export function sessionProofMessage(nonce: string): string {
+  return `Forkfall session proof\nnonce: ${nonce}`;
+}
+
+export function sessionKeyFromMessage(message: string): Address | null {
+  const parsed = parseSiweMessage(message);
+  const r = parsed.resources?.find((x) => x.startsWith(SESSION_RESOURCE_PREFIX));
+  if (!r) return null;
+  const key = r.slice(SESSION_RESOURCE_PREFIX.length);
+  return isAddress(key) ? getAddress(key) : null;
 }

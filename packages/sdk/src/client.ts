@@ -2,8 +2,31 @@ import type { Action, CardDef, GameEvent, PlayerView, Race } from '@forkfall/eng
 import { randomHex32 } from '@forkfall/engine';
 import type { Hex, LocalAccount, TypedDataDomain } from 'viem';
 import {
-  actionHash, commitSeed, MOVE_TYPES, RESULT_TYPES, type MatchResult, type Mode,
+  actionHash, commitSeed, MOVE_TYPES, RESULT_TYPES, sessionProofMessage, type Delegation, type MatchResult, type Mode,
 } from './protocol.ts';
+import type { Address } from 'viem';
+
+/** Signs the final MatchResult with the player's wallet (wallet clients, smart wallets, etc.). */
+export type ResultSigner = (typedData: {
+  domain: TypedDataDomain; types: typeof RESULT_TYPES; primaryType: 'MatchResult'; message: MatchResult;
+}) => Promise<Hex>;
+
+export interface ClientOptions {
+  /** Wallet identity when `account` is a session key (wallet login). */
+  wallet?: Address;
+  /** How the wallet signs results; defaults to `account`. */
+  signResult?: ResultSigner;
+}
+
+export interface Me {
+  address: Address;
+  sessionKey: Address | null;
+  expiresAt: number | null;
+  agent: boolean;
+  verifiedHuman: boolean;
+  bannedFromRanked: boolean;
+  onchain: boolean;
+}
 
 export interface ServerConfig {
   chainId: number;
@@ -40,9 +63,12 @@ export class ForkfallClient {
   config?: ServerConfig;
   private secrets = new Map<string, { seedShare: Hex; deckSalt: Hex }>();
 
-  constructor(readonly baseUrl: string, readonly account: LocalAccount) {}
+  /**
+   * @param account signs moves: the player's own key (agents) or an authorized session key (wallet login).
+   */
+  constructor(readonly baseUrl: string, readonly account: LocalAccount, readonly opts: ClientOptions = {}) {}
 
-  get address() { return this.account.address; }
+  get address(): Address { return this.opts.wallet ?? this.account.address; }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(this.baseUrl + path, {
@@ -68,6 +94,32 @@ export class ForkfallClient {
     });
     this.token = token;
     return this.config;
+  }
+
+  /** Server-issued nonce (single use, 5 minutes) for wallet sign-in. */
+  async nonce(): Promise<string> {
+    const { nonce } = await this.req<{ nonce: string }>('GET', `/v1/auth/nonce?address=${this.address}`);
+    return nonce;
+  }
+
+  /**
+   * Wallet sign-in with a session key: `delegation` is the wallet-signed SIWE message authorizing
+   * this.account (the session key). Reusable until it expires; each call proves key possession afresh.
+   */
+  async connectSession(delegation: Delegation): Promise<{ token: string; expiresAt: number }> {
+    this.config ??= await this.req<ServerConfig>('GET', '/v1/config');
+    const nonce = await this.nonce();
+    const proof = await this.account.signMessage({ message: sessionProofMessage(nonce) });
+    const r = await this.req<{ token: string; expiresAt: number }>('POST', '/v1/auth/session', { delegation, nonce, proof });
+    this.token = r.token;
+    return r;
+  }
+
+  me() { return this.req<Me>('GET', '/v1/auth/me'); }
+
+  async logout() {
+    if (this.token) await this.req('POST', '/v1/auth/logout').catch(() => {});
+    this.token = undefined;
   }
 
   cards() { return this.req<CardDef[]>('GET', '/v1/cards'); }
@@ -129,9 +181,8 @@ export class ForkfallClient {
   /** Co-sign the final result so it can be settled on-chain. */
   async signResult(matchId: Hex) {
     const { result } = await this.req<{ result: MatchResult }>('GET', `/v1/matches/${matchId}/result`);
-    const signature = await this.account.signTypedData({
-      domain: this.config!.domain, types: RESULT_TYPES, primaryType: 'MatchResult', message: { ...result },
-    });
+    const typed = { domain: this.config!.domain, types: RESULT_TYPES, primaryType: 'MatchResult' as const, message: { ...result } };
+    const signature = this.opts.signResult ? await this.opts.signResult(typed) : await this.account.signTypedData(typed);
     return this.req<{ ok: true; complete: boolean }>('POST', `/v1/matches/${matchId}/result`, { signature });
   }
 

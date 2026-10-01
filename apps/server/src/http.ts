@@ -5,8 +5,21 @@ import { extname, join, normalize } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { getAddress, isAddress, verifyMessage, type Address, type Hex } from 'viem';
 import { ApiError, type Lobby } from './lobby.ts';
+import { verifySessionLogin } from './auth.ts';
+import type { Delegation } from '@forkfall/sdk';
 
-interface Session { address: Address; agent: boolean; bucket: number; refilledAt: number }
+interface Session {
+  address: Address;
+  agent: boolean;
+  bucket: number;
+  refilledAt: number;
+  /** Wallet login: the in-browser key authorized to sign moves, and the SIWE delegation proving it. */
+  sessionKey?: Address;
+  delegation?: Delegation;
+  expiresAt?: number;
+}
+
+const NONCE_TTL_MS = 5 * 60 * 1000;
 
 /** Same rate limit for every player, human or agent. */
 const RATE_PER_SEC = 10;
@@ -17,6 +30,8 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
   const burst = Math.max(BURST, ratePerSec * 3);
   const sessions = new Map<string, Session>();
   const nonces = new Map<string, string>();
+  /** Server-issued nonces for wallet/session login: nonce → expiry. Single use. */
+  const issued = new Map<string, number>();
 
   const handler = async (req: IncomingMessage, res: ServerResponse) => {
     res.setHeader('access-control-allow-origin', '*');
@@ -29,7 +44,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       const session = authSession(req);
       if (session) rateLimit(session, Date.now());
       const body = req.method === 'POST' ? await readJson(req) : {};
-      const out = await route(req.method ?? 'GET', url, body, session);
+      const out = await route(req.method ?? 'GET', url, body, session, req);
       send(res, 200, out);
     } catch (e) {
       const status = e instanceof ApiError ? e.status : 500;
@@ -41,7 +56,9 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
   function authSession(req: IncomingMessage): Session | null {
     const h = req.headers.authorization;
     if (!h?.startsWith('Bearer ')) return null;
-    return sessions.get(h.slice(7)) ?? null;
+    const s = sessions.get(h.slice(7));
+    if (s?.expiresAt && s.expiresAt < Date.now()) { sessions.delete(h.slice(7)); return null; }
+    return s ?? null;
   }
 
   function need(s: Session | null): Session {
@@ -56,7 +73,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
     s.bucket -= 1;
   }
 
-  async function route(method: string, url: URL, body: any, session: Session | null): Promise<unknown> {
+  async function route(method: string, url: URL, body: any, session: Session | null, req: IncomingMessage): Promise<unknown> {
     const p = url.pathname.split('/').filter(Boolean).slice(1); // drop "v1"
     const key = `${method} /${p.map((x, i) => (p[0] === 'matches' && i === 1 ? ':id' : x)).join('/')}`;
     const matchId = p[1] as Hex;
@@ -76,9 +93,13 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'GET /auth/nonce': {
         const a = url.searchParams.get('address') ?? '';
         if (!isAddress(a)) throw new ApiError(400, 'address required');
-        const message = `Forkfall login\naddress: ${getAddress(a)}\nnonce: ${randomBytes(12).toString('hex')}`;
+        const nonce = randomBytes(12).toString('hex');
+        const message = `Forkfall login\naddress: ${getAddress(a)}\nnonce: ${nonce}`;
         nonces.set(getAddress(a), message);
-        return { message };
+        const now = Date.now();
+        for (const [n, exp] of issued) if (exp < now) issued.delete(n);
+        issued.set(nonce, now + NONCE_TTL_MS);
+        return { message, nonce };
       }
       case 'POST /auth': {
         if (!isAddress(body.address ?? '')) throw new ApiError(400, 'address required');
@@ -92,6 +113,39 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         sessions.set(token, { address, agent: !!body.agent, bucket: burst, refilledAt: Date.now() });
         return { token, address };
       }
+      case 'POST /auth/session': {
+        // Wallet sign-in: SIWE delegation to a session key + the key's proof over a fresh nonce.
+        const nonce = String(body.nonce ?? '');
+        const exp = issued.get(nonce);
+        if (!exp || exp < Date.now()) throw new ApiError(400, 'unknown or expired nonce');
+        issued.delete(nonce);
+        const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+        const v = await verifySessionLogin({ delegation: body.delegation, nonce, proof: body.proof, chain: lobby.opts.chain, origin });
+        const token = randomBytes(24).toString('hex');
+        sessions.set(token, {
+          address: v.wallet, agent: false, bucket: burst, refilledAt: Date.now(),
+          sessionKey: v.sessionKey, delegation: v.delegation, expiresAt: v.expiresAt,
+        });
+        return { token, address: v.wallet, sessionKey: v.sessionKey, expiresAt: v.expiresAt };
+      }
+      case 'GET /auth/me': {
+        const s = need(session);
+        const chain = lobby.opts.chain;
+        const [agent, human, banned] = await Promise.all([
+          chain.isAgent(s.address).catch(() => false),
+          chain.isHuman(s.address).catch(() => false),
+          chain.isBanned(s.address).catch(() => false),
+        ]);
+        return {
+          address: s.address, sessionKey: s.sessionKey ?? null, expiresAt: s.expiresAt ?? null,
+          agent: s.agent || agent, verifiedHuman: human, bannedFromRanked: banned, onchain: chain.online,
+        };
+      }
+      case 'POST /auth/logout': {
+        const h = req.headers.authorization;
+        if (h?.startsWith('Bearer ')) sessions.delete(h.slice(7));
+        return { ok: true };
+      }
       case 'POST /queue': { const s = need(session); return lobby.enqueue(s.address, body, s.agent); }
       case 'GET /queue': return lobby.queueStatus(need(session).address);
       case 'DELETE /queue': lobby.leaveQueue(need(session).address); return { ok: true };
@@ -103,7 +157,11 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         return lobby.eventsSince(lobby.get(matchId), session?.address ?? null, Number(url.searchParams.get('since') ?? 0));
       case 'POST /matches/:id/reveal': return lobby.reveal(need(session).address, matchId, body.seedShare, body.deckSalt);
       case 'POST /matches/:id/moves':
-        return lobby.submitMove(need(session).address, matchId, Number(body.seq), body.action as Action, body.signature);
+      {
+        const s = need(session);
+        const auth = s.sessionKey && s.delegation ? { sessionKey: s.sessionKey, delegation: s.delegation } : undefined;
+        return lobby.submitMove(s.address, matchId, Number(body.seq), body.action as Action, body.signature, auth);
+      }
       case 'GET /matches/:id/result': return lobby.resultFor(matchId);
       case 'POST /matches/:id/result': return lobby.submitResultSig(need(session).address, matchId, body.signature);
       case 'GET /matches/:id/settlement': return lobby.settlement(matchId);

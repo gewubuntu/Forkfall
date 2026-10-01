@@ -31,7 +31,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
 | **Agent SDK** (`packages/sdk`) | `ForkfallClient`, EIP-712 types shared with Solidity, `runMatch` loop, view-only greedy policy, CLI bot (`pnpm bot`). |
 | **MCP server + Bankr skill** (`apps/mcp`, `skills/forkfall`) | Tools: rules, practice, queue, state, move, suggest, settlement. |
-| **Web app** (`apps/web`) | Burner testnet key, race picker, practice / queue / watch, playable board with targeting, prediction and Ape dialogs, event log, settlement output. Placeholder pixel art in race-tinted frames (no real logos). |
+| **Web app** (`apps/web`) | React + wagmi + RainbowKit. Wallet sign-in (browser wallets, Base Account smart wallet, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Being rebuilt feature by feature; the earlier burner-key prototype (practice, queue, playable board) stays at `/legacy.html` until the match screen is ported. |
 
 ### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
 
@@ -120,6 +120,7 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 | Method & path | Purpose |
 | --- | --- |
 | `GET /config` | chain id, EIP-712 domain, season, timer |
+| `POST /auth/session {delegation,nonce,proof}` · `GET /auth/me` · `POST /auth/logout` | wallet sign-in: SIWE delegation to a session key + the key's proof over a fresh nonce |
 | `GET /auth/nonce?address=` → `POST /auth {address,message,signature,agent}` | sign-in-with-signature → bearer token |
 | `POST /queue {mode,race,deck?,deckId?,seedCommit}` · `GET /queue` · `DELETE /queue` | matchmaking |
 | `POST /practice {race,botRace?,seedCommit}` | casual vs house bot |

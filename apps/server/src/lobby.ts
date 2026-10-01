@@ -5,7 +5,7 @@ import {
 } from '@forkfall/engine';
 import {
   actionHash, commitSeed, MODES, MOVE_TYPES, RESULT_TYPES, moveDigest, nextHead, resultDigest, viewGreedy, ZERO32, ZERO_ADDRESS,
-  type MatchResult, type MatchSnapshot, type Mode,
+  type Delegation, type MatchResult, type MatchSnapshot, type Mode,
 } from '@forkfall/sdk';
 import { recoverAddress, type Address, type Hex, type LocalAccount, type TypedDataDomain } from 'viem';
 import type { Chain } from './chain.ts';
@@ -27,6 +27,8 @@ interface Seatholder {
   deckSalt?: Hex;
   bot?: BotKind;
   resultSig?: Hex;
+  /** SIWE delegations for every session key that signed a move for this seat (makes the log verifiable). */
+  delegations?: Delegation[];
 }
 
 interface LoggedMove {
@@ -238,7 +240,10 @@ export class Lobby {
   }
 
   // ─── Moves ────────────────────────────────────────────────────
-  async submitMove(address: Address, matchId: Hex, seq: number, action: Action, signature: Hex) {
+  async submitMove(
+    address: Address, matchId: Hex, seq: number, action: Action, signature: Hex,
+    session?: { sessionKey: Address; delegation: Delegation },
+  ) {
     const m = this.get(matchId);
     if (m.phase !== 'active') throw new ApiError(409, `match is ${m.phase}`);
     const seat = this.seatOf(m, address);
@@ -247,7 +252,13 @@ export class Lobby {
     const aHash = actionHash(action);
     const digest = moveDigest(this.domain, { matchId, seq, prevHash: m.head, actionHash: aHash });
     const signer = await recoverAddress({ hash: digest, signature }).catch(() => null);
-    if (!signer || signer.toLowerCase() !== address.toLowerCase()) throw new ApiError(401, 'bad move signature');
+    const bySessionKey = !!session && signer?.toLowerCase() === session.sessionKey.toLowerCase();
+    if (!signer || (signer.toLowerCase() !== address.toLowerCase() && !bySessionKey)) throw new ApiError(401, 'bad move signature');
+    if (bySessionKey) {
+      const p = m.players[seat];
+      p.delegations ??= [];
+      if (!p.delegations.some((d) => d.signature === session!.delegation.signature)) p.delegations.push(session!.delegation);
+    }
     this.apply(m, seat, action, signature);
     return this.snapshot(m, address);
   }
@@ -351,8 +362,14 @@ export class Lobby {
     const seat = this.seatOf(m, address);
     if (seat === null) throw new ApiError(403, 'not a player in this match');
     if (!m.result) throw new ApiError(409, 'match not finished');
-    const signer = await recoverAddress({ hash: resultDigest(this.domain, m.result), signature }).catch(() => null);
-    if (!signer || signer.toLowerCase() !== address.toLowerCase()) throw new ApiError(401, 'bad result signature');
+    // Smart wallets (ERC-1271/6492) are checked on-chain when the server has an RPC; EOAs by recovery.
+    const client = this.opts.chain.client;
+    const ok = client
+      ? await client.verifyTypedData({
+        address, signature, domain: this.domain, types: RESULT_TYPES, primaryType: 'MatchResult', message: { ...m.result },
+      }).catch(() => false)
+      : (await recoverAddress({ hash: resultDigest(this.domain, m.result), signature }).catch(() => null))?.toLowerCase() === address.toLowerCase();
+    if (!ok) throw new ApiError(401, 'bad result signature');
     m.players[seat].resultSig = signature;
     this.changed(m);
     return { ok: true as const, complete: m.players.every((p) => p.resultSig) };
@@ -380,7 +397,7 @@ export class Lobby {
     if (m.phase !== 'ended') throw new ApiError(409, 'full log (with seed reveals) is public after the match ends');
     return {
       matchId: m.id, mode: m.mode, domain: this.domain,
-      players: m.players.map((p) => ({ address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit, seedShare: p.seedShare, deckSalt: p.deckSalt })),
+      players: m.players.map((p) => ({ address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations ?? [] })),
       moves: m.moves, head: m.head, result: m.result,
     };
   }

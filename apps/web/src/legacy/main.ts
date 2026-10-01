@@ -5,7 +5,7 @@ import {
 import { ForkfallClient, type MatchSnapshot } from '@forkfall/sdk';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
-import { spriteSvg } from './art.ts';
+import { spriteSvg } from '../lib/art.ts';
 
 // ─── Burner testnet identity ─────────────────────────────────────
 const KEY = 'forkfall.burnerKey';
