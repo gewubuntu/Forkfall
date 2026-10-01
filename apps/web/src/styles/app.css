@@ -284,3 +284,25 @@ button { font: inherit; color: inherit; }
 }
 .mobile-nav a { flex: 1; text-align: center; padding: 8px 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-decoration: none; }
 .mobile-nav a.active { color: var(--text); }
+
+/* ─── Connect modal ────────────────────────────────── */
+.modal-bg { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: var(--gutter);
+  background: rgba(4, 6, 10, .7); backdrop-filter: blur(6px); }
+.modal { width: min(400px, 100%); background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-lg);
+  padding: 18px; box-shadow: var(--shadow); max-height: calc(100vh - 32px); overflow: auto; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.modal-head h2 { font-family: var(--font-pixel); font-size: 22px; margin: 0; }
+.icon-btn { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 50%; width: 30px; height: 30px; cursor: pointer; color: var(--muted); }
+.icon-btn:hover { color: var(--text); }
+.wallet-group { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 4px 6px; }
+.wallet { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px; border-radius: var(--r); border: 1px solid transparent;
+  background: transparent; cursor: pointer; text-align: left; }
+.wallet:hover:not(:disabled) { background: var(--panel-2); border-color: var(--line-2); }
+.wallet:disabled { cursor: default; opacity: .7; }
+.wallet img, .wallet-glyph { width: 36px; height: 36px; border-radius: 10px; flex: none; }
+.wallet-glyph { display: grid; place-items: center; font-family: var(--font-ui); font-weight: 800; font-size: 17px;
+  background: linear-gradient(135deg, var(--base), var(--rh)); color: #06101f; }
+.wallet-text { display: flex; flex-direction: column; flex: 1; }
+.wallet-text b { font-size: 15px; }
+.wallet-text small { color: var(--muted); font-size: 12.5px; }
+.modal-note { font-size: 12.5px; color: var(--dim); margin: 12px 4px 0; }

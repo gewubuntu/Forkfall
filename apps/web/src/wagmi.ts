@@ -1,9 +1,6 @@
-import { connectorsForWallets } from '@rainbow-me/rainbowkit';
-import {
-  base, injectedWallet, metaMaskWallet, rabbyWallet, walletConnectWallet,
-} from '@rainbow-me/rainbowkit/wallets';
-import { createConfig, http } from 'wagmi';
+import { createConfig, http, injected } from 'wagmi';
 import { baseSepolia, foundry } from 'wagmi/chains';
+import { baseAccount, metaMask, walletConnect } from 'wagmi/connectors';
 import { defineChain } from 'viem';
 
 /** Testnets only. Mainnet chains are deliberately absent from this config. */
@@ -21,25 +18,24 @@ export const CHAINS = [baseSepolia, robinhoodTestnet, anvil] as const;
 export const CHAIN_NAMES: Record<number, string> = Object.fromEntries(CHAINS.map((c) => [c.id, c.name]));
 
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? '';
-/** WalletConnect (mobile QR, MetaMask mobile) needs a WalletConnect Cloud project id. */
+/** WalletConnect (phone wallets via QR) needs a WalletConnect Cloud / Reown project id. */
 export const walletConnectEnabled = projectId.length > 0;
 
-const connectors = connectorsForWallets(
-  [
-    {
-      groupName: 'Recommended',
-      wallets: walletConnectEnabled
-        ? [base, metaMaskWallet, rabbyWallet, walletConnectWallet]
-        : [base, rabbyWallet, injectedWallet],
-    },
-    ...(walletConnectEnabled ? [{ groupName: 'Other', wallets: [injectedWallet] }] : []),
-  ],
-  { appName: 'Forkfall', appDescription: 'On-chain card duels for humans and agents (testnet)', projectId: projectId || 'walletconnect-disabled' },
-);
+const appUrl = typeof window === 'undefined' ? 'https://forkfall.example' : window.location.origin;
 
 export const wagmiConfig = createConfig({
   chains: CHAINS,
-  connectors,
+  // EIP-6963: installed browser wallets (MetaMask, Rabby, …) announce themselves and appear automatically.
+  multiInjectedProviderDiscovery: true,
+  connectors: [
+    baseAccount({ appName: 'Forkfall' }),
+    metaMask({ dapp: { name: 'Forkfall', url: appUrl } }),
+    ...(walletConnectEnabled
+      ? [walletConnect({ projectId, showQrModal: true, metadata: { name: 'Forkfall', description: 'On-chain card duels (testnet)', url: appUrl, icons: [] } })]
+      : []),
+    // Fallback for wallets that only expose window.ethereum without EIP-6963.
+    injected({ shimDisconnect: true }),
+  ],
   transports: {
     [baseSepolia.id]: http(import.meta.env.VITE_BASE_SEPOLIA_RPC_URL),
     [robinhoodTestnet.id]: http(import.meta.env.VITE_ROBINHOOD_TESTNET_RPC_URL),

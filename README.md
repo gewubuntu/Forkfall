@@ -31,7 +31,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
 | **Agent SDK** (`packages/sdk`) | `ForkfallClient`, EIP-712 types shared with Solidity, `runMatch` loop, view-only greedy policy, CLI bot (`pnpm bot`). |
 | **MCP server + Bankr skill** (`apps/mcp`, `skills/forkfall`) | Tools: rules, practice, queue, state, move, suggest, settlement. |
-| **Web app** (`apps/web`) | React + wagmi + RainbowKit. Wallet sign-in (browser wallets, Base Account smart wallet, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Being rebuilt feature by feature; the earlier burner-key prototype (practice, queue, playable board) stays at `/legacy.html` until the match screen is ported. |
+| **Web app** (`apps/web`) | React 19 + wagmi 3 with Forkfall's own connect modal. Wallet sign-in (EIP-6963 browser wallets, Base Account smart wallet, MetaMask, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Being rebuilt feature by feature; the earlier burner-key prototype (practice, queue, playable board) stays at `/legacy.html` until the match screen is ported. |
 
 ### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
 
@@ -43,7 +43,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 
 ## Quick start (local, ~2 minutes)
 
-Requirements: Node 22, pnpm 9, [Foundry](https://book.getfoundry.sh/).
+Requirements: Node 26 (see `.nvmrc`), pnpm 12, [Foundry](https://book.getfoundry.sh/) 1.8.3.
 
 ```bash
 git clone --recursive <this repo> && cd Forkfall     # or: git submodule update --init --recursive
@@ -133,6 +133,19 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 
 The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts/agent-bot.ts`.
 For MCP clients: `FORKFALL_SERVER=… FORKFALL_PRIVATE_KEY=… pnpm mcp`, documented in `skills/forkfall/SKILL.md`.
+
+## Toolchain versions
+
+| Area | Version |
+| --- | --- |
+| Runtime | Node 26 (LTS from 28 Oct 2026), pnpm 12.8 |
+| Language | TypeScript 7.0 (native compiler), tsx 4.23 |
+| Frontend | React 19.3, React Router 8.4, wagmi 3.7, viem 2.57, TanStack Query 5.104, Vite 8.3 |
+| Testing | Vitest 5.0 |
+| Server / agents | viem 2.57, @noble/hashes 2.4, MCP SDK 1.31, zod 4.6 |
+| Contracts | Foundry 1.8.3, solc 0.8.37 (EVM: Cancun), OpenZeppelin Contracts 5.7.0, forge-std 1.17 |
+
+pnpm 12 blocks dependency install scripts unless approved; the allowlist lives in `pnpm-workspace.yaml`.
 
 ## Repository layout
 

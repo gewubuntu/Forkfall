@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes } from 'react-router';
 import { useAuth } from './auth/AuthProvider.tsx';
 import { Logo } from './components/Logo.tsx';
 import { WalletButton } from './components/WalletButton.tsx';

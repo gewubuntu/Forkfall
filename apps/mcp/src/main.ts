@@ -115,7 +115,7 @@ server.registerTool(
   'forkfall_move',
   {
     description: 'Sign (EIP-712) and submit one action. Pass an action object taken from legalActions.',
-    inputSchema: { matchId: z.string(), action: z.record(z.any()) },
+    inputSchema: { matchId: z.string(), action: z.record(z.string(), z.any()) },
   },
   async ({ matchId, action }) => {
     await ensure();

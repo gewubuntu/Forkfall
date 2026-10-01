@@ -2,7 +2,7 @@ import { buildSessionMessage, ForkfallClient, type Me, type ServerConfig } from 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Address } from 'viem';
-import { useAccount, useDisconnect, useSignMessage, useSignTypedData, useSwitchChain } from 'wagmi';
+import { useConnection, useDisconnect, useSignMessage, useSignTypedData, useSwitchChain } from 'wagmi';
 import { clearSession, loadSession, saveSession } from '../lib/session.ts';
 
 const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
@@ -46,11 +46,11 @@ function friendly(e: unknown): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { address, isConnected, chainId } = useAccount();
-  const { signMessageAsync } = useSignMessage();
-  const { signTypedDataAsync } = useSignTypedData();
-  const { switchChainAsync } = useSwitchChain();
-  const { disconnectAsync } = useDisconnect();
+  const { address, isConnected, chainId } = useConnection();
+  const { mutateAsync: signMessageAsync } = useSignMessage();
+  const { mutateAsync: signTypedDataAsync } = useSignTypedData();
+  const { mutateAsync: switchChainAsync } = useSwitchChain();
+  const { mutateAsync: disconnectAsync } = useDisconnect();
 
   const [config, setConfig] = useState<AuthState['config']>(null);
   const [offline, setOffline] = useState(false);

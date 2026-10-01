@@ -1,5 +1,5 @@
-import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from '@noble/hashes/utils';
+import { keccak_256 } from '@noble/hashes/sha3.js';
+import { bytesToHex, hexToBytes, utf8ToBytes, concatBytes } from '@noble/hashes/utils.js';
 
 export function keccakHex(...parts: (string | Uint8Array)[]): string {
   const bytes = parts.map((p) => (typeof p === 'string' ? (isHex(p) ? hexToBytes(strip(p)) : utf8ToBytes(p)) : p));

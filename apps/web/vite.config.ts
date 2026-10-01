@@ -8,7 +8,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'es2022',
-    rollupOptions: {
+    rolldownOptions: {
       input: { main: resolve(__dirname, 'index.html'), legacy: resolve(__dirname, 'legacy.html') },
     },
   },

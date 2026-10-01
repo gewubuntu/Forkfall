@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "dependencies": {
     "@forkfall/engine": "workspace:*",
-    "viem": "^2.21.0"
+    "viem": "^2.57.2"
   }
 }

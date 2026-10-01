@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useConnection } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { avatarSvg } from '../lib/art.ts';
 import { chainDotClass, shortAddr } from '../lib/format.ts';
@@ -9,7 +9,7 @@ import { CHAIN_NAMES } from '../wagmi.ts';
 /** Shown after the wallet connects: switch network if needed, then sign the session message once. */
 export function SignInGate() {
   const auth = useAuth();
-  const { chain, connector } = useAccount();
+  const { chain, connector } = useConnection();
   const [hours, setHours] = useState(8);
   const hub = auth.config!.chainId;
   const hubName = CHAIN_NAMES[hub] ?? `chain ${hub}`;

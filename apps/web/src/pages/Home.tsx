@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
 import { shortAddr, timeLeft } from '../lib/format.ts';
