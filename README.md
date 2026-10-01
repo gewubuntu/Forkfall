@@ -58,11 +58,9 @@ Full local stack with on-chain settlement on Anvil:
 
 ```bash
 anvil                                            # terminal 1
-cd contracts
+pnpm deploy:local                                # anvil dev key #0 deploys and is the referee
+pnpm server:local                                # terminal 2 (http://localhost:8787)
 PK=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80   # anvil dev key #0 (public, local only)
-forge script script/Deploy.s.sol --rpc-url local --broadcast --private-key $PK
-cd ..
-RPC_URL=http://127.0.0.1:8545 HOUSE_PRIVATE_KEY=$PK pnpm server   # terminal 2 (http://localhost:8787)
 pnpm web:build            # the server then serves the web app at http://localhost:8787
 # or, for development with hot reload: pnpm web  → http://localhost:5173
 ```
@@ -84,20 +82,48 @@ forge script script/Play.s.sol --sig "settle(string)" settlements/<matchId>.json
 forge script script/Play.s.sol --sig "status(address)" 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 --rpc-url local
 ```
 
-## Testnet deployment
+## Deploying to Base Sepolia (the hub)
 
-Copy `.env.example` to `.env` and fill in **testnet** values. Then:
+Base Sepolia (chain 84532) is the settlement hub: matches, ranked ratings, decks, cards and packs live there.
+The referee server, the web app and every script default to it.
+
+**1. Keys.** You need two testnet-only keys:
+
+| Key | Holds | Needs ETH |
+| --- | --- | --- |
+| Deployer | Admin roles on every contract | Yes, about 0.05 Base Sepolia ETH covers the whole deployment (it is usually far cheaper) |
+| Referee (`HOUSE_PRIVATE_KEY`) | `REFEREE_ROLE`: co-signs ranked results, runs the house bot | Only to submit dispute settlements itself |
+
+Store the deployer in an encrypted Foundry keystore instead of a plain-text key:
 
 ```bash
-cd contracts && source ../.env
-# Base Sepolia: the settlement hub
-forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify --private-key $DEPLOYER_KEY
-# Robinhood Chain testnet (chain 46630): card/pack contracts for the Brokers & Degens side
-forge script script/Deploy.s.sol --rpc-url robinhood_testnet --broadcast --private-key $DEPLOYER_KEY
+cast wallet import forkfall-deployer --interactive   # paste the key, choose a password
 ```
 
-Addresses are written to `contracts/deployments/<chainId>.json`, which the server and the scripts read.
-Run the referee against the hub with `CHAIN_ID=84532 RPC_URL=$BASE_SEPOLIA_RPC_URL HOUSE_PRIVATE_KEY=<referee key> pnpm server`.
+Get Base Sepolia ETH from a faucet (for example the Coinbase Developer Platform faucet), and an Etherscan API v2 key from etherscan.io for Basescan verification.
+
+**2. Configure.** `cp .env.example .env`, then set `ETHERSCAN_API_KEY`, `REFEREE_ADDRESS` (the referee key's address) and `HOUSE_PRIVATE_KEY` (the referee key). Optional: `RPC_URL` / `BASE_SEPOLIA_RPC_URL` (a dedicated RPC is recommended over `https://sepolia.base.org`), `TREASURY_ADDRESS`, `PACK_PRICE_WEI`, `CARD_URI`.
+
+**3. Deploy, verify, check.**
+
+```bash
+pnpm deploy:base-sepolia     # deploys, wires roles, verifies on sepolia.basescan.org, writes contracts/deployments/84532.json
+pnpm check:base-sepolia      # read-only health check: code, cards, roles, prices, referee
+```
+
+Commit `contracts/deployments/84532.json` (and `contracts/broadcast/*/84532/`) so everyone uses the same addresses.
+
+**4. Run the referee.**
+
+```bash
+pnpm web:build
+pnpm server                  # reads .env: CHAIN_ID=84532, RPC, referee key
+```
+
+On startup the server checks that the RPC is on chain 84532, that MatchSettlement is deployed, and that the referee key holds `REFEREE_ROLE`. It refuses to start otherwise. For UI work before a deployment exists, `pnpm server:offchain` runs with no on-chain checks; results from that mode cannot settle.
+
+**Robinhood Chain testnet** (chain 46630, the Brokers & Degens side) can host its own card and pack contracts with the same script:
+`forge script script/Deploy.s.sol --rpc-url robinhood_testnet --broadcast --account forkfall-deployer`.
 
 ### On-chain player actions (all Foundry)
 
@@ -112,6 +138,8 @@ Run the referee against the hub with `CHAIN_ID=84532 RPC_URL=$BASE_SEPOLIA_RPC_U
 | Register as an agent | `"registerAgent(address,string,string)" <operator> <name> <uri>` |
 | Settle a match | `"settle(string)" settlements/<matchId>.json` |
 | Show rating & collection | `"status(address)" <player>` (no `--broadcast`) |
+
+Run these from `contracts/` with `--rpc-url base_sepolia --broadcast --account <your keystore account>` (or `--private-key`).
 
 ## Agent API
 

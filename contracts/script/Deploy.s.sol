@@ -15,13 +15,15 @@ import {SeasonRewards} from "../src/SeasonRewards.sol";
 import {FaucetToken} from "../src/TestTokens.sol";
 import {Set1Cards} from "../src/generated/Set1Cards.sol";
 
-/// @notice Deploys the full Forkfall hub to a testnet (Base Sepolia is the hub; Robinhood Chain testnet
-///         can host its own CardRegistry/PackSale set with the same script).
+/// @notice Deploys the full Forkfall hub. The hub chain is Base Sepolia (84532); Robinhood Chain testnet
+///         can host its own CardRegistry/PackSale set with the same script.
 ///
-///   forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --private-key $DEPLOYER_KEY
+///   pnpm deploy:base-sepolia        (keystore account, broadcast + Basescan verification)
+///   forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify --account forkfall-deployer
 ///
-/// Env: REFEREE_ADDRESS (server key allowed to settle disputes; defaults to deployer),
-///      CARD_URI (ERC-1155 metadata template), PACK_PRICE_WEI.
+/// Env: REFEREE_ADDRESS  server key (REFEREE_ROLE) that co-signs ranked results; defaults to the deployer
+///      TREASURY_ADDRESS receives pack sale proceeds; defaults to the deployer
+///      CARD_URI         ERC-1155 metadata template; PACK_PRICE_WEI pack price in wei
 contract Deploy is ForkfallScript {
     struct Deployed {
         CardRegistry cards;
@@ -41,14 +43,23 @@ contract Deploy is ForkfallScript {
         requireTestnet();
         address deployer = msg.sender;
         address referee = vm.envOr("REFEREE_ADDRESS", deployer);
+        address payable treasury = payable(vm.envOr("TREASURY_ADDRESS", deployer));
         string memory uri = vm.envOr("CARD_URI", string("https://forkfall.example/cards/{id}.json"));
         uint256 packPrice = vm.envOr("PACK_PRICE_WEI", uint256(0.0001 ether));
 
+        console2.log("Deploying Forkfall hub to chain", block.chainid);
+        console2.log("  deployer", deployer);
+        console2.log("  referee ", referee);
+        console2.log("  treasury", treasury);
+
+        uint256 startBlock = block.number;
         vm.startBroadcast();
         d = deployAll(deployer, referee, uri, packPrice);
+        if (treasury != deployer) d.packs.setTreasury(treasury);
         vm.stopBroadcast();
 
-        writeBook(d, referee);
+        writeBook(d, deployer, referee, startBlock);
+        logExplorer(d);
     }
 
     function deployAll(address admin, address referee, string memory uri, uint256 packPrice)
@@ -79,9 +90,11 @@ contract Deploy is ForkfallScript {
         d.packs.setTokenPrice(address(d.fall), 100 ether);
     }
 
-    function writeBook(Deployed memory d, address referee) internal {
+    function writeBook(Deployed memory d, address deployer, address referee, uint256 startBlock) internal {
         string memory k = "book";
         vm.serializeUint(k, "chainId", block.chainid);
+        vm.serializeUint(k, "deployedAtBlock", startBlock);
+        vm.serializeAddress(k, "deployer", deployer);
         vm.serializeAddress(k, "referee", referee);
         vm.serializeAddress(k, "CardRegistry", address(d.cards));
         vm.serializeAddress(k, "StarterDecks", address(d.starters));
@@ -96,5 +109,17 @@ contract Deploy is ForkfallScript {
         string memory json = vm.serializeAddress(k, "TestFALL", address(d.fall));
         vm.writeJson(json, bookPath());
         console2.log("Address book written to", bookPath());
+    }
+
+    function logExplorer(Deployed memory d) internal view {
+        string memory ex = block.chainid == 84532
+            ? "https://sepolia.basescan.org/address/"
+            : block.chainid == 46630 ? "https://explorer.testnet.chain.robinhood.com/address/" : "";
+        if (bytes(ex).length == 0) return;
+        console2.log("Explorer:");
+        console2.log(string.concat("  MatchSettlement ", ex, vm.toString(address(d.settlement))));
+        console2.log(string.concat("  CardRegistry    ", ex, vm.toString(address(d.cards))));
+        console2.log(string.concat("  PackSale        ", ex, vm.toString(address(d.packs))));
+        console2.log(string.concat("  DeckRegistry    ", ex, vm.toString(address(d.decks))));
     }
 }

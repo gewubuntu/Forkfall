@@ -24,8 +24,9 @@ base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
 robinhood_testnet = "${ROBINHOOD_TESTNET_RPC_URL}"
 local = "http://127.0.0.1:8545"
 
+# Etherscan API v2: one ETHERSCAN_API_KEY (etherscan.io) verifies on Basescan and every other Etherscan-family explorer.
 [etherscan]
-base_sepolia = { key = "${BASESCAN_API_KEY}", chain = 84532 }
+base_sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 84532 }
 
 [lint]
 lint_on_build = false

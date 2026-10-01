@@ -32,7 +32,7 @@ export function SignInGate() {
             <div className="addr">{shortAddr(auth.wallet)}</div>
             <div className="net">
               <span className={`dot ${chainDotClass(chain?.id)}`} style={wrongChain ? { background: 'var(--warn)' } : undefined} />
-              {chain?.name ?? 'Unknown network'}{connector ? ` · ${connector.name}` : ''}
+              {chain?.name ?? 'Unsupported network'}{connector ? ` · ${connector.name}` : ''}
             </div>
           </div>
           <button className="btn btn-ghost" onClick={auth.disconnect}>Disconnect</button>
