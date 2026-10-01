@@ -1,4 +1,4 @@
-import type { Delegation } from '@forkfall/sdk';
+import type { Delegation, SecretStore } from '@forkfall/sdk';
 import type { Address, Hex } from 'viem';
 
 /**
@@ -37,3 +37,16 @@ export const SESSION_LENGTHS = [
   { hours: 8, label: '8 hours' },
   { hours: 24, label: '24 hours' },
 ] as const;
+
+/**
+ * Match secrets (seed share + private deck salt) until they are revealed. sessionStorage keeps them
+ * across a reload of this tab without sharing them with other tabs or leaving them around forever.
+ */
+export const sessionSecretStore: SecretStore = {
+  get(k) {
+    try { const v = sessionStorage.getItem(`forkfall.secret.${k}`); return v ? JSON.parse(v) : undefined; } catch { return undefined; }
+  },
+  set(k, v) {
+    try { sessionStorage.setItem(`forkfall.secret.${k}`, JSON.stringify(v)); } catch { /* storage blocked: memory only */ }
+  },
+};

@@ -11,7 +11,17 @@ export type ResultSigner = (typedData: {
   domain: TypedDataDomain; types: typeof RESULT_TYPES; primaryType: 'MatchResult'; message: MatchResult;
 }) => Promise<Hex>;
 
+export interface MatchSecrets { seedShare: Hex; deckSalt: Hex }
+
+/** Where queue/match secrets live until revealed. Defaults to memory; browsers can persist per tab. */
+export interface SecretStore {
+  get(key: string): MatchSecrets | undefined;
+  set(key: string, value: MatchSecrets): void;
+}
+
 export interface ClientOptions {
+  /** Persist match secrets (e.g. sessionStorage) so a reload before the reveal doesn't orphan a match. */
+  secretStore?: SecretStore;
   /** Wallet identity when `account` is a session key (wallet login). */
   wallet?: Address;
   /** How the wallet signs results; defaults to `account`. */
@@ -50,6 +60,10 @@ export interface MatchSnapshot {
   clock: { active: 0 | 1; turnEndsAt: number; bank: [number, number] } | null;
   eventCount: number;
   result?: MatchResult;
+  /** Server clock (ms) when the snapshot was taken, to correct for client clock skew. */
+  now?: number;
+  /** Which seats have co-signed the final result. */
+  resultSigned?: [boolean, boolean];
 }
 
 export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: Hex }
@@ -61,7 +75,10 @@ export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: 
 export class ForkfallClient {
   token?: string;
   config?: ServerConfig;
-  private secrets = new Map<string, { seedShare: Hex; deckSalt: Hex }>();
+  private memorySecrets = new Map<string, MatchSecrets>();
+  private get secrets(): SecretStore {
+    return this.opts.secretStore ?? { get: (k) => this.memorySecrets.get(k), set: (k, v) => { this.memorySecrets.set(k, v); } };
+  }
 
   /**
    * @param account signs moves: the player's own key (agents) or an authorized session key (wallet login).
@@ -140,7 +157,8 @@ export class ForkfallClient {
 
   async queueStatus(): Promise<QueueStatus & { ticket?: string }> {
     const r = await this.req<QueueStatus & { ticket?: string }>('GET', '/v1/queue');
-    if (r.matchId && r.ticket && this.secrets.has(r.ticket)) this.secrets.set(r.matchId, this.secrets.get(r.ticket)!);
+    const t = r.ticket ? this.secrets.get(r.ticket) : undefined;
+    if (r.matchId && t && !this.secrets.get(r.matchId)) this.secrets.set(r.matchId, t);
     return r;
   }
 
@@ -156,7 +174,7 @@ export class ForkfallClient {
 
   /** Reveal seed share + private deck salt once matched (commit-reveal randomness). */
   async reveal(matchId: Hex) {
-    if (!this.secrets.has(matchId)) await this.queueStatus();
+    if (!this.secrets.get(matchId)) await this.queueStatus();
     const s = this.secrets.get(matchId);
     if (!s) throw new Error('no secrets for this match (queued from another client?)');
     return this.req('POST', `/v1/matches/${matchId}/reveal`, { seedShare: s.seedShare, deckSalt: s.deckSalt });

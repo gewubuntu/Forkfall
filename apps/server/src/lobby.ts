@@ -433,6 +433,8 @@ export class Lobby {
         : null,
       eventCount: m.events.length,
       result: m.result,
+      now: this.now(),
+      resultSigned: [!!m.players[0].resultSig, !!m.players[1].resultSig],
     };
   }
 

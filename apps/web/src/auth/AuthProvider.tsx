@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Address } from 'viem';
 import { useConnection, useDisconnect, useSignMessage, useSignTypedData, useSwitchChain } from 'wagmi';
-import { clearSession, loadSession, saveSession } from '../lib/session.ts';
+import { clearSession, loadSession, saveSession, sessionSecretStore } from '../lib/session.ts';
 
 const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
 
@@ -75,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const makeClient = useCallback((pk: `0x${string}`, wallet: Address) => new ForkfallClient(SERVER, privateKeyToAccount(pk), {
     wallet,
+    secretStore: sessionSecretStore,
     signResult: (td) => signTypedRef.current(td as never),
   }), []);
 

@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -8,8 +7,5 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'es2022',
-    rolldownOptions: {
-      input: { main: resolve(__dirname, 'index.html'), legacy: resolve(__dirname, 'legacy.html') },
-    },
   },
 });

@@ -1,9 +1,11 @@
-import { NavLink, Route, Routes } from 'react-router';
+import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { useAuth } from './auth/AuthProvider.tsx';
 import { Logo } from './components/Logo.tsx';
 import { WalletButton } from './components/WalletButton.tsx';
 import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
+import { Match } from './pages/Match.tsx';
+import { Play } from './pages/Play.tsx';
 import { SignInGate } from './pages/SignInGate.tsx';
 
 const NAV = [
@@ -16,6 +18,7 @@ const NAV = [
 export function App() {
   const auth = useAuth();
   const signedIn = auth.status === 'signedIn';
+  const inMatch = useLocation().pathname.startsWith('/match/');
 
   return (
     <>
@@ -31,7 +34,7 @@ export function App() {
         {auth.status !== 'offline' && auth.status !== 'loading' && <WalletButton />}
       </header>
       <main>{body()}</main>
-      {signedIn && (
+      {signedIn && !inMatch && (
         <nav className="mobile-nav" aria-label="Main">
           <NavLink to="/" end>Home</NavLink>
           {NAV.map((n) => <NavLink key={n.to} to={n.to}>{n.label}</NavLink>)}
@@ -62,7 +65,8 @@ export function App() {
         return (
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/play" element={<ComingSoon title="Play" />} />
+            <Route path="/play" element={<Play />} />
+            <Route path="/match/:id" element={<Match />} />
             <Route path="/collection" element={<ComingSoon title="Collection" />} />
             <Route path="/decks" element={<ComingSoon title="Decks" />} />
             <Route path="/matches" element={<ComingSoon title="Matches" />} />

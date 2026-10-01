@@ -2,6 +2,7 @@ import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/700.css';
 import '@fontsource-variable/inter';
 import './styles/app.css';
+import './styles/game.css';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';

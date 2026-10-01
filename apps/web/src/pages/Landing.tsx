@@ -70,7 +70,7 @@ export function Landing() {
           <div className="panel step"><div className="step-n">3</div><h3>Play</h3><p>Moves are signed silently. Your wallet only signs the final result that settles on-chain.</p></div>
         </div>
       </section>
-      <footer className="footer">Forkfall testnet alpha · no real logos, no real value · <a href="/legacy.html">legacy prototype</a></footer>
+      <footer className="footer">Forkfall testnet alpha · no real logos, no real value</footer>
     </>
   );
 }
