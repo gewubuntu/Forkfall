@@ -59,6 +59,8 @@ export interface Match {
   referee?: RefereeSettlement;
   /** Agent League: entry fees charged on-chain when the match starts (pending → charged), or why it failed. */
   league?: { state: 'charging' | 'charged' | 'failed'; tx?: Hex; error?: string };
+  /** Friend challenge this match came from (casual). */
+  challenge?: string;
 }
 
 export interface RefereeSettlement {
@@ -102,6 +104,46 @@ export interface ArchivedMatch {
   bots: [BotKind | null, BotKind | null];
 }
 
+/** A friend challenge: a casual match waiting for one opponent (anyone with the link, or one address). */
+export interface Challenge {
+  code: string;
+  from: Seatholder;
+  /** Only this address may accept (a directed challenge or a rematch). */
+  to?: Address;
+  /** The match this is a rematch of. */
+  rematchOf?: Hex;
+  createdAt: number;
+  expiresAt: number;
+  state: 'open' | 'accepted' | 'cancelled' | 'declined';
+  matchId?: Hex;
+  /** When it was accepted, cancelled or declined (for pruning). */
+  closedAt?: number;
+}
+
+/** What anyone may see of a challenge. The challenger's race stays hidden until the match starts. */
+export interface ChallengeView {
+  code: string;
+  from: { address: Address; agent: boolean; cosmetics?: Equipped };
+  to: Address | null;
+  rematchOf: Hex | null;
+  state: Challenge['state'] | 'expired';
+  createdAt: number;
+  expiresAt: number;
+  /** Only returned here to the two players (once it starts, the match is listed publicly like any other). */
+  matchId?: Hex;
+  /** The match's phase, for the two players: 'reveal' means it is waiting for both to join. */
+  matchPhase?: Match['phase'];
+}
+
+export const CHALLENGE_TTL_MS = 24 * 3600_000;
+export const MAX_OPEN_CHALLENGES = 5;
+/** Open challenges addressed to one wallet, from everyone (keeps a target's incoming list from being flooded). */
+export const MAX_INCOMING_CHALLENGES = 20;
+/** A challenge match waits this long for both players to join (the challenger may be in another tab). */
+export const CHALLENGE_REVEAL_MS = 3 * 60_000;
+/** Answered or expired challenges are forgotten after this. */
+const CHALLENGE_KEEP_MS = 3600_000;
+
 interface QueueEntry {
   ticket: string;
   address: Address;
@@ -128,6 +170,7 @@ export class Lobby {
   private matchedTickets = new Map<string, Hex>();
   private byAddressTicket = new Map<Address, string>();
   private houseSecrets = new Map<string, { seedShare: Hex; deckSalt: Hex }>();
+  private challenges = new Map<string, Challenge>();
   readonly turnMs: number;
   readonly bankMs: number;
   readonly revealMs: number;
@@ -237,6 +280,125 @@ export class Lobby {
 
   leaveQueue(address: Address) {
     this.queue = this.queue.filter((q) => q.address !== address);
+  }
+
+  // ─── Friend challenges (casual) ───────────────────────────────
+  /** Create a challenge link. Casual only: ranked between friends would invite win trading. */
+  async createChallenge(address: Address, body: { race: Race; deck?: number[]; deckId?: Hex; seedCommit: Hex; to?: string; rematchOf?: Hex }, agent: boolean) {
+    if (!/^0x[0-9a-fA-F]{64}$/.test(body.seedCommit ?? '')) throw new ApiError(400, 'seedCommit (bytes32) required');
+    if (!RACES.includes(body.race)) throw new ApiError(400, 'unknown race');
+    let to: Address | undefined;
+    if (body.to !== undefined && body.to !== null && body.to !== '') {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(body.to)) throw new ApiError(400, 'to must be an address');
+      to = body.to.toLowerCase() as Address;
+      if (to === address.toLowerCase()) throw new ApiError(400, 'you can’t challenge yourself');
+    }
+    if (body.rematchOf) {
+      const prev = this.matches.get(body.rematchOf);
+      if (!prev || prev.phase !== 'ended') throw new ApiError(400, 'rematch: no such finished match');
+      const me = this.seatOf(prev, address);
+      if (me === null) throw new ApiError(403, 'rematch: you didn’t play that match');
+      const opp = prev.players[me === 0 ? 1 : 0];
+      if (opp.bot) throw new ApiError(400, 'rematch the house bot from Play instead');
+      to = opp.address.toLowerCase() as Address;
+    }
+    this.pruneChallenges();
+    const live = [...this.challenges.values()].filter((c) => c.state === 'open' && this.now() <= c.expiresAt);
+    if (live.filter((c) => same(c.from.address, address)).length >= MAX_OPEN_CHALLENGES) {
+      throw new ApiError(429, `at most ${MAX_OPEN_CHALLENGES} open challenges: cancel one first`);
+    }
+    if (to && live.filter((c) => c.to && same(c.to, to!)).length >= MAX_INCOMING_CHALLENGES) {
+      throw new ApiError(429, 'that player has too many pending challenges right now');
+    }
+    const isAgent = await this.checkEligibility(address, 'casual', agent);
+    const { deck, deckId } = await this.resolveDeck(address, 'casual', body.race, body.deck, body.deckId);
+    const code = challengeCode();
+    const c: Challenge = {
+      code, from: { address, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit },
+      to, rematchOf: body.rematchOf, createdAt: this.now(), expiresAt: this.now() + CHALLENGE_TTL_MS, state: 'open',
+    };
+    this.challenges.set(code, c);
+    return this.challengeView(c, address);
+  }
+
+  challenge(code: string): Challenge {
+    const c = this.challenges.get(code);
+    if (!c) throw new ApiError(404, 'no such challenge (it may have expired)');
+    return c;
+  }
+
+  challengeView(c: Challenge, viewer: Address | null): ChallengeView {
+    const expired = c.state === 'open' && this.now() > c.expiresAt;
+    const player = viewer && (same(c.from.address, viewer) || (c.matchId && this.matches.get(c.matchId)?.players.some((p) => same(p.address, viewer))));
+    return {
+      code: c.code,
+      from: { address: c.from.address, agent: c.from.agent, ...(this.opts.profiles ? { cosmetics: this.opts.profiles.equipped(c.from.address) } : {}) },
+      to: c.to ?? null, rematchOf: c.rematchOf ?? null,
+      state: expired ? 'expired' : c.state, createdAt: c.createdAt, expiresAt: c.expiresAt,
+      ...(player && c.matchId ? { matchId: c.matchId, matchPhase: this.matches.get(c.matchId)?.phase } : {}),
+    };
+  }
+
+  /** Accept: the match starts right away (both reveal as usual). */
+  async acceptChallenge(address: Address, code: string, body: { race: Race; deck?: number[]; deckId?: Hex; seedCommit: Hex }, agent: boolean) {
+    const c = this.challenge(code);
+    if (c.state !== 'open') throw new ApiError(409, `this challenge was already ${c.state}`);
+    if (this.now() > c.expiresAt) throw new ApiError(410, 'this challenge has expired');
+    if (same(c.from.address, address)) throw new ApiError(400, 'you can’t accept your own challenge');
+    if (c.to && !same(c.to, address)) throw new ApiError(403, 'this challenge is for someone else');
+    if (!/^0x[0-9a-fA-F]{64}$/.test(body.seedCommit ?? '')) throw new ApiError(400, 'seedCommit (bytes32) required');
+    if (!RACES.includes(body.race)) throw new ApiError(400, 'unknown race');
+    const isAgent = await this.checkEligibility(address, 'casual', agent);
+    const { deck, deckId } = await this.resolveDeck(address, 'casual', body.race, body.deck, body.deckId);
+    if (c.state !== 'open') throw new ApiError(409, `this challenge was already ${c.state}`); // raced while we awaited
+    if (this.now() > c.expiresAt) throw new ApiError(410, 'this challenge has expired');
+    // A copy of the challenger's seat: if this match is cancelled before it starts, the link reopens untouched.
+    const m = this.newMatch('casual', 0, [{ ...c.from }, { address, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit }]);
+    m.challenge = c.code;
+    c.state = 'accepted';
+    c.matchId = m.id;
+    c.closedAt = this.now();
+    return { matchId: m.id, challenge: this.challengeView(c, address) };
+  }
+
+  /** The challenger cancels, or the addressee declines. */
+  closeChallenge(address: Address, code: string) {
+    const c = this.challenge(code);
+    if (c.state !== 'open') throw new ApiError(409, `this challenge was already ${c.state}`);
+    if (same(c.from.address, address)) c.state = 'cancelled';
+    else if (c.to && same(c.to, address)) c.state = 'declined';
+    else throw new ApiError(403, 'only the challenger can cancel, or the challenged player decline');
+    c.closedAt = this.now();
+    return this.challengeView(c, address);
+  }
+
+  /** Your open and recent challenges, and open ones addressed to you. */
+  challengesFor(address: Address) {
+    this.pruneChallenges();
+    const all = [...this.challenges.values()].sort((a, b) => b.createdAt - a.createdAt);
+    return {
+      outgoing: all.filter((c) => same(c.from.address, address)).map((c) => this.challengeView(c, address)),
+      incoming: all.filter((c) => c.to && same(c.to, address) && c.state === 'open' && this.now() <= c.expiresAt)
+        .slice(0, MAX_INCOMING_CHALLENGES).map((c) => this.challengeView(c, address)),
+    };
+  }
+
+  /** Forget challenges an hour after they expired or were answered (an accepted one once its match is under way). */
+  private pruneChallenges() {
+    const cutoff = this.now() - CHALLENGE_KEEP_MS;
+    for (const [k, c] of this.challenges) {
+      const waiting = c.matchId && this.matches.get(c.matchId)?.phase === 'reveal';
+      if (!waiting && ((c.closedAt ?? Infinity) < cutoff || c.expiresAt < cutoff)) this.challenges.delete(k);
+    }
+  }
+
+  /** A challenge match cancelled before it started (someone never joined): reopen the link while it's valid. */
+  private reopenChallenge(m: Match) {
+    const c = m.challenge ? this.challenges.get(m.challenge) : undefined;
+    if (!c || c.matchId !== m.id || c.state !== 'accepted') return;
+    c.matchId = undefined;
+    c.closedAt = undefined;
+    c.state = this.now() <= c.expiresAt ? 'open' : 'cancelled';
   }
 
   /** Casual match vs a house bot. The bot is badged as an agent and sees only its own view. */
@@ -369,8 +531,12 @@ export class Lobby {
   tick() {
     const now = this.now();
     this.pruneQueue();
+    this.pruneChallenges();
     for (const m of this.matches.values()) {
-      if (m.phase === 'reveal' && now - m.createdAt > this.revealMs && m.league?.state !== 'charging') { m.phase = 'cancelled'; this.changed(m); continue; }
+      const revealWindow = m.challenge ? CHALLENGE_REVEAL_MS : this.revealMs;
+      if (m.phase === 'reveal' && now - m.createdAt > revealWindow && m.league?.state !== 'charging') {
+        m.phase = 'cancelled'; this.reopenChallenge(m); this.changed(m); continue;
+      }
       if (m.phase !== 'active') continue;
       const seat = m.state!.active;
       const deadline = m.clock.turnStartedAt + this.turnMs + m.clock.bank[seat];
@@ -590,7 +756,8 @@ export class Lobby {
       phase: m.phase,
       mode: m.mode,
       seat,
-      players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent, ...(this.opts.profiles ? { cosmetics: this.opts.profiles.equipped(p.address) } : {}) })),
+      players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent, ...(p.bot ? { bot: true } : {}), ...(this.opts.profiles ? { cosmetics: this.opts.profiles.equipped(p.address) } : {}) })),
+      ...(m.challenge ? { challenge: m.challenge } : {}),
       view: s ? viewFor(s, seat) : null,
       legalActions: s && seat !== null && s.active === seat ? legalActions(s, seat) : [],
       seq: m.moves.length,
@@ -662,4 +829,14 @@ function pickRandom(snap: MatchSnapshot): Action {
   const acts = snap.legalActions.filter((a) => a.type !== 'endTurn');
   if (!acts.length || Math.random() < 0.2) return { type: 'endTurn' };
   return acts[Math.floor(Math.random() * acts.length)];
+}
+
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+/** 10 characters, no look-alikes (0/O, 1/I/L): easy to read out or type. */
+function challengeCode(): string {
+  const alphabet = '23456789abcdefghjkmnpqrstuvwxyz';
+  const bytes = randomHex32().slice(2);
+  let out = '';
+  for (let i = 0; i < 10; i++) out += alphabet[parseInt(bytes.slice(i * 2, i * 2 + 2), 16) % alphabet.length];
+  return out;
 }

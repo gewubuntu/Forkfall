@@ -6,7 +6,7 @@ import {
 import { matchSettlementAbi, type MatchSnapshot } from '@forkfall/sdk';
 import { useReadContract } from 'wagmi';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import type { Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
@@ -14,6 +14,7 @@ import { useHub } from '../chain/useHub.ts';
 import { useSeasonStats, useSettled, useSettleMatch } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
 import { QuestPanel } from '../components/QuestPanel.tsx';
+import { ChallengeWaiting } from '../components/Challenges.tsx';
 import { useQueryClient } from '@tanstack/react-query';
 import { describeEvent, KEYWORD_HELP, KEYWORD_LABEL, RACE_INFO, raceName } from '../game/meta.ts';
 import { FxLayer } from '../game/FxLayer.tsx';
@@ -28,7 +29,13 @@ type PlayAction = Extract<Action, { type: 'play' }>;
 type Selection = { kind: 'hand' | 'unit'; uid: number } | null;
 type Modal = { kind: 'ape' | 'prediction'; uid: number; ape?: boolean } | { kind: 'concede' } | null;
 
+/** Keyed by match id, so moving from one match to the next (a rematch) starts from fresh state. */
 export function Match() {
+  const { id } = useParams();
+  return <MatchView key={id} />;
+}
+
+function MatchView() {
   const { id } = useParams();
   const matchId = id as Hex;
   const { client } = useAuth();
@@ -455,6 +462,7 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
         <MatchStats events={events} seat={firstSeat(seat)} spectator={seat === null} />
         {seat !== null && <RatingChange s={s} seat={seat} />}
         {seat !== null && <QuestProgress />}
+        {seat !== null && s.mode !== 'league' && !s.players[seat === 0 ? 1 : 0].bot && <Rematch s={s} seat={seat} />}
         {seat !== null && (
           <div className="result-sign">
             {!signed ? (
@@ -478,6 +486,67 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
           <Link className="btn btn-primary" to="/play">Play again</Link>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Rematch: challenge your opponent again (a casual challenge addressed to them). If they asked first, accept
+ * theirs instead; either way both players land in the new match.
+ */
+function Rematch({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
+  const { client } = useAuth();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [mine, setMine] = useState<string | null>(null);
+  const [theirs, setTheirs] = useState<string | null>(null);
+  const race = s.players[seat].race;
+
+  useEffect(() => {
+    if (!client) return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await client.challenges();
+        if (!alive) return;
+        setTheirs(r.incoming.find((c) => c.rematchOf === s.matchId)?.code ?? null);
+        // A rematch still open, or accepted and waiting for you to join. Once that match is under way (or if you
+        // come Back here later) there's nothing to wait for.
+        const out = r.outgoing.find((c) => c.rematchOf === s.matchId && (c.state === 'open' || c.matchPhase === 'reveal'));
+        setMine(out?.code ?? null);
+      } catch { /* server without challenges */ }
+    };
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => { alive = false; clearInterval(t); };
+  }, [client, s.matchId]);
+
+  const ask = async () => {
+    setErr(null); setBusy(true);
+    try { setMine((await client!.createChallenge({ race, rematchOf: s.matchId })).code); } catch (e) { setErr(friendlyError(e)); } finally { setBusy(false); }
+  };
+  const accept = async () => {
+    setErr(null); setBusy(true);
+    try {
+      if (mine) await client!.cancelChallenge(mine).catch(() => {}); // both asked at once: take theirs
+      navigate(`/match/${await client!.acceptChallenge(theirs!, { race })}`);
+    } catch (e) { setErr(friendlyError(e)); setBusy(false); }
+  };
+
+  return (
+    <div className="rematch">
+      {theirs ? (
+        <div className="rematch-offer" role="status">
+          <b>⚔ Your opponent wants a rematch!</b>
+          <button className="btn btn-primary" onClick={accept} disabled={busy}>{busy ? <span className="spinner" /> : null} Accept rematch</button>
+        </div>
+      ) : mine ? (
+        <ChallengeWaiting code={mine} rematch onDone={() => setMine(null)} />
+      ) : (
+        <button className="btn btn-block" onClick={ask} disabled={busy}>{busy ? <span className="spinner" /> : '⚔'} Rematch</button>
+      )}
+      {err && <div className="alert err">{err}</div>}
     </div>
   );
 }

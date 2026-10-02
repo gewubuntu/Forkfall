@@ -62,7 +62,9 @@ export interface MatchSnapshot {
   mode: Mode;
   seat: 0 | 1 | null;
   /** cosmetics: the player's equipped title, card back and badge (servers with profiles). */
-  players: { address: string; race: Race; agent: boolean; cosmetics?: Equipped }[];
+  players: { address: string; race: Race; agent: boolean; bot?: boolean; cosmetics?: Equipped }[];
+  /** The friend challenge this match came from (casual). */
+  challenge?: string;
   view: PlayerView | null;
   legalActions: Action[];
   seq: number;
@@ -103,6 +105,22 @@ export interface MatchSummary {
 }
 
 export interface RefereeStatus { state: 'submitting' | 'settled' | 'failed'; tx?: Hex; error?: string; willRetry?: boolean }
+
+/** A friend challenge (`/v1/challenges`). The challenger's race stays hidden until the match starts. */
+export interface ChallengeView {
+  code: string;
+  from: { address: Address; agent: boolean; cosmetics?: Equipped };
+  /** Only this address may accept (a directed challenge or a rematch). */
+  to: Address | null;
+  rematchOf: Hex | null;
+  state: 'open' | 'accepted' | 'cancelled' | 'declined' | 'expired';
+  createdAt: number;
+  expiresAt: number;
+  /** Set once accepted; only returned here to the two players (the match is then listed publicly like any other). */
+  matchId?: Hex;
+  /** For the two players: 'reveal' while the match waits for both to join. */
+  matchPhase?: 'reveal' | 'active' | 'ended' | 'cancelled';
+}
 
 /** held: earned but waiting until the player is a verified human or registered agent. */
 export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain' | 'failed' | 'held'; tx?: Hex; error?: string }
@@ -285,9 +303,49 @@ export class ForkfallClient {
     return matchId;
   }
 
+  // ─── Friend challenges (casual) ───
+  /** Create a challenge link: anyone with the code may accept, or only `to`. `rematchOf` challenges your last opponent. */
+  async createChallenge(opts: { race: Race; deck?: number[]; deckId?: Hex; to?: Address; rematchOf?: Hex }): Promise<ChallengeView> {
+    const s = this.newSecrets();
+    const c = await this.req<ChallengeView>('POST', '/v1/challenges', { ...opts, seedCommit: s.seedCommit });
+    this.secrets.set(`challenge:${c.code}`, s);
+    return c;
+  }
+
+  /** A challenge's public view; for your own, `matchId` appears once someone accepts. */
+  async challenge(code: string): Promise<ChallengeView> {
+    const c = await this.req<ChallengeView>('GET', `/v1/challenges/${code}`);
+    this.adoptChallengeSecrets(c);
+    return c;
+  }
+
+  /** Accept a challenge: the match starts right away. Returns its id. */
+  async acceptChallenge(code: string, opts: { race: Race; deck?: number[]; deckId?: Hex }): Promise<Hex> {
+    const s = this.newSecrets();
+    const { matchId } = await this.req<{ matchId: Hex }>('POST', `/v1/challenges/${code}/accept`, { ...opts, seedCommit: s.seedCommit });
+    this.secrets.set(matchId, s);
+    return matchId;
+  }
+
+  /** Cancel your challenge, or decline one addressed to you. */
+  cancelChallenge(code: string) { return this.req<ChallengeView>('DELETE', `/v1/challenges/${code}`); }
+
+  /** Your challenges (open and recent) and open ones addressed to you. */
+  async challenges(): Promise<{ outgoing: ChallengeView[]; incoming: ChallengeView[] }> {
+    const r = await this.req<{ outgoing: ChallengeView[]; incoming: ChallengeView[] }>('GET', '/v1/challenges');
+    r.outgoing.forEach((c) => this.adoptChallengeSecrets(c));
+    return r;
+  }
+
+  private adoptChallengeSecrets(c: ChallengeView) {
+    const s = c.matchId ? this.secrets.get(`challenge:${c.code}`) : undefined;
+    if (s && c.matchId && !this.secrets.get(c.matchId)) this.secrets.set(c.matchId, s);
+  }
+
   /** Reveal seed share + private deck salt once matched (commit-reveal randomness). */
   async reveal(matchId: Hex) {
     if (!this.secrets.get(matchId)) await this.queueStatus();
+    if (!this.secrets.get(matchId)) await this.challenges().catch(() => {});
     const s = this.secrets.get(matchId);
     if (!s) throw new Error('no secrets for this match (queued from another client?)');
     return this.req('POST', `/v1/matches/${matchId}/reveal`, { seedShare: s.seedShare, deckSalt: s.deckSalt });

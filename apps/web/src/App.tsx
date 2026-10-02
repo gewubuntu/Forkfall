@@ -5,6 +5,8 @@ import { WalletButton } from './components/WalletButton.tsx';
 import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
 import { Learn } from './pages/Learn.tsx';
+import { Challenge } from './pages/Challenge.tsx';
+import { ChallengeAlert } from './components/Challenges.tsx';
 import { Collection } from './pages/Collection.tsx';
 import { DeckBuilder } from './pages/DeckBuilder.tsx';
 import { Decks } from './pages/Decks.tsx';
@@ -42,6 +44,7 @@ export function App() {
         {auth.status !== 'offline' && auth.status !== 'loading' && <WalletButton />}
       </header>
       <main>{body()}</main>
+      {signedIn && <ChallengeAlert />}
       {signedIn && !inMatch && (
         <nav className="mobile-nav" aria-label="Main">
           <NavLink to="/" end>Home</NavLink>
@@ -54,6 +57,10 @@ export function App() {
   function body() {
     // Lessons run entirely in the browser: no wallet, no sign-in, not even the server.
     if ((path === '/learn' || path.startsWith('/learn/')) && auth.status !== 'loading') return <Learn />;
+    // A challenge link works before sign-in: it shows who challenged you and walks you through connecting.
+    if (path.startsWith('/challenge/') && auth.status !== 'loading' && auth.status !== 'offline') {
+      return <Routes><Route path="/challenge/:code" element={<Challenge />} /></Routes>;
+    }
     switch (auth.status) {
       case 'loading':
         return <div className="gate"><span className="spinner" aria-label="Loading" /></div>;

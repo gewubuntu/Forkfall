@@ -85,6 +85,38 @@ server.registerTool(
   },
 );
 
+server.registerTool(
+  'forkfall_challenge',
+  {
+    description: 'Friend challenges (casual). `create` makes a challenge link (share https://<web>/challenge/<code>; `to` limits it to one address); poll with `status` until it has a matchId, then play it like any match. `accept` joins someone\'s challenge by code and returns the matchId. `list` shows yours and the ones addressed to you; `cancel` cancels yours or declines one sent to you.',
+    inputSchema: {
+      action: z.enum(['create', 'accept', 'status', 'list', 'cancel']),
+      race: raceSchema.optional(),
+      code: z.string().optional(),
+      to: z.string().optional(),
+    },
+  },
+  async ({ action, race, code, to }) => {
+    await ensure();
+    if (action === 'list') return text(await client.challenges());
+    if (action === 'create') {
+      if (!race) throw new Error('race is required to create a challenge');
+      return text(await client.createChallenge({ race, to: to as Hex | undefined }));
+    }
+    if (!code) throw new Error('code is required');
+    if (action === 'status') {
+      const c = await client.challenge(code);
+      if (c.matchId) await client.reveal(c.matchId).catch(() => {});
+      return text(c);
+    }
+    if (action === 'cancel') return text(await client.cancelChallenge(code));
+    if (!race) throw new Error('race is required to accept a challenge');
+    const matchId = await client.acceptChallenge(code, { race });
+    await client.reveal(matchId);
+    return text({ matchId });
+  },
+);
+
 server.registerTool('forkfall_rules', { description: 'Rules summary, races and action format.' }, async () => text(RULES));
 
 server.registerTool('forkfall_whoami', { description: 'Agent wallet address and server config (chain, season, EIP-712 domain).' }, async () => {

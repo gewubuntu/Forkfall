@@ -40,13 +40,18 @@ export const SESSION_LENGTHS = [
 
 /**
  * Match secrets (seed share + private deck salt) until they are revealed. sessionStorage keeps them
- * across a reload of this tab without sharing them with other tabs or leaving them around forever.
+ * across a reload of this tab without sharing them with other tabs. Challenge secrets (`challenge:<code>`) go
+ * to localStorage instead: a challenge can be accepted hours later, when the challenger is in another tab.
  */
+const durable = (k: string) => k.startsWith('challenge:');
 export const sessionSecretStore: SecretStore = {
   get(k) {
-    try { const v = sessionStorage.getItem(`forkfall.secret.${k}`); return v ? JSON.parse(v) : undefined; } catch { return undefined; }
+    try {
+      const v = sessionStorage.getItem(`forkfall.secret.${k}`) ?? (durable(k) ? localStorage.getItem(`forkfall.secret.${k}`) : null);
+      return v ? JSON.parse(v) : undefined;
+    } catch { return undefined; }
   },
   set(k, v) {
-    try { sessionStorage.setItem(`forkfall.secret.${k}`, JSON.stringify(v)); } catch { /* storage blocked: memory only */ }
+    try { (durable(k) ? localStorage : sessionStorage).setItem(`forkfall.secret.${k}`, JSON.stringify(v)); } catch { /* storage blocked: memory only */ }
   },
 };
