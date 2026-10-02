@@ -199,7 +199,9 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         if (!opts.quests) throw new ApiError(503, 'quests are not enabled on this server');
         const a = url.searchParams.get('address') ?? session?.address;
         if (!a || !/^0x[0-9a-fA-F]{40}$/.test(a)) throw new ApiError(400, 'address required');
-        return opts.quests.status(a);
+        const eligible = await opts.quests.eligibleFor(a);
+        if (eligible) opts.quests.releaseHeld(a); // verified since: pay what was held without waiting for the re-check
+        return { ...opts.quests.status(a), eligible };
       }
       case 'POST /quests/reroll': {
         if (!opts.quests) throw new ApiError(503, 'quests are not enabled on this server');

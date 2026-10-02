@@ -104,7 +104,8 @@ export interface MatchSummary {
 
 export interface RefereeStatus { state: 'submitting' | 'settled' | 'failed'; tx?: Hex; error?: string; willRetry?: boolean }
 
-export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain' | 'failed'; tx?: Hex; error?: string }
+/** held: earned but waiting until the player is a verified human or registered agent. */
+export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain' | 'failed' | 'held'; tx?: Hex; error?: string }
 
 /** Today's daily quests, the first-win bonus and free-pack progress (`GET /v1/quests`). */
 export interface QuestStatus {
@@ -113,6 +114,9 @@ export interface QuestStatus {
   resetsAt: number;
   /** Whether this server pays rewards on-chain (QuestRewards). Off-chain servers only track progress. */
   paysOnChain: boolean;
+  /** Whether you can be paid: a verified human or registered agent (null: no rule on this server). Rewards
+   *  earned before that are held and paid once you qualify. */
+  eligible?: boolean | null;
   rerollsLeft: number;
   quests: { slot: number; id: string; group: string; text: string; goal: number; progress: number; scrap: number; done: boolean; payout?: QuestPayoutStatus }[];
   firstWin: { done: boolean; scrap: number; payout?: QuestPayoutStatus };

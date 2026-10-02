@@ -434,6 +434,9 @@
 .q-tag.ok { color: var(--ok); }
 .q-tag.pending { color: var(--warn); }
 .q-tag.err { color: var(--danger); }
+.q-tag.held { color: var(--warn); text-decoration: none; }
+.q-gate { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: #2a2210; border: 1px solid #6b5420; color: #ffe7a8; }
+.q-gate a { color: inherit; }
 .q-tag .spinner { width: 11px; height: 11px; }
 .q-reroll { margin-left: auto; font-size: 12px; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
 .q-reroll:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }

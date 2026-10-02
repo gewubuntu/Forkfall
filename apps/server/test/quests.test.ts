@@ -165,6 +165,41 @@ describe('quest tracking', () => {
     expect(reloaded.status(ALICE).firstWin.payout?.state).toBe('paid');
   });
 
+  it('pays only verified humans and registered agents: others are held, then paid once they qualify', async () => {
+    let now = NOON;
+    const verified = new Set<string>();
+    let rpcDown = false;
+    const f = fakeRewarder();
+    const q = new Quests({
+      chainId: 31337, rewarder: f.r, now: () => now,
+      eligible: async (a) => { if (rpcDown) throw new Error('rpc down'); return verified.has(a.toLowerCase()); },
+    });
+    const out = q.record(match('gate'));
+    await q.payDue();
+    expect(f.sent).toEqual([]);
+    expect(q.status(ALICE).firstWin.payout?.state).toBe('held');
+    expect(await q.eligibleFor(ALICE)).toBe(false);
+    // Progress keeps counting while held.
+    expect(q.status(ALICE).firstWin.done).toBe(true);
+    // An RPC failure during the check neither holds nor pays.
+    rpcDown = true; now += 6 * 60_000;
+    await q.payDue();
+    expect(f.sent).toEqual([]);
+    rpcDown = false;
+    // Alice verifies: her held rewards go out on the next run (no waiting for the re-check), each once.
+    verified.add(ALICE);
+    expect((await q.payDue()).paid).toEqual([]); // still waiting for the re-check...
+    q.releaseHeld(ALICE); // ...unless released, which GET /v1/quests does once she's eligible
+    const r = await q.payDue();
+    const alicePayouts = out.filter((p) => p.address === ALICE);
+    expect(r.paid.filter((p) => p.address === ALICE)).toHaveLength(alicePayouts.length);
+    expect(f.sent.filter((x) => x.player.toLowerCase() === ALICE)).toHaveLength(alicePayouts.length);
+    expect(q.status(ALICE).firstWin.payout?.state).toBe('paid');
+    // Bob never verified: still held.
+    expect(f.sent.some((x) => x.player.toLowerCase() === BOB)).toBe(false);
+    expect(q.status(BOB).quests.filter((x) => x.done).every((x) => x.payout?.state === 'held')).toBe(true);
+  });
+
   it('stops retrying a payout the contract will never accept', async () => {
     const f = fakeRewarder();
     const q = new Quests({ chainId: 31337, rewarder: f.r, now: () => NOON });
@@ -193,6 +228,7 @@ describe('quests over HTTP', () => {
     const before = await c.quests();
     expect(before.quests).toHaveLength(3);
     expect(before.paysOnChain).toBe(false);
+    expect(before.eligible).toBeNull(); // no eligibility rule on an off-chain server
     const id = await c.practice({ race: 'agents', botRace: 'brokers', bot: 'greedy' });
     const loop = runMatch(c, id, { pollMs: 5 });
     for (let i = 0; i < 4000 && lobby.get(id).phase !== 'ended'; i++) {

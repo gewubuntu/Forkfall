@@ -46,8 +46,10 @@ export interface Payout {
   packKind: number;
   packs: number;
   /** offchain: this server can't pay (no QuestRewards); the reward is recorded but never sent.
-   *  failed: the contract refused it for good (caps, unknown pack kind, missing role) or it kept failing. */
-  state: 'pending' | 'paid' | 'offchain' | 'failed';
+   *  failed: the contract refused it for good (caps, unknown pack kind, missing role) or it kept failing.
+   *  held: earned, but the player isn't a verified human or registered agent yet; paid once they are
+   *  (re-checked every few minutes), dropped after `KEEP_DAYS`. */
+  state: 'pending' | 'paid' | 'offchain' | 'failed' | 'held';
   tx?: Hex;
   error?: string;
   attempts: number;
@@ -66,6 +68,9 @@ export interface QuestOptions {
   packGoal?: number;
   /** Booster kind of the free pack (0 = Set 1). */
   packKind?: number;
+  /** Who may be paid: verified humans and registered agents (not banned), like season rewards. Progress is
+   *  tracked for everyone; rewards for others are held until they qualify. Omit to pay everyone. */
+  eligible?: (address: Address) => Promise<boolean>;
   now?: () => number;
 }
 
@@ -78,6 +83,8 @@ const MIDNIGHT_GRACE_MS = 10 * 60_000;
 const PERMANENT = /OverClaimCap|NothingToPay|UnknownKind|BadCount|AccessControlUnauthorizedAccount/;
 /** Paid and off-chain payouts are kept this long for the status view, then pruned. */
 const KEEP_DAYS = 40;
+/** How often held rewards re-check whether the player has verified. */
+const HOLD_RECHECK_MS = 5 * 60_000;
 
 /**
  * Daily quests, the first-win bonus and the free pack, tracked by the referee from finished matches (it replays
@@ -104,6 +111,18 @@ export class Quests {
   }
 
   get paysOnChain() { return !!this.opts.rewarder; }
+
+  /** Sends this player's held rewards on the next payout run (they just verified or registered). */
+  releaseHeld(address: string) {
+    const a = address.toLowerCase();
+    for (const p of this.data.payouts) if (p.address === a && p.state === 'held') p.nextAt = 0;
+  }
+
+  /** Whether this player can be paid now (null: no rule, or the check failed). */
+  async eligibleFor(address: string): Promise<boolean | null> {
+    if (!this.opts.eligible) return null;
+    try { return await this.opts.eligible(address as Address); } catch { return null; }
+  }
 
   /** Counts a finished match for both players (house bots excluded). Idempotent per match id. */
   record(m: FinishedMatch): Payout[] {
@@ -195,7 +214,19 @@ export class Quests {
     if (!r || this.busy) return { paid, failed };
     this.busy = true;
     try {
-      for (const p of this.data.payouts.filter((x) => x.state === 'pending' && x.nextAt <= this.now())) {
+      const eligible = new Map<string, boolean | null>();
+      for (const p of this.data.payouts.filter((x) => (x.state === 'pending' || x.state === 'held') && x.nextAt <= this.now())) {
+        if (this.opts.eligible) {
+          if (!eligible.has(p.address)) eligible.set(p.address, await this.eligibleFor(p.address));
+          const ok = eligible.get(p.address);
+          if (ok === null) { p.nextAt = this.now() + HOLD_RECHECK_MS; continue; } // RPC trouble: try again later
+          if (!ok) {
+            if (p.state !== 'held') { p.state = 'held'; this.save(); }
+            p.nextAt = this.now() + HOLD_RECHECK_MS;
+            continue;
+          }
+          p.state = 'pending';
+        }
         try {
           p.tx = await r.reward(p.address as Address, p.claimId, p.scrap, p.packKind, p.packs);
           p.state = 'paid'; p.error = undefined; paid.push(p);

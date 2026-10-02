@@ -22,6 +22,7 @@ function PayoutTag({ p, done }: { p?: QuestPayoutStatus; done: boolean }) {
   if (!done) return null;
   if (!p || p.state === 'offchain') return <span className="q-tag ok">✓ Done</span>;
   if (p.state === 'paid') return <span className="q-tag ok" title={p.tx}>✓ Paid</span>;
+  if (p.state === 'held') return <Link className="q-tag held" to="/profile" title="Verify as human on your Profile to receive it">🔒 Held</Link>;
   if (p.state === 'failed') return <span className="q-tag err" title={p.error}>Payout failed</span>;
   return <span className="q-tag pending" title={p.error ?? 'Sending your reward on-chain'}><span className="spinner" /> Paying</span>;
 }
@@ -98,6 +99,12 @@ export function QuestPanel({ compact = false }: { compact?: boolean }) {
           <PayoutTag p={s.pack.payout} done={s.pack.completed >= s.pack.goal} />
         </div>
       </div>
+      {s.eligible === false && (
+        <p className="q-gate small">
+          🔒 Quest rewards go to verified humans and registered agents. Your progress counts; earned rewards are held and paid
+          as soon as you <Link to="/profile">verify on your Profile</Link> (within 40 days).
+        </p>
+      )}
       {!s.paysOnChain && <p className="muted small">This server tracks progress but doesn’t pay rewards (it runs off-chain).</p>}
     </section>
   );

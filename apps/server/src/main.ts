@@ -81,6 +81,10 @@ try {
     periodDays: env.QUEST_PACK_DAYS ? Number(env.QUEST_PACK_DAYS) : undefined,
     packGoal: env.QUEST_PACK_GOAL ? Number(env.QUEST_PACK_GOAL) : undefined,
     packKind: env.QUEST_PACK_KIND ? Number(env.QUEST_PACK_KIND) : undefined,
+    // Like season rewards: verified humans and registered agents, not banned. Others' rewards wait until they qualify.
+    eligible: chain.online
+      ? async (a) => !(await chain.isBanned(a)) && ((await chain.isHuman(a)) || (await chain.isAgent(a)))
+      : undefined,
   });
 } catch (e) { fail([(e as Error).message, 'Check QUEST_PACK_DAYS, QUEST_PACK_GOAL and QUEST_PACK_KIND.']); }
 
