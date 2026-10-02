@@ -1,6 +1,6 @@
 import { COSMETIC_SETS } from '@forkfall/engine';
 import { ForkfallClient } from '@forkfall/sdk';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -33,7 +33,7 @@ describe('profiles and cosmetics', () => {
     const c = await newClient();
     collectors.add(c.address.toLowerCase());
     const before = await c.profile(c.address);
-    expect(before.profile).toEqual({ title: null, cardBack: null, badge: null, tutorial: false });
+    expect(before.profile).toEqual({ title: null, cardBack: null, badge: null, tutorial: false, lessons: [] });
     expect(before.unlocked).toEqual(['back:agents']);
 
     await c.completeTutorial();
@@ -48,6 +48,27 @@ describe('profiles and cosmetics', () => {
 
     await c.equip({ cardBack: null });
     expect((await c.profile(c.address)).profile).toMatchObject({ title: 'title:graduate', cardBack: null });
+  });
+
+  it('unlocks Scholar once every lesson is done, and refuses unknown lessons', async () => {
+    const c = await newClient();
+    for (const l of ['prophets', 'brokers', 'degens']) await c.completeTutorial(l);
+    let p = await c.profile(c.address);
+    expect(p.profile).toMatchObject({ tutorial: false, lessons: ['prophets', 'brokers', 'degens'] });
+    expect(p.unlocked).not.toContain('title:scholar');
+    await c.completeTutorial('basics');
+    await c.completeTutorial('basics'); // idempotent
+    p = await c.profile(c.address);
+    expect(p.profile.lessons).toEqual(['prophets', 'brokers', 'degens', 'basics']);
+    expect(p.unlocked).toEqual(expect.arrayContaining(['title:graduate', 'title:scholar']));
+    await c.equip({ title: 'title:scholar' });
+    await expect(c.completeTutorial('poker')).rejects.toThrow(/unknown lesson/);
+  });
+
+  it('reads profiles saved before lessons existed', () => {
+    const old = join(mkdtempSync(join(tmpdir(), 'ff-profiles-old-')), 'p.json');
+    writeFileSync(old, JSON.stringify({ '0xabc': { title: 'title:graduate', cardBack: null, badge: null, tutorial: true } }));
+    expect(new Profiles(old).get('0xABC')).toMatchObject({ tutorial: true, lessons: ['basics'], title: 'title:graduate' });
   });
 
   it('refuses locked, unknown and wrong-kind cosmetics, and needs a session', async () => {

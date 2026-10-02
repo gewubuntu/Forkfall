@@ -402,7 +402,7 @@ export function Log({ events, seat, races }: { events: GameEvent[]; seat: number
   );
 }
 
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { ref.current?.querySelector<HTMLButtonElement>('button.choice, .row-end .btn')?.focus(); }, []);
   return (

@@ -400,3 +400,18 @@
 .gcard-back.cb-neutral, .flip-back.cb-neutral { background: repeating-linear-gradient(45deg, #3a4052 0 3px, #262a36 3px 6px), #262a36; border-color: #cfd6e4; }
 .gcard-back.cb-poncho, .flip-back.cb-poncho { background: repeating-linear-gradient(90deg, #ff9f2e 0 4px, #e5484d 4px 8px, #ffd56b 8px 12px, #3ecf8e 12px 16px, #22d3ee 16px 20px); border-color: #ffd56b; }
 @media (prefers-reduced-motion: reduce) { .cos-badge { animation: none; } }
+
+/* ─── Lesson picker (/learn) ─────────────────────────── */
+.lesson-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin: 18px 0; }
+.lesson-card { display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: start; text-decoration: none; color: var(--text); position: relative;
+  border: 1px solid var(--line); border-left: 3px solid var(--rc); transition: border-color .12s, transform .12s; }
+.lesson-card:hover { border-color: var(--rc); transform: translateY(-2px); }
+.lesson-card img { width: 56px; height: 56px; image-rendering: pixelated; background: var(--bg-2); border-radius: 10px; padding: 4px; }
+.lesson-card h2 { font-size: 17px; margin: 2px 0 4px; }
+.lesson-card p { margin: 0 0 6px; font-size: 14px; }
+.lesson-n { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--rc); font-weight: 600; }
+.lesson-state { grid-column: 1 / -1; justify-self: end; font-size: 13px; font-weight: 600; color: var(--rc); }
+.lesson-state.ok { color: var(--ok); }
+.lesson-card.done { opacity: .85; }
+.learn-banner.small { padding: 9px 14px; font-size: 14px; }
+.coach .show-me { margin-top: 2px; }

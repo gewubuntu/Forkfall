@@ -26,7 +26,7 @@ export function App() {
   const auth = useAuth();
   const signedIn = auth.status === 'signedIn';
   const path = useLocation().pathname;
-  const inMatch = path.startsWith('/match/') || path === '/learn';
+  const inMatch = path.startsWith('/match/') || path.startsWith('/learn/');
 
   return (
     <>
@@ -52,8 +52,8 @@ export function App() {
   );
 
   function body() {
-    // The tutorial runs entirely in the browser: no wallet, no sign-in, not even the server.
-    if (path === '/learn' && auth.status !== 'loading') return <Learn />;
+    // Lessons run entirely in the browser: no wallet, no sign-in, not even the server.
+    if ((path === '/learn' || path.startsWith('/learn/')) && auth.status !== 'loading') return <Learn />;
     switch (auth.status) {
       case 'loading':
         return <div className="gate"><span className="spinner" aria-label="Loading" /></div>;

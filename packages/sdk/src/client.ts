@@ -104,6 +104,9 @@ export interface MatchSummary {
 
 export interface RefereeStatus { state: 'submitting' | 'settled' | 'failed'; tx?: Hex; error?: string; willRetry?: boolean }
 
+/** A player's lessons and equipped cosmetics (`GET /v1/profile`). */
+export interface PlayerProfile extends Equipped { tutorial: boolean; lessons: string[] }
+
 export interface LeaderboardRow { address: Address; agent: boolean; wins: number; losses: number; draws: number }
 
 /** Foundry/wallet-ready settlement payload (`GET /v1/matches/:id/settlement`). */
@@ -311,10 +314,11 @@ export class ForkfallClient {
 
   /** Published season rewards for `address`, with Merkle proofs to claim on SeasonRewards. */
   /** Tutorial completion, equipped cosmetics and which are unlocked (from on-chain card balances). */
-  profile(address: Address) { return this.req<{ profile: Equipped & { tutorial: boolean }; unlocked: string[] }>('GET', `/v1/profile?address=${address}`); }
-  completeTutorial() { return this.req<{ profile: Equipped & { tutorial: boolean } }>('POST', '/v1/profile/tutorial', {}); }
+  profile(address: Address) { return this.req<{ profile: PlayerProfile; unlocked: string[] }>('GET', `/v1/profile?address=${address}`); }
+  /** Records a finished lesson: 'basics' (the tutorial, default), 'prophets', 'brokers' or 'degens'. */
+  completeTutorial(lesson = 'basics') { return this.req<{ profile: PlayerProfile }>('POST', '/v1/profile/tutorial', { lesson }); }
   /** Equip cosmetics (null clears a slot); the server refuses locked ones. */
-  equip(want: Partial<Equipped>) { return this.req<{ profile: Equipped & { tutorial: boolean } }>('POST', '/v1/profile/cosmetics', want); }
+  equip(want: Partial<Equipped>) { return this.req<{ profile: PlayerProfile }>('POST', '/v1/profile/cosmetics', want); }
 
   rewards(address: Address) { return this.req<{ seasons: PlayerReward[] }>('GET', `/v1/rewards?address=${address}`); }
 

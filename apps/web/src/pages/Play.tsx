@@ -135,7 +135,7 @@ export function Play() {
           </Link>
         )}
       </div>
-      <LearnBanner />
+      <LearnBanner races />
 
       <section aria-labelledby="race-h">
         <h2 id="race-h" className="sub">1 · Choose your race</h2>

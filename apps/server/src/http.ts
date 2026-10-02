@@ -184,12 +184,13 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'GET /profile': {
         const a = url.searchParams.get('address') as Address | null;
         if (!a || !/^0x[0-9a-fA-F]{40}$/.test(a)) throw new ApiError(400, 'address required');
-        if (!opts.profiles) return { profile: { title: null, cardBack: null, badge: null, tutorial: false }, unlocked: [] };
+        if (!opts.profiles) return { profile: { title: null, cardBack: null, badge: null, tutorial: false, lessons: [] }, unlocked: [] };
         return { profile: opts.profiles.get(a), unlocked: await opts.profiles.unlocked(a) };
       }
       case 'POST /profile/tutorial': {
         if (!opts.profiles) throw new ApiError(503, 'profiles are not enabled on this server');
-        return { profile: opts.profiles.completeTutorial(need(session).address) };
+        const who = need(session).address;
+        try { return { profile: opts.profiles.completeLesson(who, typeof body?.lesson === 'string' ? body.lesson : 'basics') }; } catch (e) { throw new ApiError(400, (e as Error).message); }
       }
       case 'POST /profile/cosmetics': {
         if (!opts.profiles) throw new ApiError(503, 'profiles are not enabled on this server');
