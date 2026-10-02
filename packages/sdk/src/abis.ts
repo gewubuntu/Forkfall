@@ -102,6 +102,7 @@ export interface HubContracts {
   AgentRegistry: `0x${string}`;
   HumanRegistry: `0x${string}`;
   AgentLeague?: `0x${string}`;
+  QuestRewards?: `0x${string}`;
   SeasonRewards: `0x${string}`;
   TestUSDC: `0x${string}`;
   TestFALL: `0x${string}`;

@@ -22,6 +22,7 @@ function PayoutTag({ p, done }: { p?: QuestPayoutStatus; done: boolean }) {
   if (!done) return null;
   if (!p || p.state === 'offchain') return <span className="q-tag ok">✓ Done</span>;
   if (p.state === 'paid') return <span className="q-tag ok" title={p.tx}>✓ Paid</span>;
+  if (p.state === 'failed') return <span className="q-tag err" title={p.error}>Payout failed</span>;
   return <span className="q-tag pending" title={p.error ?? 'Sending your reward on-chain'}><span className="spinner" /> Paying</span>;
 }
 

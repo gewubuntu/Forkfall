@@ -3,7 +3,7 @@ import {
   type GameEvent, type Race,
 } from '@forkfall/engine';
 import type { QuestStatus } from '@forkfall/sdk';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { keccak256, toHex, type Address, type Hex } from 'viem';
 import type { QuestRewarder } from './chain.ts';
@@ -18,16 +18,17 @@ export interface FinishedMatch {
   endedAt: number;
   turns: number;
   winner: 0 | 1 | 'draw' | null;
-  players: { address: string; race: Race; bot: boolean }[];
+  /** `bot`: the house bot's kind, if this seat is one. Wins against the easy `random` bot don't count. */
+  players: { address: string; race: Race; bot: string | null }[];
   events: GameEvent[];
 }
 
 /** A finished lobby match in the shape quests count (null while it isn't finished). */
 export function finishedMatch(m: Match): FinishedMatch | null {
-  if (m.phase !== 'ended' || !m.state) return null;
+  if (m.phase !== 'ended' || !m.state || m.endedAt === undefined) return null;
   return {
-    id: m.id, endedAt: m.endedAt ?? Date.now(), turns: m.state.turn, winner: m.state.winner, events: m.events,
-    players: m.players.map((p) => ({ address: p.address, race: p.race, bot: !!p.bot })),
+    id: m.id, endedAt: m.endedAt, turns: m.state.turn, winner: m.state.winner, events: m.events,
+    players: m.players.map((p) => ({ address: p.address, race: p.race, bot: p.bot ?? null })),
   };
 }
 
@@ -44,8 +45,9 @@ export interface Payout {
   scrap: number;
   packKind: number;
   packs: number;
-  /** offchain: this server can't pay (no QuestRewards); the reward is recorded but never sent. */
-  state: 'pending' | 'paid' | 'offchain';
+  /** offchain: this server can't pay (no QuestRewards); the reward is recorded but never sent.
+   *  failed: the contract refused it for good (caps, unknown pack kind, missing role) or it kept failing. */
+  state: 'pending' | 'paid' | 'offchain' | 'failed';
   tx?: Hex;
   error?: string;
   attempts: number;
@@ -69,6 +71,13 @@ export interface QuestOptions {
 
 const SEEN_LIMIT = 5000;
 const RETRY_MAX_MS = 60 * 60_000;
+const MAX_ATTEMPTS = 20;
+/** A match that ends this soon after midnight UTC may still count for the day before (slow final moves). */
+const MIDNIGHT_GRACE_MS = 10 * 60_000;
+/** Reverts that will never succeed on retry. */
+const PERMANENT = /OverClaimCap|NothingToPay|UnknownKind|BadCount|AccessControlUnauthorizedAccount/;
+/** Paid and off-chain payouts are kept this long for the status view, then pruned. */
+const KEEP_DAYS = 40;
 
 /**
  * Daily quests, the first-win bonus and the free pack, tracked by the referee from finished matches (it replays
@@ -89,6 +98,9 @@ export class Quests {
     this.packGoal = opts.packGoal ?? Math.round((PACK_GOAL * this.periodDays) / PACK_PERIOD_DAYS);
     this.packKind = opts.packKind ?? 0;
     this.now = opts.now ?? Date.now;
+    if (!Number.isInteger(this.periodDays) || this.periodDays < 1) throw new Error(`quest pack period must be a whole number of days, got ${opts.periodDays}`);
+    if (!Number.isInteger(this.packGoal) || this.packGoal < 1) throw new Error(`quest pack goal must be at least 1, got ${opts.packGoal}`);
+    if (!Number.isInteger(this.packKind) || this.packKind < 0 || this.packKind > 255) throw new Error(`quest pack kind must be 0-255, got ${opts.packKind}`);
   }
 
   get paysOnChain() { return !!this.opts.rewarder; }
@@ -96,16 +108,22 @@ export class Quests {
   /** Counts a finished match for both players (house bots excluded). Idempotent per match id. */
   record(m: FinishedMatch): Payout[] {
     if (this.data.seen.includes(m.id) || !matchCounts(m)) return [];
+    // Only matches that just ended count: never old ones replayed later (restored archives, re-signed results).
+    const day = questDay(m.endedAt);
+    const now = this.now();
+    if (day !== questDay(now) && !(day === questDay(now) - 1 && now - dayStartMs(questDay(now)) < MIDNIGHT_GRACE_MS)) return [];
+    if (m.endedAt > now + 60_000) return [];
     this.data.seen.push(m.id);
     if (this.data.seen.length > SEEN_LIMIT) this.data.seen.splice(0, this.data.seen.length - SEEN_LIMIT);
-    const day = questDay(m.endedAt);
     const out: Payout[] = [];
     m.players.forEach((pl, seat) => {
       if (pl.bot) return;
       const address = pl.address.toLowerCase();
+      // Beating the easy random house bot isn't a win for quests (it still counts as a match played).
+      const softOpponent = m.players[1 - seat]?.bot === 'random';
       const p = this.player(address, day);
       if (p.today.day !== day) return; // a match that ended before today's reset counts for nothing
-      const won = m.winner === seat;
+      const won = m.winner === seat && !softOpponent;
       const qs = dailyQuests(address, day, p.today.rerolls);
       const period = packPeriod(day, this.periodDays).index;
       qs.forEach((q, slot) => {
@@ -187,6 +205,7 @@ export class Quests {
           else {
             p.attempts++; p.error = msg;
             p.nextAt = this.now() + Math.min(RETRY_MAX_MS, 30_000 * 2 ** p.attempts);
+            if (PERMANENT.test(msg) || p.attempts >= MAX_ATTEMPTS) p.state = 'failed';
             failed.push(p);
           }
         }
@@ -213,9 +232,26 @@ export class Quests {
   }
 
   private save() {
+    this.prune();
     if (!this.opts.file) return;
     mkdirSync(dirname(this.opts.file), { recursive: true });
-    writeFileSync(this.opts.file, JSON.stringify(this.data));
+    // Write then rename, so a crash mid-write never leaves a half-written file behind.
+    const tmp = `${this.opts.file}.tmp`;
+    writeFileSync(tmp, JSON.stringify(this.data));
+    renameSync(tmp, this.opts.file);
+  }
+
+  /** Drops settled payouts and pack-period counts nobody can see any more. */
+  private prune() {
+    const today = questDay(this.now());
+    const minDay = today - KEEP_DAYS;
+    if (this.data.payouts.some((p) => p.day < minDay && p.state !== 'pending')) {
+      this.data.payouts = this.data.payouts.filter((p) => p.day >= minDay || p.state === 'pending');
+    }
+    const current = packPeriod(today, this.periodDays).index;
+    for (const p of Object.values(this.data.players)) {
+      for (const k of Object.keys(p.periods)) if (Number(k) < current - 1) delete p.periods[k];
+    }
   }
 }
 

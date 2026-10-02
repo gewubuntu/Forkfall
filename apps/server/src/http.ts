@@ -276,7 +276,7 @@ function serveStatic(path: string, res: ServerResponse, dir?: string) {
 
 const CONTRACT_KEYS = [
   'CardRegistry', 'StarterDecks', 'PackSale', 'Crafting', 'DeckRegistry', 'MatchSettlement',
-  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'AgentLeague', 'TestUSDC', 'TestFALL',
+  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'AgentLeague', 'QuestRewards', 'TestUSDC', 'TestFALL',
 ] as const;
 
 function hubContracts(book: AddressBook | null) {

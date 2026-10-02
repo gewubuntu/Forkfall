@@ -57,9 +57,9 @@ describe('daily quests', () => {
     expect(quest('win-agents')!.progress(side(0))).toBe(g.winner === 0 ? 1 : 0);
   });
 
-  it('ignores matches that end before turn 4', () => {
-    expect(matchCounts({ turns: 3 })).toBe(false);
-    expect(matchCounts({ turns: 4 })).toBe(true);
+  it('ignores matches shorter than four turns each', () => {
+    expect(matchCounts({ turns: 7 })).toBe(false);
+    expect(matchCounts({ turns: 8 })).toBe(true);
   });
 
   it('pack periods start on Mondays and can be weekly or biweekly', () => {

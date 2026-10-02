@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
 import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
 import { LeaguePayouts, leagueDir } from './league.ts';
@@ -50,7 +50,9 @@ if (!offchain && !env.HOUSE_PRIVATE_KEY && chainId !== ANVIL) {
 
 const chain = offchain ? new Chain(null, undefined, chainId) : Chain.load(bookFile, rpcUrl, chainId);
 const houseKey = (env.HOUSE_PRIVATE_KEY as Hex | undefined) ?? generatePrivateKey();
-const house = privateKeyToAccount(houseKey);
+// One nonce manager for every referee write (settlement, league starts, attestations, quest payouts), so
+// concurrent transactions from the same key never collide on a nonce.
+const house = privateKeyToAccount(houseKey, { nonceManager });
 const settlementDir = env.SETTLEMENT_DIR ?? join(root, 'contracts/settlements');
 const archiveDir = env.MATCH_ARCHIVE_DIR ?? join(root, 'apps/server/data', String(chainId));
 
@@ -70,14 +72,17 @@ const league = chain.online ? leagueOps(chain, house) : null;
 const profiles = new Profiles(env.PROFILES_FILE ?? profilesFile(root, chainId), (a) => chain.ownedCounts(a));
 
 // Daily quests: progress from finished matches, Scrap and free-pack payouts through QuestRewards (needs testnet ETH).
-const quests = new Quests({
-  file: env.QUESTS_FILE ?? questsFile(root, chainId),
-  rewarder: chain.online ? questRewarder(chain, house) : null,
-  chainId,
-  periodDays: env.QUEST_PACK_DAYS ? Number(env.QUEST_PACK_DAYS) : undefined,
-  packGoal: env.QUEST_PACK_GOAL ? Number(env.QUEST_PACK_GOAL) : undefined,
-  packKind: env.QUEST_PACK_KIND ? Number(env.QUEST_PACK_KIND) : undefined,
-});
+let quests: Quests;
+try {
+  quests = new Quests({
+    file: env.QUESTS_FILE ?? questsFile(root, chainId),
+    rewarder: chain.online ? questRewarder(chain, house) : null,
+    chainId,
+    periodDays: env.QUEST_PACK_DAYS ? Number(env.QUEST_PACK_DAYS) : undefined,
+    packGoal: env.QUEST_PACK_GOAL ? Number(env.QUEST_PACK_GOAL) : undefined,
+    packKind: env.QUEST_PACK_KIND ? Number(env.QUEST_PACK_KIND) : undefined,
+  });
+} catch (e) { fail([(e as Error).message, 'Check QUEST_PACK_DAYS, QUEST_PACK_GOAL and QUEST_PACK_KIND.']); }
 
 const lobby = new Lobby({
   chain,

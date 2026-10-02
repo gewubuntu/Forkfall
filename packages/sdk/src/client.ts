@@ -104,7 +104,7 @@ export interface MatchSummary {
 
 export interface RefereeStatus { state: 'submitting' | 'settled' | 'failed'; tx?: Hex; error?: string; willRetry?: boolean }
 
-export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain'; tx?: Hex; error?: string }
+export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain' | 'failed'; tx?: Hex; error?: string }
 
 /** Today's daily quests, the first-win bonus and free-pack progress (`GET /v1/quests`). */
 export interface QuestStatus {

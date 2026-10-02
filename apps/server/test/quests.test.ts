@@ -18,7 +18,7 @@ const NOON = Date.UTC(2026, 9, 7, 12); // a Wednesday
 const DAY = questDay(NOON);
 
 /** A finished match with enough events to complete every quest Alice has today. */
-function match(id: string, opts: { winner?: 0 | 1 | 'draw'; turns?: number; at?: number; bot?: boolean } = {}): FinishedMatch {
+function match(id: string, opts: { winner?: 0 | 1 | 'draw'; turns?: number; at?: number; bot?: 'greedy' | 'random' } = {}): FinishedMatch {
   const ev: GameEvent[] = [];
   for (let i = 0; i < 12; i++) {
     ev.push({ t: 'play', seat: 0, cardId: 37, uid: 100 + i, ape: true }); // Bridge Runner: a Rush unit, Aped
@@ -31,7 +31,7 @@ function match(id: string, opts: { winner?: 0 | 1 | 'draw'; turns?: number; at?:
   }
   return {
     id, endedAt: opts.at ?? NOON, turns: opts.turns ?? 9, winner: opts.winner ?? 0, events: ev,
-    players: [{ address: ALICE, race: 'agents', bot: false }, { address: BOB, race: 'degens', bot: !!opts.bot }],
+    players: [{ address: ALICE, race: 'agents', bot: null }, { address: BOB, race: 'degens', bot: opts.bot ?? null }],
   };
 }
 
@@ -73,11 +73,38 @@ describe('quest tracking', () => {
 
   it('skips house bots, short matches, and matches from before the reset', () => {
     const q = new Quests({ chainId: 31337, now: () => NOON });
-    const out = q.record(match('bot', { bot: true, winner: 1 }));
+    const out = q.record(match('bot', { bot: 'greedy', winner: 1 }));
     expect(out.every((p) => p.address === ALICE)).toBe(true);
-    expect(q.record(match('short', { turns: 3 }))).toEqual([]);
+    expect(q.record(match('short', { turns: 7 }))).toEqual([]);
     q.record(match('today', { at: NOON }));
     expect(q.record(match('yesterday', { at: NOON - 86_400_000 }))).toEqual([]);
+  });
+
+  it('never counts matches from an earlier day, even for a player it has never seen (restored archives)', () => {
+    const q = new Quests({ chainId: 31337, now: () => NOON });
+    for (let d = 1; d <= 5; d++) expect(q.record(match(`old${d}`, { at: NOON - d * 86_400_000 }))).toEqual([]);
+    expect(q.status(ALICE).pack.completed).toBe(0);
+    // ...except a match that ends in the first minutes after midnight, for the day it was played.
+    const justAfter = Date.UTC(2026, 9, 7, 0, 5);
+    const q2 = new Quests({ chainId: 31337, now: () => justAfter });
+    expect(q2.record(match('late', { at: justAfter - 6 * 60_000 })).length).toBeGreaterThan(0);
+    const q3 = new Quests({ chainId: 31337, now: () => justAfter + 20 * 60_000 });
+    expect(q3.record(match('late', { at: justAfter - 6 * 60_000 }))).toEqual([]);
+  });
+
+  it('a win against the easy random house bot counts as a match, not a win', () => {
+    const q = new Quests({ chainId: 31337, now: () => NOON });
+    const out = q.record(match('soft', { bot: 'random', winner: 0 }));
+    expect(out.some((p) => p.kind === 'firstWin')).toBe(false);
+    expect(q.status(ALICE).firstWin.done).toBe(false);
+    const greedy = new Quests({ chainId: 31337, now: () => NOON });
+    expect(greedy.record(match('hard', { bot: 'greedy', winner: 0 })).some((p) => p.kind === 'firstWin')).toBe(true);
+  });
+
+  it('rejects bad pack settings at startup', () => {
+    expect(() => new Quests({ chainId: 1, periodDays: Number('x') })).toThrow(/period/);
+    expect(() => new Quests({ chainId: 1, packGoal: 0 })).toThrow(/goal/);
+    expect(() => new Quests({ chainId: 1, packKind: 300 })).toThrow(/kind/);
   });
 
   it('rerolls one unfinished quest a day', () => {
@@ -137,6 +164,18 @@ describe('quest tracking', () => {
     expect(stored.payouts.every((p: { state: string }) => p.state === 'paid')).toBe(true);
     expect(reloaded.status(ALICE).firstWin.payout?.state).toBe('paid');
   });
+
+  it('stops retrying a payout the contract will never accept', async () => {
+    const f = fakeRewarder();
+    const q = new Quests({ chainId: 31337, rewarder: f.r, now: () => NOON });
+    q.record(match('perm'));
+    f.failWith('UnknownKind(9)');
+    const r = await q.payDue();
+    expect(r.failed.every((p) => p.state === 'failed')).toBe(true);
+    expect(q.status(ALICE).firstWin.payout?.state).toBe('failed');
+    f.failWith(null);
+    expect((await q.payDue()).paid).toEqual([]); // not retried
+  });
 });
 
 describe('quests over HTTP', () => {
@@ -154,7 +193,7 @@ describe('quests over HTTP', () => {
     const before = await c.quests();
     expect(before.quests).toHaveLength(3);
     expect(before.paysOnChain).toBe(false);
-    const id = await c.practice({ race: 'agents', botRace: 'brokers' });
+    const id = await c.practice({ race: 'agents', botRace: 'brokers', bot: 'greedy' });
     const loop = runMatch(c, id, { pollMs: 5 });
     for (let i = 0; i < 4000 && lobby.get(id).phase !== 'ended'; i++) {
       await lobby.stepBots();

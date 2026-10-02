@@ -14,7 +14,8 @@ export interface QuestMatch {
   seat: Seat;
   won: boolean;
   race: Race;
-  /** Turns the match lasted; matches shorter than `QUEST_MIN_TURNS` don't count (no instant-concede farming). */
+  /** Turns the match lasted (`GameState.turn`: each player's turn counts once, so 8 = four turns each).
+   *  Matches shorter than `QUEST_MIN_TURNS` don't count (no instant-concede farming). */
   turns: number;
   events: GameEvent[];
 }
@@ -32,7 +33,8 @@ export interface QuestDef {
   progress: (m: QuestMatch) => number;
 }
 
-export const QUEST_MIN_TURNS = 4;
+/** Four turns each. */
+export const QUEST_MIN_TURNS = 8;
 export const QUESTS_PER_DAY = 3;
 export const REROLLS_PER_DAY = 1;
 export const FIRST_WIN_SCRAP = 50;
