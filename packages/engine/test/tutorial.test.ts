@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, createLesson, createTutorial, LESSONS, tutorialBotMove } from '../src/index.ts';
-import { playLesson } from './student.ts';
+import { playLesson, playRandom } from './student.ts';
 
 describe('lessons', () => {
   it('stacks the basics: you start with Compute Node, Launch Bot and Bridge Runner; the bot Treasury is 12', () => {
@@ -42,6 +42,41 @@ describe('lessons', () => {
     const prophets = LESSONS.find((l) => l.id === 'prophets')!;
     expect(prophets.steps[1].forbid!(g, { type: 'play', uid: 1, condition: 'plays3Cards' })).toMatch(/attacks/);
     expect(prophets.steps[1].forbid!(g, { type: 'play', uid: 1, condition: 'attacks' })).toBeNull();
+  });
+
+  it('never locks a student out of attacking, even off script', () => {
+    // Brokers: skip Bond Desk on turn 3 (play the second Intern instead). The attack ban is only for turn 3, so
+    // the student attacks on turn 5 and still wins with every step in order.
+    const brokers = playLesson('brokers', false, (g, legal, step) => {
+      if (step !== 'guard') return undefined;
+      return legal.find((a) => a.type === 'play' && g.players[0].hand.find((h) => h.uid === a.uid)?.cardId !== 18 && !a.target);
+    });
+    const t5 = brokers.all.findIndex((e) => e.t === 'turnStart' && e.turn === 5);
+    expect(brokers.all.slice(0, t5).some((e) => e.t === 'play' && e.cardId === 18)).toBe(false);
+    expect(brokers.all.slice(t5).some((e) => e.t === 'attack' && e.seat === 0)).toBe(true);
+    expect(brokers.g.winner).toBe(0);
+    expect(brokers.seen).toEqual(brokers.steps);
+    // A full board makes Bond Desk unplayable: the ban lifts and the step counts as done.
+    const guard = LESSONS.find((l) => l.id === 'brokers')!.steps.find((x) => x.id === 'guard')!;
+    const full = structuredClone(createLesson('brokers').state);
+    full.turn = 3;
+    full.players[0].hand.push({ uid: 900, cardId: 18 });
+    while (full.players[0].board.length < 5) full.players[0].board.push({ ...full.players[0].board[0], uid: 901 + full.players[0].board.length });
+    expect(guard.forbid!(full, { type: 'attack', attacker: full.players[0].board[0].uid, target: 'treasury' })).toBeNull();
+    expect(guard.done!(full, [], [])).toBe(true);
+    // Random students who obey every rule: attacks are never banned for more than two of their turns in a row.
+    for (const l of LESSONS) {
+      for (let seed = 1; seed <= 300; seed++) expect(playRandom(l.id, seed).longestBan, `${l.id} seed ${seed}`).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('keeps the Ape step on track: Pump Frog must be Aped, and Show me finds an Ape play', () => {
+    const degens = LESSONS.find((l) => l.id === 'degens')!;
+    const ape = degens.steps.find((s) => s.id === 'ape')!;
+    const g = createLesson('degens').state;
+    const frog = g.players[0].hand.find((h) => h.cardId === 27)!.uid;
+    expect(ape.forbid!(g, { type: 'play', uid: frog })).toMatch(/Ape in/);
+    expect(ape.forbid!(g, { type: 'play', uid: frog, ape: true })).toBeNull();
   });
 
   it('the basics bot lands its Guard on its second turn', () => {

@@ -63,6 +63,8 @@ describe('profiles and cosmetics', () => {
     expect(p.unlocked).toEqual(expect.arrayContaining(['title:graduate', 'title:scholar']));
     await c.equip({ title: 'title:scholar' });
     await expect(c.completeTutorial('poker')).rejects.toThrow(/unknown lesson/);
+    await expect(c.completeTutorial(5 as never)).rejects.toThrow(/must be a string/);
+    await expect(c.completeTutorial(null as never)).rejects.toThrow(/must be a string/);
   });
 
   it('reads profiles saved before lessons existed', () => {

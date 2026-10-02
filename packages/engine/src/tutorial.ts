@@ -1,5 +1,5 @@
 import { card } from './cards.ts';
-import { applyAction, attackTargets, canAttack, createScriptedMatch, legalActions } from './engine.ts';
+import { applyAction, attackTargets, BOARD_SLOTS, canAttack, createScriptedMatch, legalActions } from './engine.ts';
 import type { Action, GameEvent, GameState, PredictionCondition, Race } from './types.ts';
 
 /**
@@ -73,6 +73,16 @@ const endAuto = (): Action => ({ type: 'endTurn' });
 const endStep = (id: string, body: string): TutorialStep => ({ id, target: '.end-turn', done: myTurnStarted, auto: endAuto, title: 'End your turn', body });
 const winStep = (body: string): TutorialStep => ({ id: 'win', target: '[data-treasury="1"]', done: ended, title: 'Finish it', body });
 const noAttacks = (why: string) => (_g: GameState, a: Action) => (a.type === 'attack' ? why : null);
+/** Whether card `id` can still be played this match: in hand, and (for a unit) there's room on the board. */
+const canStillPlay = (g: GameState, id: number) =>
+  handUid(g, id) !== undefined && (card(id).type !== 'unit' || g.players[TUTORIAL_YOU].board.length < BOARD_SLOTS);
+/** Done once card `id` is played, once it can't be any more (discarded, board full), or once the turn it was
+ *  meant for has passed: a lesson never locks up. */
+const playedBy = (id: number, turn: number) => (g: GameState, ev: GameEvent[], all: GameEvent[]) =>
+  played(id)(g, ev, all) || !canStillPlay(g, id) || g.turn > turn;
+/** No attacks on `turn` while card `id` still waits to be played (the ban lifts if it can't be). */
+const noAttacksUntilPlayed = (id: number, turn: number, why: string) => (g: GameState, a: Action) =>
+  (a.type === 'attack' && g.turn <= turn && canStillPlay(g, id) ? why : null);
 
 // ─── Basics: Gas, Compute/Deploy, attacking, Guard, Rush, Automate ───
 const BASICS: Lesson = {
@@ -194,8 +204,8 @@ const BROKERS: Lesson = {
       body: 'Brokers are patient capital. Units with Hold grow +1/+1 at the start of your turn if they sat through your whole last turn without attacking, and some pay a Dividend when they do.',
     },
     {
-      id: 'hold', target: '.tut-hand', done: played(17), auto: playAuto(17), title: 'Hold',
-      forbid: noAttacks('Not this turn: your Analyst is holding. Units with Hold that skip attacking grow.'),
+      id: 'hold', target: '.tut-hand', done: playedBy(17, 1), auto: playAuto(17), title: 'Hold',
+      forbid: noAttacksUntilPlayed(17, 1, 'Not this turn: your Analyst is holding. Units with Hold that skip attacking grow.'),
       body: 'Your Analyst is already in play. Leave it be this turn so it holds. Play Intern (1 Gas); it has Hold too.',
     },
     { ...endStep('end1', 'End your turn without attacking.'), forbid: noAttacks('Keep holding: don’t attack this turn.') },
@@ -204,8 +214,8 @@ const BROKERS: Lesson = {
       body: 'Analyst held: +1/+1, and its Dividend drew you a card. Intern didn’t grow yet: a unit has to sit through a full turn of yours first.',
     },
     {
-      id: 'guard', target: '.tut-hand', done: played(18), auto: playAuto(18), title: 'Protect your investments',
-      forbid: noAttacks('Keep holding for one more turn: Intern grows next turn, and Analyst again.'),
+      id: 'guard', target: '.tut-hand', done: playedBy(18, 3), auto: playAuto(18), title: 'Protect your investments',
+      forbid: noAttacksUntilPlayed(18, 3, 'Keep holding for one more turn: Intern grows next turn, and Analyst again.'),
       body: 'The bot has a swarm coming. Play Bond Desk: a 0/3 Guard with Hold. Enemy units must hit it first, which keeps your growing units safe.',
     },
     { ...endStep('end2', 'End your turn. The bot’s units have to hit your Guard, not the units you’re growing.'), forbid: noAttacks('Keep holding: don’t attack this turn.') },
@@ -243,7 +253,10 @@ const DEGENS: Lesson = {
     },
     endStep('end1', 'End your turn.'),
     {
-      id: 'ape', target: '.tut-hand', done: (_g, _ev, all) => all.some((e) => e.t === 'play' && mine(e) && !!e.ape), auto: playAuto(27, { ape: true }), title: 'Ape in',
+      id: 'ape', target: '.tut-hand', done: (_g, _ev, all) => all.some((e) => e.t === 'play' && mine(e) && !!e.ape),
+      auto: (g, legal) => playAuto(27, { ape: true })(g, legal) ?? legal.find((a) => a.type === 'play' && !!a.ape),
+      forbid: (g, a) => (a.type === 'play' && !a.ape && a.uid === handUid(g, 27) ? 'Choose “Ape in” for Pump Frog this time: it’s free.' : null),
+      title: 'Ape in',
       body: 'Pump Frog has Ape: play it for 2 less Gas (free here!) with a random downside: lose 2 Treasury, discard a random card, or it enters with −1 health. Click Pump Frog and choose “Ape in”.',
     },
     {

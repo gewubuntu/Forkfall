@@ -190,7 +190,9 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'POST /profile/tutorial': {
         if (!opts.profiles) throw new ApiError(503, 'profiles are not enabled on this server');
         const who = need(session).address;
-        try { return { profile: opts.profiles.completeLesson(who, typeof body?.lesson === 'string' ? body.lesson : 'basics') }; } catch (e) { throw new ApiError(400, (e as Error).message); }
+        const lesson = body?.lesson === undefined ? 'basics' : body.lesson;
+        if (typeof lesson !== 'string') throw new ApiError(400, 'lesson must be a string');
+        try { return { profile: opts.profiles.completeLesson(who, lesson) }; } catch (e) { throw new ApiError(400, (e as Error).message); }
       }
       case 'POST /profile/cosmetics': {
         if (!opts.profiles) throw new ApiError(503, 'profiles are not enabled on this server');
