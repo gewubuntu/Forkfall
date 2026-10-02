@@ -51,6 +51,8 @@ export function GameCard(p: GameCardProps) {
     <div
       className={cls}
       style={style}
+      data-uid={u?.uid}
+      data-card={u ? p.cardId : undefined}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-label={p.label ?? `${c.name}${u ? `, ${atk} attack, ${hp} health` : `, costs ${p.cost ?? c.cost}`}`}

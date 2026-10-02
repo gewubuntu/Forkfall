@@ -12,7 +12,9 @@ import { useHub } from '../chain/useHub.ts';
 import { useSettled, useSettleMatch } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
 import { describeEvent, KEYWORD_HELP, KEYWORD_LABEL, RACE_INFO, raceName } from '../game/meta.ts';
+import { FxLayer } from '../game/FxLayer.tsx';
 import { useMatch } from '../game/useMatch.ts';
+import { isMuted, setMuted } from '../lib/sfx.ts';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
 import { inTime, shortAddr } from '../lib/format.ts';
 
@@ -33,6 +35,7 @@ export function Match() {
   /** Whether the pending play of a hand card uses Ape (chosen in the Ape dialog). */
   const apeChoice = useRef(new Map<number, boolean>());
   const [resultOpen, setResultOpen] = useState(true);
+  const arenaRef = useRef<HTMLDivElement>(null);
 
   const s = m.snap;
   if (s?.now) skew.current = s.now - Date.now();
@@ -155,7 +158,8 @@ export function Match() {
 
   return (
     <div className={`match ${myTurn ? 'my-turn' : ''}`}>
-      <div className="arena" onClick={() => { if (sel) { setSelected(null); setHint(null); } }}>
+      <FxLayer events={m.events} seat={seat} arena={arenaRef} races={[raceName(races[0]), raceName(races[1])]} />
+      <div className="arena" ref={arenaRef} onClick={() => { if (sel) { setSelected(null); setHint(null); } }}>
         <Side s={s} side={op} isMe={false} hits={m.hits}
           onTreasury={() => clickTreasury(op)} treasuryTarget={!!sel && sel.kind === 'unit' && targets.has('treasury')}>
           <div className="lane" aria-label="Opponent board">
@@ -282,6 +286,7 @@ export function Side({ s, side, isMe, hits, children, onTreasury, treasuryTarget
           </div>
         </div>
         <button
+          data-treasury={side}
           className={`treasury ${low ? 'low' : ''} ${treasuryTarget ? 'target' : ''} ${hits.has(`treasury-${side}`) ? 'hit' : ''}`}
           onClick={(e) => { e.stopPropagation(); onTreasury?.(); }} disabled={!treasuryTarget}
           aria-label={`${isMe ? 'Your' : s.seat !== null ? 'Opponent' : raceName(p.race)} Treasury: ${p.treasury}${treasuryTarget ? '. Attack it' : ''}`}
@@ -340,11 +345,20 @@ function TurnBar({ s, now, myTurn, sending, hint, onEnd, onConcede, onShowResult
       )}
       <span className="hint-inline" role="status" title={hint ?? undefined}>{hint ?? ''}</span>
       <div className="tb-right">
+        <MuteButton />
         {s.phase === 'active' && s.seat !== null && <button className="btn btn-ghost" onClick={onConcede}>Concede</button>}
         {onShowResult && <button className="btn btn-primary" onClick={onShowResult}>Show result</button>}
         {myTurn && <button className="btn btn-primary end-turn" onClick={onEnd} disabled={sending}>{sending ? <span className="spinner" /> : 'End turn'}</button>}
       </div>
     </div>
+  );
+}
+
+function MuteButton() {
+  const [muted, setM] = useState(isMuted());
+  return (
+    <button className="btn btn-ghost icon-only" onClick={() => { setMuted(!muted); setM(!muted); }}
+      aria-label={muted ? 'Unmute sounds' : 'Mute sounds'} title={muted ? 'Sound off' : 'Sound on'}>{muted ? '🔇' : '🔊'}</button>
   );
 }
 

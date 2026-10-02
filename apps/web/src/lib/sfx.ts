@@ -69,4 +69,15 @@ export const sfx = {
     } else note(440, 0, 0.09, 'square', 0.035, 520);
   },
   done: () => { [0, 4, 7].forEach((s, i) => note(523 * 2 ** (s / 12), i * 0.05, 0.2, 'triangle', 0.04)); },
+  // ─── Match ───
+  play: () => { note(330, 0, 0.08, 'square', 0.035, 660); },
+  summon: () => { note(120, 0, 0.16, 'triangle', 0.09, 60); noise(0, 0.08, 0.05); },
+  attack: () => { note(180, 0, 0.1, 'square', 0.04, 90); },
+  hit: (n: number) => { noise(0, 0.12 + Math.min(n, 8) * 0.01, 0.08 + Math.min(n, 8) * 0.01); note(110, 0, 0.12, 'square', 0.05, 55); },
+  death: () => { noise(0, 0.35, 0.1); [0, -3, -7].forEach((s, i) => note(220 * 2 ** (s / 12), i * 0.06, 0.12, 'square', 0.03)); },
+  buff: () => { note(660, 0, 0.08, 'triangle', 0.04); note(990, 0.06, 0.12, 'triangle', 0.04); },
+  turn: () => { [0, 7].forEach((s, i) => note(440 * 2 ** (s / 12), i * 0.09, 0.2, 'triangle', 0.05)); },
+  predict: (hit: boolean) => { (hit ? [0, 4, 7, 12] : [12, 6, 0]).forEach((s, i) => note(392 * 2 ** (s / 12), i * 0.07, 0.16, 'square', 0.04)); },
+  win: () => { [0, 4, 7, 12, 7, 12, 16].forEach((s, i) => note(392 * 2 ** (s / 12), i * 0.11, 0.25, 'square', 0.045)); },
+  lose: () => { [7, 3, 0, -5].forEach((s, i) => note(330 * 2 ** (s / 12), i * 0.16, 0.3, 'triangle', 0.05)); },
 };
