@@ -42,6 +42,7 @@ export const packSaleAbi = parseAbi([
   'event PacksBought(address indexed buyer, uint256 firstPackId, uint256 count, address payToken, uint256 paid)',
   'event PackOpened(uint256 indexed packId, address indexed owner, uint256[5] cardIds)',
   'event PackRecommitted(uint256 indexed packId, uint64 revealBlock)',
+  'event PacksGranted(address indexed to, uint256 firstPackId, uint256 count, uint8 kind)',
   'error BadCount()',
   'error WrongPayment()',
   'error TokenNotAccepted(address token)',
@@ -58,10 +59,23 @@ export const craftingAbi = parseAbi([
   'function craftCost(uint256 rarity) view returns (uint256)',
   'function scrapCards(uint256[] ids, uint256[] amounts)',
   'function craft(uint256 id)',
+  'event ScrapGranted(address indexed player, uint256 amount)',
   'error StarterNotScrappable(uint256 id)',
   'error FoilNotCraftable(uint256 id)',
   'error NotEnoughScrap(uint256 have, uint256 need)',
   'error ERC1155InsufficientBalance(address sender, uint256 balance, uint256 needed, uint256 tokenId)',
+]);
+
+/** Daily quest payouts (Scrap and free packs), paid by the referee. */
+export const questRewardsAbi = parseAbi([
+  'function reward(address player, bytes32 claimId, uint256 scrap, uint8 packKind, uint256 packCount)',
+  'function claimed(bytes32 claimId) view returns (bool)',
+  'event Rewarded(bytes32 indexed claimId, address indexed player, uint256 scrap, uint8 packKind, uint256 packCount)',
+  'error AlreadyClaimed(bytes32 claimId)',
+  'error OverClaimCap()',
+  'error OverDailyBudget()',
+  'error NothingToPay()',
+  'error UnknownKind(uint8 kind)',
 ]);
 
 export const faucetTokenAbi = parseAbi([
@@ -88,6 +102,7 @@ export interface HubContracts {
   AgentRegistry: `0x${string}`;
   HumanRegistry: `0x${string}`;
   AgentLeague?: `0x${string}`;
+  QuestRewards?: `0x${string}`;
   SeasonRewards: `0x${string}`;
   TestUSDC: `0x${string}`;
   TestFALL: `0x${string}`;

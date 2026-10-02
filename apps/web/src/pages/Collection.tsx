@@ -247,6 +247,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
                 <li><b>Pity timer:</b> {untilPity !== undefined ? <>a Legendary is guaranteed within <b className="pity-n">{untilPity}</b> more pack{untilPity === 1 ? '' : 's'}.</> : 'a Legendary is guaranteed within 20 packs.'}</li>
                 <li><b>No dead duplicates:</b> you won’t get a 3rd copy (2nd of a Legendary) until you own the playset of that rarity.</li>
                 <li><b>✦ Foils:</b> about 1 card in 15 is a foil. Same card in play, animated holo, scraps for 4×.</li>
+                <li><b>🎁 Free packs:</b> complete your daily quests (on <Link to="/play">Play</Link>) to earn a free pack; quests also pay Scrap for crafting.</li>
               </ul>
               <details className="odds"><summary>Published odds</summary>
                 <table><tbody>

@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { LearnBanner } from '../components/LearnBanner.tsx';
+import { QuestPanel } from '../components/QuestPanel.tsx';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
 import { shortAddr, timeLeft } from '../lib/format.ts';
 import { CHAIN_NAMES } from '../wagmi.ts';
@@ -37,6 +38,7 @@ export function Home() {
           <dt>On-chain checks</dt><dd>{me.onchain ? 'on' : 'off (server has no RPC)'}</dd>
         </dl>
       </div>
+      <QuestPanel />
       <div className="grid4">
         {NEXT.map((f) => (
           <Link className="panel feature" to={f.to} key={f.to}>

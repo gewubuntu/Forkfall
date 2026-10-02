@@ -415,3 +415,35 @@
 .lesson-card.done { opacity: .85; }
 .learn-banner.small { padding: 9px 14px; font-size: 14px; }
 .coach .show-me { margin-top: 2px; }
+
+/* ─── Daily quests ───────────────────────────────────── */
+.quests { margin: 0 0 22px; }
+.quests-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.quests-head h2 { margin: 0; font-size: 18px; }
+.quest-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.quest { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-2); display: flex; flex-direction: column; gap: 6px; }
+.quest.done { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
+.quest.bonus { border-style: dashed; }
+.q-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; }
+.q-reward { font-size: 12.5px; font-weight: 700; color: var(--warn); white-space: nowrap; }
+.q-bar { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--line) 70%, transparent); overflow: hidden; }
+.q-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--base, #3b82f6), var(--ok)); transition: width .6s ease; }
+.q-bar.pack i { background: linear-gradient(90deg, var(--poncho), #ffd56b); }
+.q-foot { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.q-tag { margin-left: auto; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+.q-tag.ok { color: var(--ok); }
+.q-tag.pending { color: var(--warn); }
+.q-tag.err { color: var(--danger); }
+.q-tag.held { color: var(--warn); text-decoration: none; }
+.q-gate { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: #2a2210; border: 1px solid #6b5420; color: #ffe7a8; }
+.q-gate a { color: inherit; }
+.q-tag .spinner { width: 11px; height: 11px; }
+.q-reroll { margin-left: auto; font-size: 12px; background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+.q-reroll:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
+.quest-pack { padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--poncho) 40%, var(--line)); background: color-mix(in srgb, var(--poncho) 6%, var(--bg-2)); display: flex; flex-direction: column; gap: 6px; }
+.quest-pack.done { box-shadow: 0 0 18px color-mix(in srgb, var(--poncho) 30%, transparent); }
+.quests.compact { padding: 0; border: 0; background: none; margin: 14px 0 0; text-align: left; }
+.quests.compact .quest-list { grid-template-columns: 1fr; gap: 6px; margin-bottom: 8px; }
+.quests.compact .quest { padding: 8px 10px; }
+.result-quests { max-height: 40vh; overflow: auto; }
+@media (prefers-reduced-motion: reduce) { .q-bar i { transition: none; } }

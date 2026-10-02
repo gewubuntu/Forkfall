@@ -8,6 +8,8 @@ import {PackSale} from "../src/PackSale.sol";
 import {MatchSettlement} from "../src/MatchSettlement.sol";
 import {AgentLeague} from "../src/AgentLeague.sol";
 import {StarterDecks} from "../src/StarterDecks.sol";
+import {Crafting} from "../src/Crafting.sol";
+import {QuestRewards} from "../src/QuestRewards.sol";
 import {Set1Cards} from "../src/generated/Set1Cards.sol";
 
 /// @notice Read-only health check of a deployed hub, using deployments/<chainId>.json.
@@ -19,11 +21,12 @@ contract CheckDeployment is ForkfallScript {
         requireTestnet();
         console2.log("Checking Forkfall deployment on chain", block.chainid);
 
-        string[12] memory names = [
+        string[13] memory names = [
             "CardRegistry",
             "StarterDecks",
             "PackSale",
             "Crafting",
+            "QuestRewards",
             "AgentRegistry",
             "HumanRegistry",
             "DeckRegistry",
@@ -52,6 +55,11 @@ contract CheckDeployment is ForkfallScript {
         check(cards.hasRole(cards.MINTER_ROLE(), addr("Crafting")), "Crafting can mint");
         check(cards.hasRole(cards.BURNER_ROLE(), addr("Crafting")), "Crafting can burn");
         check(ms.hasRole(ms.REFEREE_ROLE(), referee), "referee holds REFEREE_ROLE");
+        QuestRewards quests = QuestRewards(addr("QuestRewards"));
+        Crafting crafting = Crafting(addr("Crafting"));
+        check(quests.hasRole(quests.REWARDER_ROLE(), referee), "referee can pay quest rewards");
+        check(crafting.hasRole(crafting.SCRAP_GRANTER_ROLE(), address(quests)), "QuestRewards can grant Scrap");
+        check(packs.hasRole(packs.PACK_GRANTER_ROLE(), address(quests)), "QuestRewards can grant packs");
         check(packs.ethPrice() > 0, "pack ETH price set");
         check(packs.kindExists(1), "Poncho booster (pack kind 1) defined");
         check(packs.tokenPrice(addr("TestUSDC")) > 0, "pack tUSDC price set");

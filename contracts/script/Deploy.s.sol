@@ -7,6 +7,7 @@ import {CardRegistry} from "../src/CardRegistry.sol";
 import {StarterDecks} from "../src/StarterDecks.sol";
 import {PackSale} from "../src/PackSale.sol";
 import {Crafting} from "../src/Crafting.sol";
+import {QuestRewards} from "../src/QuestRewards.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {HumanRegistry} from "../src/HumanRegistry.sol";
 import {DeckRegistry} from "../src/DeckRegistry.sol";
@@ -35,6 +36,7 @@ contract Deploy is ForkfallScript {
         StarterDecks starters;
         PackSale packs;
         Crafting crafting;
+        QuestRewards quests;
         AgentRegistry agents;
         HumanRegistry humans;
         DeckRegistry decks;
@@ -89,7 +91,9 @@ contract Deploy is ForkfallScript {
 
         d.starters = new StarterDecks(d.cards);
         d.packs = new PackSale(d.cards, admin, payable(admin), packPrice);
-        d.crafting = new Crafting(d.cards);
+        d.crafting = new Crafting(d.cards, admin);
+        // Daily quests: the referee pays Scrap and free packs through QuestRewards (capped, one payout per claim id).
+        d.quests = new QuestRewards(admin, d.crafting, d.packs, referee);
         d.agents = new AgentRegistry(admin);
         d.humans = new HumanRegistry(admin);
         d.decks = new DeckRegistry(d.cards);
@@ -107,6 +111,8 @@ contract Deploy is ForkfallScript {
         d.cards.grantRole(d.cards.MINTER_ROLE(), address(d.packs));
         d.cards.grantRole(d.cards.MINTER_ROLE(), address(d.crafting));
         d.cards.grantRole(d.cards.BURNER_ROLE(), address(d.crafting));
+        d.crafting.grantRole(d.crafting.SCRAP_GRANTER_ROLE(), address(d.quests));
+        d.packs.grantRole(d.packs.PACK_GRANTER_ROLE(), address(d.quests));
         d.settlement.grantRole(d.settlement.REFEREE_ROLE(), referee);
         // Testnet human verification: the referee attests with the labeled "testnet" method until a real
         // proof-of-personhood provider (Human Passport, Coinbase Verifications, World ID) is plugged in.
@@ -127,6 +133,7 @@ contract Deploy is ForkfallScript {
         vm.serializeAddress(k, "StarterDecks", address(d.starters));
         vm.serializeAddress(k, "PackSale", address(d.packs));
         vm.serializeAddress(k, "Crafting", address(d.crafting));
+        vm.serializeAddress(k, "QuestRewards", address(d.quests));
         vm.serializeAddress(k, "AgentRegistry", address(d.agents));
         vm.serializeAddress(k, "HumanRegistry", address(d.humans));
         vm.serializeAddress(k, "DeckRegistry", address(d.decks));

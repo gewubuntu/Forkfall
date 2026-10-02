@@ -6,3 +6,4 @@ export * from './view.ts';
 export * from './bots.ts';
 export * from './tutorial.ts';
 export * from './cosmetics.ts';
+export * from './quests.ts';

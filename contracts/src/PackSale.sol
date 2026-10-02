@@ -20,6 +20,8 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
     using SafeERC20 for IERC20;
 
     bytes32 public constant PRICE_ADMIN_ROLE = keccak256("PRICE_ADMIN_ROLE");
+    /// @notice May hand out free packs (quest rewards): the QuestRewards contract.
+    bytes32 public constant PACK_GRANTER_ROLE = keccak256("PACK_GRANTER_ROLE");
 
     uint256 public constant CARDS_PER_PACK = 5;
     uint256 public constant LEGENDARY_UPGRADE_BPS = 1_000; // 10%
@@ -67,6 +69,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
     event KindSet(uint8 indexed kind, string name, uint256 cards);
     event PackOpened(uint256 indexed packId, address indexed owner, uint256[5] cardIds);
     event PackRecommitted(uint256 indexed packId, uint64 revealBlock);
+    event PacksGranted(address indexed to, uint256 firstPackId, uint256 count, uint8 kind);
 
     constructor(CardRegistry cards_, address admin, address payable treasury_, uint256 ethPrice_) {
         cards = cards_;
@@ -160,6 +163,19 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
         firstId = _commit(msg.sender, count, kind);
         emit PacksBought(msg.sender, firstId, count, token, total);
         emit PacksBoughtOfKind(msg.sender, firstId, count, kind);
+    }
+
+    /// @notice Free packs (quest rewards). Same odds, pity timer, duplicate protection and foils as bought packs.
+    function grantPacks(address to, uint8 kind, uint256 count)
+        external
+        onlyRole(PACK_GRANTER_ROLE)
+        nonReentrant
+        returns (uint256 firstId)
+    {
+        if (count == 0 || count > MAX_PACKS_PER_TX) revert BadCount();
+        if (!kindExists(kind)) revert UnknownKind(kind);
+        firstId = _commit(to, count, kind);
+        emit PacksGranted(to, firstId, count, kind);
     }
 
     function _commit(address buyer, uint256 count, uint8 kind) internal returns (uint256 firstId) {
