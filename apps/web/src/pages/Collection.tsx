@@ -394,7 +394,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
 }
 
 const SET_COLOR: Record<string, string> = { ...RACE_COLOR, poncho: 'var(--poncho)' };
-const RULE_LABEL: Record<MilestoneRule, string> = { tutorial: 'Tutorial', commons: 'All Commons', every: 'Every card', playset: 'Full playset' };
+const RULE_LABEL: Record<MilestoneRule, string> = { tutorial: 'Tutorial', lessons: 'Every lesson', commons: 'All Commons', every: 'Every card', playset: 'Full playset' };
 
 /** Collection goals: progress per set (cards owned, playset copies) and the cosmetics each milestone unlocks. */
 function SetProgress({ total, loading }: { total: (id: number) => number; loading: boolean }) {
@@ -415,7 +415,7 @@ function SetProgress({ total, loading }: { total: (id: number) => number; loadin
               </div>
               <ul className="set-ms">
                 {COSMETICS.filter((m) => m.set === s.key).map((m) => {
-                  const done = !loading && milestoneMet(m.rule, m.set, total, false);
+                  const done = !loading && milestoneMet(m.rule, m.set, total, []);
                   return <li key={m.id} className={done ? 'done' : ''} title={`${m.description} Unlocks: ${m.name}`}>{done ? '✓' : '○'} {RULE_LABEL[m.rule]} <span className="muted">· {m.name}</span></li>;
                 })}
               </ul>

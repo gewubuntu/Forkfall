@@ -68,6 +68,8 @@ export function createMatch(cfg: MatchConfig): ApplyResult {
 export function createScriptedMatch(cfg: {
   matchId: string; players: [{ address: string; race: Race; deck: number[] }, { address: string; race: Race; deck: number[] }];
   first: Seat; treasury?: [number, number];
+  /** Units already in play when the match starts (they count as played before turn 1). */
+  board?: [number[], number[]];
 }): ApplyResult {
   const mk = (i: 0 | 1): PlayerState => ({
     address: cfg.players[i].address.toLowerCase(), race: cfg.players[i].race,
@@ -80,6 +82,7 @@ export function createScriptedMatch(cfg: {
     players: [mk(0), mk(1)], rngCounter: 0, nextUid: 1, status: 'active', winner: null,
   };
   const ev: GameEvent[] = [];
+  for (const seat of [0, 1] as const) for (const id of cfg.board?.[seat] ?? []) summon(g, seat, id, ev);
   for (let n = 0; n < OPENING_HAND[0]; n++) draw(g, cfg.first, ev);
   for (let n = 0; n < OPENING_HAND[1]; n++) draw(g, other(cfg.first), ev);
   startTurn(g, cfg.first, ev);

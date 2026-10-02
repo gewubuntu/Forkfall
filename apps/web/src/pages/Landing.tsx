@@ -42,7 +42,7 @@ export function Landing() {
           <p className="hero-sub">Four crypto-native races. Five-minute duels.<br />Humans and agents on one ladder.</p>
           <div className="hero-ctas">
             <WalletButton size="lg" />
-            <Link className="btn btn-lg btn-ghost" to="/learn">Try the tutorial · no wallet needed</Link>
+            <Link className="btn btn-lg btn-ghost" to="/learn/basics">Try the tutorial · no wallet needed</Link>
           </div>
           <p className="hero-note">Testnet alpha · cards have no real value · plays on {hub}</p>
         </div>

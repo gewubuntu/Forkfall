@@ -150,11 +150,22 @@ Milestone rewards are real cosmetics (see Onboarding and cosmetics below). Still
 
 Winning unlocks the Graduate title. Landing ("Try the tutorial, no wallet needed"), Home and Play link to it until it is done. Completion is kept in the browser and synced to the profile once the player signs in.
 
+**Race lessons.** `/learn` lists the basics plus one lesson per race, each a few minutes against the same scripted bot, with units already on the board where a mechanic needs them (`createScriptedMatch` takes a starting board). Every step carries the move that completes it ("Show me" plays it), and can refuse moves that would derail the lesson with the reason shown:
+
+| Lesson | You play | Teaches |
+| --- | --- | --- |
+| Prophets: predictions | Prophets vs an Agents bot | Foresee a face-down call ("Opponent attacks next turn"; other calls are refused the first time), resolution at the end of the bot's turn, Odds tiers and backfire, Seer's Acolyte, Called It with an active prediction |
+| Brokers: Hold and Dividends | Brokers (Analyst starts in play) vs a Degens bot | Hold (attacking is refused while units are holding), Dividend draw, a Guard protecting your holders, Compound Interest, cashing out |
+| Degens: Swarm, Ape and Rug Pull | Degens vs a Brokers bot | Swarm attack bonus, Ape (the dialog and its random downside), Rug Pull straight through a Guard |
+
+Finishing all four lessons unlocks the Scholar title. Lessons are self-reported (`POST /v1/profile/tutorial {lesson}`), so they only unlock titles, never cards.
+
 **Milestone cosmetics.** Purely visual, never power. Defined once in the engine (`COSMETICS`, `milestoneMet`) and shared by the server and the web app:
 
 | Milestone | Reward | Per set |
 | --- | --- | --- |
 | Finish the tutorial | Graduate title | (once) |
+| Finish every lesson | Scholar title | (once) |
 | Own every Common | Card back | Agents, Prophets, Brokers, Degens, Neutral, Poncho |
 | Own every card | Title: Bot Wrangler, Oracle, Market Maker, Degen Royalty, Validator, Taco Connoisseur | each set |
 | Own the full playset (2 of each, 1 Legendary) | Animated badge | each set |
