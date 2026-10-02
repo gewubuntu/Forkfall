@@ -328,3 +328,31 @@
   .fx-float { animation: fx-fade 1.1s forwards; }
   @keyframes fx-fade { from { opacity: 1; } to { opacity: 0; } }
 }
+
+/* ─── Result: stats, MVP, rating ─── */
+.result-sprite { animation: sprite-hop 1.2s cubic-bezier(.3,.7,.3,1) .1s both; }
+.result.win .result-sprite { animation: sprite-hop 1.2s cubic-bezier(.3,.7,.3,1) .1s both, sprite-bob 1.6s ease-in-out 1.3s infinite; }
+@keyframes sprite-hop { 0% { transform: translateY(30px) scale(.4); opacity: 0; } 40% { transform: translateY(-14px) scale(1.15); opacity: 1; } 70% { transform: translateY(0) scale(.95); } 100% { transform: none; } }
+@keyframes sprite-bob { 50% { transform: translateY(-5px); } }
+.result-title { animation: title-pop .5s cubic-bezier(.2,.9,.3,1.4) .25s both; }
+@keyframes title-pop { from { transform: scale(.4); opacity: 0; } }
+.result-stats { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; animation: fade-up .4s ease-out .3s both; }
+@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } }
+.rs-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rs-tile { padding: 10px 6px; border-radius: var(--r); background: var(--bg-2); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.rs-tile b { font-family: var(--font-pixel); font-size: 26px; font-variant-numeric: tabular-nums; }
+.rs-tile span { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.rs-mvp { display: flex; align-items: center; gap: 14px; text-align: left; padding: 10px 12px; border-radius: var(--r); background: linear-gradient(90deg, rgba(253, 230, 138, .12), transparent 70%), var(--bg-2); border: 1px solid #5c4a17; animation: fade-up .4s ease-out .7s both; }
+.rs-mvp .gcard { width: 74px; flex: none; animation: mvp-in .6s cubic-bezier(.2,.9,.3,1.3) .8s both; }
+@keyframes mvp-in { from { transform: rotate(-12deg) scale(.5); opacity: 0; } }
+.rs-mvp > div { display: flex; flex-direction: column; gap: 2px; }
+.rs-mvp-tag { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #fde68a; }
+.rs-mvp b { font-size: 16px; }
+.rs-rating { display: flex; align-items: baseline; justify-content: center; gap: 10px; margin: 14px 0 0; animation: fade-up .4s ease-out .9s both; }
+.rs-rating b { font-family: var(--font-pixel); font-size: 30px; font-variant-numeric: tabular-nums; }
+.rs-delta { font-weight: 800; font-size: 15px; }
+.rs-rating.up .rs-delta { color: var(--ok); }
+.rs-rating.down .rs-delta { color: #ff8a9a; }
+@media (prefers-reduced-motion: reduce) {
+  .result-sprite, .result-title, .result-stats, .rs-mvp, .rs-mvp .gcard, .rs-rating { animation: none !important; }
+}

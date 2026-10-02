@@ -1,7 +1,7 @@
 import { card, eventsFor, viewFor, type GameState, type Race, type UnitState } from '@forkfall/engine';
 import { replayLog, verifyMoveSignatures, type MatchLog, type MatchSnapshot, type ReplayFrame } from '@forkfall/sdk';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { Hex } from 'viem';
 import { usePublicClient } from 'wagmi';
@@ -9,6 +9,7 @@ import { useAuth } from '../auth/AuthProvider.tsx';
 import { useHub } from '../chain/useHub.ts';
 import { useSettled } from '../chain/useSettlement.ts';
 import { GameCard } from '../components/GameCard.tsx';
+import { FxLayer } from '../game/FxLayer.tsx';
 import { raceName } from '../game/meta.ts';
 import { shortAddr } from '../lib/format.ts';
 import { Log, Preview, Side } from './Match.tsx';
@@ -53,6 +54,11 @@ function Viewer({ log, frames, checks, viewerSeat }: {
   const [speed, setSpeed] = useState(1);
   const [flipped, setFlipped] = useState(false);
   const [preview, setPreview] = useState<number | null>(null);
+  const arenaRef = useRef<HTMLDivElement>(null);
+  // Effects play only when stepping forward one move (Play or ▶); jumps and rewinds stay quiet.
+  const prevI = useRef(i);
+  const stepped = i === prevI.current + 1;
+  useEffect(() => { prevI.current = i; }, [i]);
 
   useEffect(() => {
     if (!playing) return;
@@ -104,7 +110,8 @@ function Viewer({ log, frames, checks, viewerSeat }: {
 
   return (
     <div className="match replay">
-      <div className="arena">
+      <FxLayer events={events} seat={null} arena={arenaRef} races={[raceName(races[0]), raceName(races[1])]} skip={!stepped} />
+      <div className="arena" ref={arenaRef}>
         {hand(top)}
         <Side s={snap} side={top} isMe={viewerSeat === top} hits={hits}>{board(top)}</Side>
         <div className="turnbar replay-bar">

@@ -20,8 +20,10 @@ const RACE_FX: Record<string, string[]> = {
  * timeline (attack → impact → deaths). Mount animations for new units and hand cards live in CSS.
  * The first batch (history when joining) is skipped. Reduced motion keeps only the floating numbers.
  */
-export function FxLayer({ events, seat, arena, races }: {
+export function FxLayer({ events, seat, arena, races, skip }: {
   events: GameEvent[]; seat: 0 | 1 | null; arena: React.RefObject<HTMLDivElement | null>; races: [string, string];
+  /** Replay: the latest change was a jump or a step back, so don't animate it. */
+  skip?: boolean;
 }) {
   const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const { ref: canvas, burst } = useParticles();
@@ -42,7 +44,10 @@ export function FxLayer({ events, seat, arena, races }: {
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   useEffect(() => {
-    if (processed.current === -1) { if (events.length) processed.current = events.length; return; }
+    if (processed.current === -1 || skip || events.length < processed.current) {
+      if (events.length || processed.current !== -1) processed.current = events.length;
+      return;
+    }
     const batch = events.slice(processed.current);
     processed.current = events.length;
     if (batch.length) play(batch);

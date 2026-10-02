@@ -1,7 +1,7 @@
 import { card, COLLECTIBLE, MAX_COPIES, MAX_LEGENDARY_COPIES, RACES, RARITIES, setOf, type CardDef, type Faction, type Race, type Rarity } from '@forkfall/engine';
 import { craftingAbi, faucetTokenAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { formatEther, formatUnits, maxUint256, parseEventLogs, type Address } from 'viem';
 import { useBalance, useBlockNumber, useReadContracts } from 'wagmi';
@@ -11,6 +11,9 @@ import { useHub } from '../chain/useHub.ts';
 import { useOwned, type Owned } from '../chain/useOwned.ts';
 import { GameCard } from '../components/GameCard.tsx';
 import { PackReveal } from '../components/PackReveal.tsx';
+import { TiltCard } from '../components/TiltCard.tsx';
+import { useParticles } from '../lib/particles.ts';
+import { sfx } from '../lib/sfx.ts';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
 import { LOGO_MARK, spriteSvg } from '../lib/art.ts';
 
@@ -301,7 +304,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
             const n = o.tradeable + o.soulbound;
             return (
               <div key={cd.id} className={`grid-cell ${n === 0 ? 'missing' : ''}`}>
-                <GameCard cardId={cd.id} size="hand" onClick={() => setDetail(cd.id)} label={`${cd.name}, ${n} owned. Details`} />
+                <TiltCard rarity={cd.rarity}><GameCard cardId={cd.id} size="hand" onClick={() => setDetail(cd.id)} label={`${cd.name}, ${n} owned. Details`} /></TiltCard>
                 <span className={`own-badge ${n === 0 ? 'zero' : ''}`}>{n === 0 ? 'Not owned' : `×${n}`}{o.soulbound > 0 && <i title={`${o.soulbound} soulbound starter cop${o.soulbound === 1 ? 'y' : 'ies'}`}>◆{o.soulbound}</i>}</span>
               </div>
             );
@@ -318,10 +321,12 @@ function CollectionLive({ chainId }: { chainId: number }) {
           onScrap={async (n) => {
             const rc = await tx.run(`Scrap ${n}× ${card(detail).name}`, { address: c.Crafting, abi: craftingAbi, functionName: 'scrapCards', args: [[BigInt(detail)], [BigInt(n)]] });
             if (rc) refresh();
+            return !!rc;
           }}
           onCraft={async () => {
             const rc = await tx.run(`Craft ${card(detail).name}`, { address: c.Crafting, abi: craftingAbi, functionName: 'craft', args: [BigInt(detail)] });
             if (rc) refresh();
+            return !!rc;
           }}
         />
       )}
@@ -352,16 +357,45 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function CardDetail({ cd, owned, scrap, scrapValue, craftCost, busy, onClose, onScrap, onCraft }: {
   cd: CardDef; owned: Owned; scrap: number; scrapValue: number; craftCost: number; busy: boolean;
-  onClose: () => void; onScrap: (n: number) => void; onCraft: () => void;
+  onClose: () => void; onScrap: (n: number) => Promise<boolean>; onCraft: () => Promise<boolean>;
 }) {
   const [n, setN] = useState(1);
+  const [fx, setFx] = useState<{ kind: 'craft' | 'scrap'; id: number; amount: number } | null>(null);
+  const art = useRef<HTMLDivElement>(null);
+  const { ref: canvas, burst } = useParticles();
   const canScrap = owned.tradeable > 0;
+  const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const colors = { common: ['#9aa3b5', '#cfd6e4'], uncommon: ['#e2e8f0', '#94a3b8'], rare: ['#ffd56b', '#f59e0b', '#fff3c4'], legendary: ['#ff7ad9', '#67e8f9', '#b6f23c', '#fde68a'] }[cd.rarity];
+  const center = () => { const r = art.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2, h: r.height } : null; };
+
+  // Craft: the card is forged in a flash of light. Scrap: a copy dissolves into rising pixels.
+  const craft = async () => {
+    if (!(await onCraft())) return;
+    setFx({ kind: 'craft', id: Date.now(), amount: craftCost });
+    sfx.flip(cd.rarity);
+    const c = center();
+    if (c && !reduced) { burst(c.x, c.y, colors.concat('#ffffff'), 60 + (cd.rarity === 'legendary' ? 90 : 0), 9); setTimeout(() => burst(c.x, c.y, colors, 40, 6), 250); }
+  };
+  const scrapIt = async () => {
+    const k = n;
+    if (!(await onScrap(k))) return;
+    setFx({ kind: 'scrap', id: Date.now(), amount: k * scrapValue });
+    sfx.death();
+    const c = center();
+    if (c && !reduced) for (let i = 0; i < 6; i++) setTimeout(() => burst(c.x + (Math.random() - 0.5) * 120, c.y - c.h / 3 + i * (c.h / 8), colors, 14, 3), i * 70);
+    setN(1);
+  };
   return (
     <div className="modal-bg" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal card-detail" role="dialog" aria-modal="true" aria-label={cd.name}>
         <div className="modal-head"><h2>{cd.name}</h2><button className="icon-btn" onClick={onClose} aria-label="Close">✕</button></div>
+        <canvas ref={canvas} className="particles cd-particles" aria-hidden />
         <div className="cd-body">
-          <GameCard cardId={cd.id} size="preview" />
+          <div ref={art} className={`cd-art ${fx ? `fx-${fx.kind}` : ''}`} key={fx?.id ?? 0}>
+            <TiltCard rarity={cd.rarity} strength={16}><GameCard cardId={cd.id} size="preview" /></TiltCard>
+            {fx?.kind === 'scrap' && <div className="cd-ghost" aria-hidden><GameCard cardId={cd.id} size="preview" /></div>}
+            {fx && <span className={`cd-float ${fx.kind}`} aria-live="polite">{fx.kind === 'craft' ? `Crafted! −${fx.amount} Scrap` : `+${fx.amount} Scrap`}</span>}
+          </div>
           <div className="cd-side">
             <dl className="kv">
               <dt>Rarity</dt><dd style={{ textTransform: 'capitalize' }}>{cd.rarity}</dd>
@@ -379,14 +413,14 @@ function CardDetail({ cd, owned, scrap, scrapValue, craftCost, busy, onClose, on
                     <span><b>{n}</b> of {owned.tradeable}</span>
                     <button className="btn" onClick={() => setN((x) => Math.min(owned.tradeable, x + 1))} disabled={n >= owned.tradeable} aria-label="More">+</button>
                   </div>
-                  <button className="btn" disabled={busy} onClick={() => onScrap(n)}>Scrap {n} for +{n * scrapValue}</button>
+                  <button className="btn" disabled={busy} onClick={scrapIt}>Scrap {n} for +{n * scrapValue}</button>
                 </>
               ) : <p className="muted small">{owned.soulbound ? 'Soulbound starter copies can’t be scrapped.' : 'You have no copies to scrap.'}</p>}
             </div>
             <div className="cd-action">
               <h3>Craft</h3>
               <p className="muted small">Costs {craftCost} Scrap{scrap < craftCost ? ` · you need ${craftCost - scrap} more` : ''}.</p>
-              <button className="btn btn-primary" disabled={busy || scrap < craftCost} onClick={onCraft}>Craft one</button>
+              <button className="btn btn-primary" disabled={busy || scrap < craftCost} onClick={craft}>Craft one</button>
             </div>
           </div>
         </div>

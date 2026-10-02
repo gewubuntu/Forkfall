@@ -2,17 +2,19 @@ import {
   card, PREDICTION_LABELS, PREDICTION_TIERS,
   type Action, type GameEvent, type PredictionCondition, type Race, type UnitState,
 } from '@forkfall/engine';
-import type { MatchSnapshot } from '@forkfall/sdk';
+import { matchSettlementAbi, type MatchSnapshot } from '@forkfall/sdk';
+import { useReadContract } from 'wagmi';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
 import { useHub } from '../chain/useHub.ts';
-import { useSettled, useSettleMatch } from '../chain/useSettlement.ts';
+import { useSeasonStats, useSettled, useSettleMatch } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
 import { describeEvent, KEYWORD_HELP, KEYWORD_LABEL, RACE_INFO, raceName } from '../game/meta.ts';
 import { FxLayer } from '../game/FxLayer.tsx';
+import { summarize, useCountUp } from '../game/summary.ts';
 import { useMatch } from '../game/useMatch.ts';
 import { isMuted, setMuted } from '../lib/sfx.ts';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
@@ -248,7 +250,7 @@ export function Match() {
         </Dialog>
       )}
 
-      {s.phase === 'ended' && resultOpen && <Result s={s} onClose={() => setResultOpen(false)} />}
+      {s.phase === 'ended' && resultOpen && <Result s={s} events={m.events} onClose={() => setResultOpen(false)} />}
     </div>
   );
 }
@@ -408,7 +410,7 @@ function Dialog({ title, onClose, children }: { title: string; onClose: () => vo
 }
 
 // ─── Result: outcome + co-signing for on-chain settlement ─────────────────────
-function Result({ s, onClose }: { s: MatchSnapshot; onClose: () => void }) {
+function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[]; onClose: () => void }) {
   const { client } = useAuth();
   const [signing, setSigning] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -442,6 +444,8 @@ function Result({ s, onClose }: { s: MatchSnapshot; onClose: () => void }) {
         {winnerSprite && <img className="result-sprite" src={spriteSvg(winnerSprite)} alt="" />}
         <h2 className="result-title">{outcome}</h2>
         <p className="muted">{reason} · turn {v.turn} · Treasury {Math.max(0, v.players[firstSeat(seat)].treasury)} – {Math.max(0, v.players[1 - firstSeat(seat)].treasury)}</p>
+        <MatchStats events={events} seat={firstSeat(seat)} spectator={seat === null} />
+        {seat !== null && <RatingChange s={s} seat={seat} />}
         {seat !== null && (
           <div className="result-sign">
             {!signed ? (
@@ -466,6 +470,73 @@ function Result({ s, onClose }: { s: MatchSnapshot; onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Damage, kills and cards played for the viewer (counting up), plus their MVP card. */
+function MatchStats({ events, seat, spectator }: { events: GameEvent[]; seat: 0 | 1; spectator: boolean }) {
+  const sum = useMemo(() => summarize(events), [events]);
+  const me = sum.sides[seat];
+  const dmg = useCountUp(me.damage, 900, 0, 250);
+  const kills = useCountUp(me.kills, 700, 0, 400);
+  const played = useCountUp(me.cardsPlayed, 700, 0, 550);
+  const mvp = sum.mvp[seat];
+  const mvpDmg = useCountUp(mvp?.damage ?? 0, 900, 0, 800);
+  if (!events.length) return null;
+  return (
+    <div className="result-stats">
+      <div className="rs-tiles">
+        <div className="rs-tile"><b>{dmg}</b><span>Damage dealt</span></div>
+        <div className="rs-tile"><b>{kills}</b><span>Units destroyed</span></div>
+        <div className="rs-tile"><b>{played}</b><span>Cards played</span></div>
+      </div>
+      {mvp && (
+        <div className="rs-mvp">
+          <GameCard cardId={mvp.cardId} size="mini" />
+          <div><span className="rs-mvp-tag">{spectator ? 'Top card' : 'Your MVP'}</span><b>{card(mvp.cardId).name}</b><span className="muted small">{mvpDmg} damage{me.biggestHit ? ` · biggest hit ${me.biggestHit}` : ''}</span></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Rating change for rated modes, from MatchSettlement. Before settlement it's projected with the
+ * contract's own Elo table (expectedScore, K = 32); after, it counts from the rating seen before settling.
+ */
+function RatingChange({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
+  const { chainId, contracts } = useHub();
+  const rated = s.mode === 'ranked' || s.mode === 'human';
+  const season = s.result?.season ?? 0;
+  const me = s.players[seat].address as Hex, op = s.players[1 - seat].address as Hex;
+  const { stats } = useSeasonStats(rated && contracts ? [me, op] : [], season);
+  const { settled } = useSettled(rated && contracts ? [s.matchId] : []);
+  const ra = stats.get(me.toLowerCase())?.rating, rb = stats.get(op.toLowerCase())?.rating;
+  const done = settled.get(s.matchId);
+  const key = `ff.prerating.${s.matchId}`;
+  const cached = (() => { try { return Number(sessionStorage.getItem(key)) || undefined; } catch { return undefined; } })();
+  if (done === false && ra !== undefined && !cached) { try { sessionStorage.setItem(key, String(ra)); } catch { /* ignore */ } }
+  const exp = useReadContract({
+    address: contracts?.MatchSettlement, abi: matchSettlementAbi, functionName: 'expectedScore',
+    args: [BigInt(ra ?? 1200), BigInt(rb ?? 1200)], chainId: chainId as never,
+    query: { enabled: rated && !!contracts && done === false && ra !== undefined && rb !== undefined },
+  });
+  const winner = s.view?.winner;
+  const score = winner === 'draw' ? 500 : winner === seat ? 1000 : 0;
+  const projected = exp.data !== undefined && ra !== undefined ? Math.max(100, ra + Math.trunc((32 * (score - Number(exp.data))) / 1000)) : undefined;
+  const from = done ? (cached ?? ra ?? 0) : (ra ?? 0);
+  const to = done ? (ra ?? 0) : (projected ?? ra ?? 0);
+  const shown = useCountUp(to, 1100, from, 1000);
+  if (!rated) return <p className="rs-rating muted small">{s.mode === 'league' ? 'League standings update when the referee settles this match.' : 'Casual match: no rating change.'}</p>;
+  if (!contracts) return null;
+  if (ra === undefined || (done === false && projected === undefined)) return <p className="rs-rating muted small">Loading rating…</p>;
+  const delta = to - from;
+  return (
+    <p className={`rs-rating ${delta > 0 ? 'up' : delta < 0 ? 'down' : ''}`}>
+      <span className="muted small">{done ? 'Rating' : 'Rating once settled'}</span>
+      <b>{shown}</b>
+      {delta !== 0 && <span className="rs-delta">{delta > 0 ? '▲' : '▼'} {Math.abs(delta)}</span>}
+    </p>
   );
 }
 

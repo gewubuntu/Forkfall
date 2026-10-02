@@ -100,6 +100,7 @@ export const matchSettlementAbi = parseAbi([
   'function currentSeason() view returns (uint32)',
   'function startSeason(uint32 season)',
   'function stats(uint32 season, address player) view returns ((uint32 wins, uint32 losses, uint32 draws, uint32 rating))',
+  'function expectedScore(uint256 ra, uint256 rb) view returns (uint256)',
   'event MatchSettled(bytes32 indexed matchId, address indexed winner, address indexed loser, uint8 mode, uint32 season, uint16 turns, bytes32 logHash, bool byReferee)',
   'event RatingChanged(uint32 indexed season, address indexed player, uint32 oldRating, uint32 newRating)',
   'error AlreadySettled(bytes32 matchId)', 'error BadPlayers()', 'error BadWinner()', 'error BadSignature(address signer)',
