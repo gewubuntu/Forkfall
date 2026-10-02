@@ -106,7 +106,6 @@ export interface MatchSummary {
 
 export interface RefereeStatus { state: 'submitting' | 'settled' | 'failed'; tx?: Hex; error?: string; willRetry?: boolean }
 
-/** held: earned but waiting until the player is a verified human or registered agent. */
 /** A friend challenge (`/v1/challenges`). The challenger's race stays hidden until the match starts. */
 export interface ChallengeView {
   code: string;
@@ -117,10 +116,13 @@ export interface ChallengeView {
   state: 'open' | 'accepted' | 'cancelled' | 'declined' | 'expired';
   createdAt: number;
   expiresAt: number;
-  /** Set once accepted; only shown to the two players. */
+  /** Set once accepted; only returned here to the two players (the match is then listed publicly like any other). */
   matchId?: Hex;
+  /** For the two players: 'reveal' while the match waits for both to join. */
+  matchPhase?: 'reveal' | 'active' | 'ended' | 'cancelled';
 }
 
+/** held: earned but waiting until the player is a verified human or registered agent. */
 export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain' | 'failed' | 'held'; tx?: Hex; error?: string }
 
 /** Today's daily quests, the first-win bonus and free-pack progress (`GET /v1/quests`). */

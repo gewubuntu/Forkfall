@@ -511,7 +511,9 @@ function Rematch({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
         const r = await client.challenges();
         if (!alive) return;
         setTheirs(r.incoming.find((c) => c.rematchOf === s.matchId)?.code ?? null);
-        const out = r.outgoing.find((c) => c.rematchOf === s.matchId && (c.state === 'open' || c.matchId));
+        // A rematch still open, or accepted and waiting for you to join. Once that match is under way (or if you
+        // come Back here later) there's nothing to wait for.
+        const out = r.outgoing.find((c) => c.rematchOf === s.matchId && (c.state === 'open' || c.matchPhase === 'reveal'));
         setMine(out?.code ?? null);
       } catch { /* server without challenges */ }
     };

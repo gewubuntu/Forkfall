@@ -116,6 +116,8 @@ export interface Challenge {
   expiresAt: number;
   state: 'open' | 'accepted' | 'cancelled' | 'declined';
   matchId?: Hex;
+  /** When it was accepted, cancelled or declined (for pruning). */
+  closedAt?: number;
 }
 
 /** What anyone may see of a challenge. The challenger's race stays hidden until the match starts. */
@@ -127,12 +129,20 @@ export interface ChallengeView {
   state: Challenge['state'] | 'expired';
   createdAt: number;
   expiresAt: number;
-  /** Only for the two players. */
+  /** Only returned here to the two players (once it starts, the match is listed publicly like any other). */
   matchId?: Hex;
+  /** The match's phase, for the two players: 'reveal' means it is waiting for both to join. */
+  matchPhase?: Match['phase'];
 }
 
 export const CHALLENGE_TTL_MS = 24 * 3600_000;
 export const MAX_OPEN_CHALLENGES = 5;
+/** Open challenges addressed to one wallet, from everyone (keeps a target's incoming list from being flooded). */
+export const MAX_INCOMING_CHALLENGES = 20;
+/** A challenge match waits this long for both players to join (the challenger may be in another tab). */
+export const CHALLENGE_REVEAL_MS = 3 * 60_000;
+/** Answered or expired challenges are forgotten after this. */
+const CHALLENGE_KEEP_MS = 3600_000;
 
 interface QueueEntry {
   ticket: string;
@@ -293,8 +303,13 @@ export class Lobby {
       to = opp.address.toLowerCase() as Address;
     }
     this.pruneChallenges();
-    const open = [...this.challenges.values()].filter((c) => c.state === 'open' && same(c.from.address, address));
-    if (open.length >= MAX_OPEN_CHALLENGES) throw new ApiError(429, `at most ${MAX_OPEN_CHALLENGES} open challenges: cancel one first`);
+    const live = [...this.challenges.values()].filter((c) => c.state === 'open' && this.now() <= c.expiresAt);
+    if (live.filter((c) => same(c.from.address, address)).length >= MAX_OPEN_CHALLENGES) {
+      throw new ApiError(429, `at most ${MAX_OPEN_CHALLENGES} open challenges: cancel one first`);
+    }
+    if (to && live.filter((c) => c.to && same(c.to, to!)).length >= MAX_INCOMING_CHALLENGES) {
+      throw new ApiError(429, 'that player has too many pending challenges right now');
+    }
     const isAgent = await this.checkEligibility(address, 'casual', agent);
     const { deck, deckId } = await this.resolveDeck(address, 'casual', body.race, body.deck, body.deckId);
     const code = challengeCode();
@@ -320,7 +335,7 @@ export class Lobby {
       from: { address: c.from.address, agent: c.from.agent, ...(this.opts.profiles ? { cosmetics: this.opts.profiles.equipped(c.from.address) } : {}) },
       to: c.to ?? null, rematchOf: c.rematchOf ?? null,
       state: expired ? 'expired' : c.state, createdAt: c.createdAt, expiresAt: c.expiresAt,
-      ...(player && c.matchId ? { matchId: c.matchId } : {}),
+      ...(player && c.matchId ? { matchId: c.matchId, matchPhase: this.matches.get(c.matchId)?.phase } : {}),
     };
   }
 
@@ -336,10 +351,13 @@ export class Lobby {
     const isAgent = await this.checkEligibility(address, 'casual', agent);
     const { deck, deckId } = await this.resolveDeck(address, 'casual', body.race, body.deck, body.deckId);
     if (c.state !== 'open') throw new ApiError(409, `this challenge was already ${c.state}`); // raced while we awaited
-    const m = this.newMatch('casual', 0, [c.from, { address, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit }]);
+    if (this.now() > c.expiresAt) throw new ApiError(410, 'this challenge has expired');
+    // A copy of the challenger's seat: if this match is cancelled before it starts, the link reopens untouched.
+    const m = this.newMatch('casual', 0, [{ ...c.from }, { address, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit }]);
     m.challenge = c.code;
     c.state = 'accepted';
     c.matchId = m.id;
+    c.closedAt = this.now();
     return { matchId: m.id, challenge: this.challengeView(c, address) };
   }
 
@@ -350,6 +368,7 @@ export class Lobby {
     if (same(c.from.address, address)) c.state = 'cancelled';
     else if (c.to && same(c.to, address)) c.state = 'declined';
     else throw new ApiError(403, 'only the challenger can cancel, or the challenged player decline');
+    c.closedAt = this.now();
     return this.challengeView(c, address);
   }
 
@@ -359,14 +378,27 @@ export class Lobby {
     const all = [...this.challenges.values()].sort((a, b) => b.createdAt - a.createdAt);
     return {
       outgoing: all.filter((c) => same(c.from.address, address)).map((c) => this.challengeView(c, address)),
-      incoming: all.filter((c) => c.to && same(c.to, address) && c.state === 'open' && this.now() <= c.expiresAt).map((c) => this.challengeView(c, address)),
+      incoming: all.filter((c) => c.to && same(c.to, address) && c.state === 'open' && this.now() <= c.expiresAt)
+        .slice(0, MAX_INCOMING_CHALLENGES).map((c) => this.challengeView(c, address)),
     };
   }
 
-  /** Forget challenges a day after they expired or were answered. */
+  /** Forget challenges an hour after they expired or were answered (an accepted one once its match is under way). */
   private pruneChallenges() {
-    const cutoff = this.now() - CHALLENGE_TTL_MS;
-    for (const [k, c] of this.challenges) if (c.expiresAt < cutoff) this.challenges.delete(k);
+    const cutoff = this.now() - CHALLENGE_KEEP_MS;
+    for (const [k, c] of this.challenges) {
+      const waiting = c.matchId && this.matches.get(c.matchId)?.phase === 'reveal';
+      if (!waiting && ((c.closedAt ?? Infinity) < cutoff || c.expiresAt < cutoff)) this.challenges.delete(k);
+    }
+  }
+
+  /** A challenge match cancelled before it started (someone never joined): reopen the link while it's valid. */
+  private reopenChallenge(m: Match) {
+    const c = m.challenge ? this.challenges.get(m.challenge) : undefined;
+    if (!c || c.matchId !== m.id || c.state !== 'accepted') return;
+    c.matchId = undefined;
+    c.closedAt = undefined;
+    c.state = this.now() <= c.expiresAt ? 'open' : 'cancelled';
   }
 
   /** Casual match vs a house bot. The bot is badged as an agent and sees only its own view. */
@@ -499,8 +531,12 @@ export class Lobby {
   tick() {
     const now = this.now();
     this.pruneQueue();
+    this.pruneChallenges();
     for (const m of this.matches.values()) {
-      if (m.phase === 'reveal' && now - m.createdAt > this.revealMs && m.league?.state !== 'charging') { m.phase = 'cancelled'; this.changed(m); continue; }
+      const revealWindow = m.challenge ? CHALLENGE_REVEAL_MS : this.revealMs;
+      if (m.phase === 'reveal' && now - m.createdAt > revealWindow && m.league?.state !== 'charging') {
+        m.phase = 'cancelled'; this.reopenChallenge(m); this.changed(m); continue;
+      }
       if (m.phase !== 'active') continue;
       const seat = m.state!.active;
       const deadline = m.clock.turnStartedAt + this.turnMs + m.clock.bank[seat];

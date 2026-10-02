@@ -471,3 +471,5 @@
 .rematch { margin-top: 12px; text-align: left; }
 .rematch-offer { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--degens) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--degens) 45%, var(--line)); }
 @media (max-width: 640px) { .challenge-card .race-pick { grid-template-columns: repeat(2, 1fr); } }
+
+.toast.challenge-alert { background: #2a1024; border: 1px solid color-mix(in srgb, var(--degens) 55%, transparent); color: #ffd1ea; z-index: 60; }

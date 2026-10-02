@@ -4,7 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Chain } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
-import { CHALLENGE_TTL_MS, Lobby, MAX_OPEN_CHALLENGES } from '../src/lobby.ts';
+import { CHALLENGE_REVEAL_MS, CHALLENGE_TTL_MS, Lobby, MAX_INCOMING_CHALLENGES, MAX_OPEN_CHALLENGES } from '../src/lobby.ts';
 
 let clock = 5_000_000;
 const lobby = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => clock });
@@ -71,6 +71,41 @@ describe('friend challenges', () => {
     for (let i = 0; i < MAX_OPEN_CHALLENGES; i++) await many.createChallenge({ race: 'agents' });
     await fail(many.createChallenge({ race: 'agents' }), 429, /at most/);
     await fail(b.challenge('nope'), 404);
+  });
+
+  it('expired links stop counting toward the open limit', async () => {
+    const a = await player();
+    for (let i = 0; i < MAX_OPEN_CHALLENGES; i++) await a.createChallenge({ race: 'agents' });
+    clock += CHALLENGE_TTL_MS + 1;
+    expect((await a.createChallenge({ race: 'agents' })).state).toBe('open');
+  });
+
+  it('caps how many open challenges one wallet can receive', async () => {
+    const target = await player();
+    for (let i = 0; i < MAX_INCOMING_CHALLENGES; i++) await (await player()).createChallenge({ race: 'agents', to: target.address });
+    await fail((await player()).createChallenge({ race: 'agents', to: target.address }), 429, /too many pending/);
+    expect((await target.challenges()).incoming).toHaveLength(MAX_INCOMING_CHALLENGES);
+    clock += CHALLENGE_TTL_MS + 1; // let them lapse for the other tests
+  });
+
+  it('a link accepted while the challenger is away reopens if they never join', async () => {
+    const a = await player(); const b = await player(); const c2 = await player();
+    const c = await a.createChallenge({ race: 'agents' });
+    const matchId = await b.acceptChallenge(c.code, { race: 'degens' });
+    await b.reveal(matchId); // B joins; A is somewhere else
+    expect((await a.challenge(c.code))).toMatchObject({ state: 'accepted', matchId, matchPhase: 'reveal' });
+    clock += CHALLENGE_REVEAL_MS - 5_000; lobby.tick();
+    expect(lobby.get(matchId).phase).toBe('reveal'); // challenge matches wait longer than the usual 60 s
+    clock += 10_000; lobby.tick();
+    expect(lobby.get(matchId).phase).toBe('cancelled');
+    const reopened = await a.challenge(c.code);
+    expect(reopened.state).toBe('open');
+    expect(reopened.matchId).toBeUndefined();
+    // Someone else takes it this time, and A (back now) plays it.
+    const second = await c2.acceptChallenge(c.code, { race: 'brokers' });
+    expect(second).not.toBe(matchId);
+    const [ea] = await Promise.all([runMatch(a, second, { pollMs: 2 }), runMatch(c2, second, { pollMs: 2 })]);
+    expect(ea.phase).toBe('ended');
   });
 
   it('rematch: a challenge addressed to your last opponent, shown to them as incoming', async () => {

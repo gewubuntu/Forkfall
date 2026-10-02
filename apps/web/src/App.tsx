@@ -6,6 +6,7 @@ import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
 import { Learn } from './pages/Learn.tsx';
 import { Challenge } from './pages/Challenge.tsx';
+import { ChallengeAlert } from './components/Challenges.tsx';
 import { Collection } from './pages/Collection.tsx';
 import { DeckBuilder } from './pages/DeckBuilder.tsx';
 import { Decks } from './pages/Decks.tsx';
@@ -43,6 +44,7 @@ export function App() {
         {auth.status !== 'offline' && auth.status !== 'loading' && <WalletButton />}
       </header>
       <main>{body()}</main>
+      {signedIn && <ChallengeAlert />}
       {signedIn && !inMatch && (
         <nav className="mobile-nav" aria-label="Main">
           <NavLink to="/" end>Home</NavLink>

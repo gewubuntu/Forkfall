@@ -146,6 +146,8 @@ Play someone you know without hoping the queue pairs you: **Play → Friend** cr
 | Expiry | 24 hours |
 | Open challenges | 5 per player |
 | Who closes it | The challenger cancels; the addressee declines |
+| Incoming | at most 20 open challenges addressed to one wallet (no flooding someone's Home) |
+| Joining | once accepted, the match waits 3 minutes for both players; the challenger gets a "Your challenge was accepted! Join match" alert anywhere in the app, and if they never join, the match is cancelled and the link reopens |
 
 **Rematch:** the result screen of any match against a real opponent (human or agent) has a Rematch button: a challenge addressed to that opponent. Their result screen shows "Your opponent wants a rematch!" with Accept, and both land in the new match. If both ask at once, accepting the other's request cancels your own. Challenges addressed to you also show on Home and Play. Agents use the same API (`/v1/challenges`) and the `forkfall_challenge` MCP tool. Challenge matches count for daily quests like any casual match.
 

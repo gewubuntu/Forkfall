@@ -3,7 +3,7 @@ import { cosmetic } from '@forkfall/engine';
 import type { ChallengeView } from '@forkfall/sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
 import { avatarSvg } from '../lib/art.ts';
@@ -15,6 +15,14 @@ export const loadWaiting = (): string | null => { try { return sessionStorage.ge
 export const saveWaiting = (code: string | null) => {
   try { if (code) sessionStorage.setItem(WAITING_KEY, code); else sessionStorage.removeItem(WAITING_KEY); } catch { /* private mode */ }
 };
+/** Forget the saved Play challenge, but only if it's this one (a rematch never touches it). */
+const clearWaiting = (code: string) => { if (loadWaiting() === code) saveWaiting(null); };
+
+/** Your challenges and the ones addressed to you, polled every 5 s (shared by every component that asks). */
+export function useChallenges() {
+  const { client, me } = useAuth();
+  return useQuery({ queryKey: ['challenges', me?.address], queryFn: () => client!.challenges(), enabled: !!client, refetchInterval: 5000, retry: false });
+}
 
 export const challengeLink = (code: string) => `${location.origin}/challenge/${code}`;
 
@@ -52,8 +60,8 @@ export function ChallengeWaiting({ code, onDone, rematch = false }: { code: stri
         const x = await client.challenge(code);
         if (!alive) return;
         setC(x);
-        if (x.matchId) { saveWaiting(null); navigate(`/match/${x.matchId}`); return; }
-        if (x.state !== 'open') saveWaiting(null);
+        if (x.matchId && (x.matchPhase === 'reveal' || x.matchPhase === 'active')) { clearWaiting(code); navigate(`/match/${x.matchId}`); return; }
+        if (x.state !== 'open') clearWaiting(code);
       } catch (e) { if (alive) setErr(friendlyError(e)); }
     };
     poll();
@@ -66,14 +74,14 @@ export function ChallengeWaiting({ code, onDone, rematch = false }: { code: stri
   const share = () => navigator.share?.({ title: 'Forkfall challenge', text: 'I challenge you to a Forkfall match!', url: link }).catch(() => {});
   const cancel = async () => {
     try { await client!.cancelChallenge(code); } catch { /* already closed */ }
-    saveWaiting(null); onDone();
+    clearWaiting(code); onDone();
   };
 
   if (c && c.state !== 'open' && !c.matchId) {
     return (
       <div className="challenge-wait closed" role="status">
         <b>{c.state === 'declined' ? 'They declined the challenge.' : c.state === 'expired' ? 'The challenge expired.' : 'Challenge closed.'}</b>
-        <button className="btn" onClick={() => { saveWaiting(null); onDone(); }}>OK</button>
+        <button className="btn" onClick={() => { clearWaiting(code); onDone(); }}>OK</button>
       </div>
     );
   }
@@ -101,9 +109,9 @@ export function ChallengeWaiting({ code, onDone, rematch = false }: { code: stri
 
 /** Challenges addressed to you (directed challenges and rematches), with Accept / Decline. */
 export function IncomingChallenges() {
-  const { client, me } = useAuth();
+  const { client } = useAuth();
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ['challenges', me?.address], queryFn: () => client!.challenges(), enabled: !!client, refetchInterval: 8000, retry: false });
+  const q = useChallenges();
   const incoming = q.data?.incoming ?? [];
   if (!incoming.length) return null;
   const decline = async (code: string) => {
@@ -126,5 +134,22 @@ export function IncomingChallenges() {
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Anywhere in the app: one of your challenges was just accepted and its match is waiting for you to join.
+ * (You might have left the waiting screen; the match starts once you're in, or the link reopens after 3 minutes.)
+ */
+export function ChallengeAlert() {
+  const q = useChallenges();
+  const path = useLocation().pathname;
+  const ready = q.data?.outgoing.find((c) => c.matchId && c.matchPhase === 'reveal' && !path.endsWith(c.matchId));
+  if (!ready) return null;
+  return (
+    <div className="toast challenge-alert" role="alert">
+      <span>⚔ Your challenge was accepted!</span>
+      <Link className="btn btn-primary" to={`/match/${ready.matchId}`}>Join match</Link>
+    </div>
   );
 }
