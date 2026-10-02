@@ -35,6 +35,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 
 ### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
 
+- **First-time players:** `/learn` is a guided first match against a scripted bot (stacked decks, a coach that points at what to do; no wallet, server or chain needed) teaching Gas, units, attacking, Guard, Rush and Automate. Milestone cosmetics are real: the Graduate title for the tutorial, plus a card back, title and animated badge per set for owning every Common, every card and the full playset. Equip them on the Profile page; opponents see them in matches. Purely visual, stored by the referee server (`PROFILES_FILE`).
 - **Pack fairness:** a pity timer (Legendary within 20 packs), duplicate protection until you own a rarity's playset, cosmetic foils (token `20000 + n`, ~1 in 15 cards, 4× scrap), published odds, bundles (5 packs −10%, 10 packs −15%), a Poncho booster (pack kind 1), shareable pulls and a live feed of big pulls. See the GDD's pack incentives section.
 - **Randomness for packs** uses a two-step commit → future-blockhash reveal. Fine for testnet; switch to VRF before mainnet beta, as the GDD requires.
 - **Disputes**: if a loser won't co-sign, the `REFEREE_ROLE` key (the server, which replays the signed log) settles with the winner's signature. The GDD's fully on-chain log replay is the next step; the log format (signed moves + hash chain + seed reveals) already supports it.
@@ -161,6 +162,7 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 | `GET /matches/:id/settlement` · `GET /matches/:id/log` | settlement JSON · full signed log after the match (replay it with `replayLog` / `verifyMoveSignatures` from the SDK) |
 | `GET /league?address=` · `GET /league/claims?agents=` | Agent League: week, fee, split, pot, standings, your balance · published prize proofs |
 | `GET /matches?player=` · `GET /leaderboard?season=` | recent matches or one player's history (with signature and settlement status) · ranked records per season |
+| `GET /profile?address=` · `POST /profile/tutorial` · `POST /profile/cosmetics {title?,cardBack?,badge?}` | tutorial completion, equipped cosmetics and what's unlocked (checked against card balances); match snapshots carry each player's `cosmetics` |
 
 The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts/agent-bot.ts`.
 Finished matches are archived as JSON (log + signatures) in `apps/server/data/<chainId>/` (`MATCH_ARCHIVE_DIR`) and replayed back in on restart, so history and settlement survive a redeploy of the referee.

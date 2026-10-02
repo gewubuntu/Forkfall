@@ -1,3 +1,4 @@
+import { COSMETICS, type Cosmetic, type CosmeticKind } from '@forkfall/engine';
 import {
   agentLeagueAbi, agentRegistryAbi, agentURIFromFile, buildAgentRegistration, faucetTokenAbi, seasonRewardsAbi,
   type AgentWalletProof, type HumanStatus, type PlayerReward,
@@ -14,7 +15,9 @@ import { hasWallet, useAgents, type AgentInfo } from '../chain/useAgents.ts';
 import { useHub } from '../chain/useHub.ts';
 import { useMyDecks } from '../chain/useMyDecks.ts';
 import { useSeasonStats } from '../chain/useSettlement.ts';
+import { CardBack } from '../components/GameCard.tsx';
 import { avatarSvg } from '../lib/art.ts';
+import { emblem, useMyCosmetics } from '../lib/cosmetics.ts';
 import { shortAddr } from '../lib/format.ts';
 
 const day = (unix: number) => new Date(unix * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -56,6 +59,8 @@ export function Profile() {
         )}
       </div>
 
+      <CosmeticsCard />
+
       {!contracts ? (
         <div className="panel empty"><h2>Identity needs the hub contracts</h2><p>This server runs off-chain, so there is no agent registry, verification or rewards here.</p></div>
       ) : (
@@ -71,6 +76,56 @@ export function Profile() {
       )}
     </div>
   );
+}
+
+// ─── Cosmetics: titles, card backs, badges (visual only) ─────────────────────
+const KINDS: { kind: CosmeticKind; label: string; help: string }[] = [
+  { kind: 'title', label: 'Title', help: 'Shown under your name in matches.' },
+  { kind: 'cardBack', label: 'Card back', help: 'Your opponent sees it on your hand; you see it when opening packs.' },
+  { kind: 'badge', label: 'Badge', help: 'An animated emblem next to your name.' },
+];
+
+function CosmeticsCard() {
+  const { equipped, unlocked, equip, loading, error } = useMyCosmetics();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const set = async (kind: CosmeticKind, id: string | null) => {
+    setErr(null); setBusy(`${kind}:${id}`);
+    try { await equip({ [kind]: id }); } catch (e) { setErr(friendlyError(e)); } finally { setBusy(null); }
+  };
+  return (
+    <section className="panel cosmetics" aria-labelledby="cos-h">
+      <h2 id="cos-h">Cosmetics</h2>
+      <p className="muted small">Purely visual, never power. Earn them by finishing the <Link to="/learn">tutorial</Link> and completing sets in your <Link to="/collection">Collection</Link>. Opponents see what you equip.</p>
+      {err && <div className="alert err">{err}</div>}
+      {loading ? <span className="spinner" aria-label="Loading" /> : error ? <div className="alert err">{friendlyError(error)}</div> : KINDS.map(({ kind, label, help }) => (
+        <div key={kind} className="cos-kind">
+          <div className="cos-kind-head"><h3>{label}</h3><span className="muted small">{help}</span></div>
+          <ul className="cos-list">
+            {COSMETICS.filter((c) => c.kind === kind).map((c) => {
+              const on = equipped[kind] === c.id;
+              const open = unlocked.has(c.id);
+              return (
+                <li key={c.id} className={`cos-item ${on ? 'on' : ''} ${open ? '' : 'locked'}`}>
+                  <CosmeticPreview c={c} />
+                  <div className="cos-text"><b>{c.name}</b><span className="muted small">{open ? (on ? 'Equipped' : 'Unlocked') : `🔒 ${c.description}`}</span></div>
+                  {open && (on
+                    ? <button className="btn btn-ghost" disabled={!!busy} onClick={() => set(kind, null)}>{busy === `${kind}:null` ? <span className="spinner" /> : 'Unequip'}</button>
+                    : <button className="btn btn-primary" disabled={!!busy} onClick={() => set(kind, c.id)}>{busy === `${kind}:${c.id}` ? <span className="spinner" /> : 'Equip'}</button>)}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function CosmeticPreview({ c }: { c: Cosmetic }) {
+  if (c.kind === 'cardBack') return <span className="cos-prev"><CardBack back={c.id} /></span>;
+  if (c.kind === 'badge') return <span className="cos-prev"><span className={`cos-badge b-${c.set}`}>{emblem(c.id)}</span></span>;
+  return <span className="cos-prev"><span className="cos-title">{emblem(c.id)}</span></span>;
 }
 
 // ─── Human verification (optional: gates rewards, not the Human queue) ────────

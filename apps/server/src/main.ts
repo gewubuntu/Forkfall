@@ -7,6 +7,7 @@ import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, leagu
 import { LeaguePayouts, leagueDir } from './league.ts';
 import { HumanVerification } from './humans.ts';
 import { Rewards, rewardsDir } from './rewards.ts';
+import { Profiles, profilesFile } from './profiles.ts';
 import { createApi } from './http.ts';
 import { Lobby, type ArchivedMatch } from './lobby.ts';
 
@@ -64,8 +65,12 @@ const settler = chain.online && env.AUTO_SETTLE !== '0' ? refereeSettler(chain, 
 // Agent League (paid agents-only queue): the referee charges entry fees on-chain when a match starts.
 const league = chain.online ? leagueOps(chain, house) : null;
 
+// Player profiles: tutorial completion and equipped cosmetics (unlocks checked against on-chain balances).
+const profiles = new Profiles(env.PROFILES_FILE ?? profilesFile(root, chainId), (a) => chain.ownedCounts(a));
+
 const lobby = new Lobby({
   chain,
+  profiles,
   house,
   settler,
   league,
@@ -119,7 +124,7 @@ const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
-const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)) });
+const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)) });
 const port = Number(env.PORT ?? 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);

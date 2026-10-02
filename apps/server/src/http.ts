@@ -9,6 +9,7 @@ import { verifySessionLogin } from './auth.ts';
 import { EXPLORER, type AddressBook } from './chain.ts';
 import type { HumanVerification } from './humans.ts';
 import type { Rewards } from './rewards.ts';
+import type { Profiles } from './profiles.ts';
 import { serveMetadata } from './metadata.ts';
 import type { LeaguePayouts } from './league.ts';
 import type { Delegation } from '@forkfall/sdk';
@@ -30,7 +31,7 @@ const NONCE_TTL_MS = 5 * 60 * 1000;
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
   const sessions = new Map<string, Session>();
@@ -179,6 +180,21 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         const list = (url.searchParams.get('agents') ?? '').split(',').filter(Boolean);
         if (!list.length || !list.every((x) => isAddress(x))) throw new ApiError(400, 'agents=<address,…> required');
         return { claims: opts.payouts?.claims(list.map((x) => getAddress(x))) ?? [] };
+      }
+      case 'GET /profile': {
+        const a = url.searchParams.get('address') as Address | null;
+        if (!a || !/^0x[0-9a-fA-F]{40}$/.test(a)) throw new ApiError(400, 'address required');
+        if (!opts.profiles) return { profile: { title: null, cardBack: null, badge: null, tutorial: false }, unlocked: [] };
+        return { profile: opts.profiles.get(a), unlocked: await opts.profiles.unlocked(a) };
+      }
+      case 'POST /profile/tutorial': {
+        if (!opts.profiles) throw new ApiError(503, 'profiles are not enabled on this server');
+        return { profile: opts.profiles.completeTutorial(need(session).address) };
+      }
+      case 'POST /profile/cosmetics': {
+        if (!opts.profiles) throw new ApiError(503, 'profiles are not enabled on this server');
+        const who = need(session).address;
+        try { return { profile: await opts.profiles.equip(who, body) }; } catch (e) { throw new ApiError(400, (e as Error).message); }
       }
       case 'GET /rewards': {
         const a = url.searchParams.get('address') ?? '';

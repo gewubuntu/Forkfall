@@ -1,4 +1,7 @@
-import { card, COLLECTIBLE, MAX_COPIES, MAX_LEGENDARY_COPIES, RACES, RARITIES, setOf, type CardDef, type Faction, type Race, type Rarity } from '@forkfall/engine';
+import {
+  card, COLLECTIBLE, COSMETIC_SETS, COSMETICS, MAX_COPIES, MAX_LEGENDARY_COPIES, milestoneMet, RACES, RARITIES, setOf,
+  type CardDef, type Faction, type MilestoneRule, type Race, type Rarity,
+} from '@forkfall/engine';
 import { craftingAbi, faucetTokenAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
@@ -16,6 +19,7 @@ import { TiltCard } from '../components/TiltCard.tsx';
 import { PullFeed } from '../components/PullFeed.tsx';
 import { useParticles } from '../lib/particles.ts';
 import { sfx } from '../lib/sfx.ts';
+import { useMyCosmetics } from '../lib/cosmetics.ts';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
 import { LOGO_MARK, spriteSvg } from '../lib/art.ts';
 
@@ -43,6 +47,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const c = contracts!;
   const { me } = useAuth();
   const player = me!.address as Address;
+  const { equipped } = useMyCosmetics();
   const qc = useQueryClient();
   const tx = useTx();
   const refresh = () => qc.invalidateQueries();
@@ -380,7 +385,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
       )}
 
       {reveal && (
-        <PackReveal key={String(reveal.packId)} ids={reveal.ids} fresh={reveal.fresh} packId={reveal.packId} kind={reveal.kind} player={player} onClose={() => setReveal(null)}
+        <PackReveal key={String(reveal.packId)} ids={reveal.ids} fresh={reveal.fresh} packId={reveal.packId} kind={reveal.kind} player={player} back={equipped.cardBack} onClose={() => setReveal(null)}
           next={unopened.find((p) => block !== undefined && block > p.revealBlock)
             ? () => { const p = unopened.find((x) => block! > x.revealBlock)!; setReveal(null); open(p.id); } : undefined} />
       )}
@@ -388,39 +393,30 @@ function CollectionLive({ chainId }: { chainId: number }) {
   );
 }
 
-const SETS: { key: string; label: string; color: string; cards: CardDef[] }[] = [
-  ...RACES.map((r) => ({ key: r, label: RACE_INFO[r].name, color: RACE_COLOR[r], cards: COLLECTIBLE.filter((c) => c.faction === r && setOf(c) === 'core') })),
-  { key: 'neutral', label: 'Neutral', color: RACE_COLOR.neutral, cards: COLLECTIBLE.filter((c) => c.faction === 'neutral' && setOf(c) === 'core') },
-  { key: 'poncho', label: 'Poncho', color: 'var(--poncho)', cards: COLLECTIBLE.filter((c) => setOf(c) === 'poncho') },
-];
+const SET_COLOR: Record<string, string> = { ...RACE_COLOR, poncho: 'var(--poncho)' };
+const RULE_LABEL: Record<MilestoneRule, string> = { tutorial: 'Tutorial', commons: 'All Commons', every: 'Every card', playset: 'Full playset' };
 
-/** Milestones per set: a card back for every Common, a title for every card, a badge for the full playset. */
-const MILESTONES = [
-  { key: 'commons', label: 'All Commons', reward: 'card back', test: (cs: CardDef[], n: (id: number) => number) => cs.filter((c) => c.rarity === 'common').every((c) => n(c.id) > 0) },
-  { key: 'all', label: 'Every card', reward: 'title', test: (cs: CardDef[], n: (id: number) => number) => cs.every((c) => n(c.id) > 0) },
-  { key: 'playset', label: 'Full playset', reward: 'animated badge', test: (cs: CardDef[], n: (id: number) => number) => cs.every((c) => n(c.id) >= (c.rarity === 'legendary' ? 1 : 2)) },
-];
-
-/** Collection goals: progress per set (cards owned, playset copies) and milestone rewards. */
+/** Collection goals: progress per set (cards owned, playset copies) and the cosmetics each milestone unlocks. */
 function SetProgress({ total, loading }: { total: (id: number) => number; loading: boolean }) {
   return (
     <section aria-labelledby="sets-h">
       <h2 id="sets-h" className="sub">Set progress</h2>
+      <p className="muted section-lead">Milestones unlock cosmetics: a card back, a title and an animated badge per set. <Link to="/profile">Equip them on your Profile</Link>; opponents see them in matches.</p>
       <div className="set-grid">
-        {SETS.map((s) => {
+        {COSMETIC_SETS.map((s) => {
           const owned = s.cards.filter((c) => total(c.id) > 0).length;
           const copies = s.cards.reduce((a, c) => a + Math.min(total(c.id), c.rarity === 'legendary' ? 1 : 2), 0);
           const need = s.cards.reduce((a, c) => a + (c.rarity === 'legendary' ? 1 : 2), 0);
           return (
-            <div key={s.key} className="set-card" style={{ ['--rc' as string]: s.color }}>
+            <div key={s.key} className="set-card" style={{ ['--rc' as string]: SET_COLOR[s.key] }}>
               <div className="set-top"><b>{s.label}</b><span>{loading ? '…' : `${owned}/${s.cards.length}`}</span></div>
               <div className="set-bar" role="meter" aria-valuemin={0} aria-valuemax={need} aria-valuenow={copies} aria-label={`${s.label} playset progress`}>
                 <i style={{ width: `${(copies / need) * 100}%` }} />
               </div>
               <ul className="set-ms">
-                {MILESTONES.map((m) => {
-                  const done = !loading && m.test(s.cards, total);
-                  return <li key={m.key} className={done ? 'done' : ''} title={`${m.label}: unlocks a ${s.label} ${m.reward}`}>{done ? '✓' : '○'} {m.label} <span className="muted">· {m.reward}</span></li>;
+                {COSMETICS.filter((m) => m.set === s.key).map((m) => {
+                  const done = !loading && milestoneMet(m.rule, m.set, total, false);
+                  return <li key={m.id} className={done ? 'done' : ''} title={`${m.description} Unlocks: ${m.name}`}>{done ? '✓' : '○'} {RULE_LABEL[m.rule]} <span className="muted">· {m.name}</span></li>;
                 })}
               </ul>
             </div>

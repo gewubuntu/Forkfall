@@ -1,7 +1,7 @@
 import { card, PREDICTION_TIERS, TOKEN_DRONE, validateDeck } from './cards.ts';
 import { keccakHex, randWord, shuffle } from './rng.ts';
 import type {
-  Action, CardDef, Effect, GameEvent, GameState, HandCard, MatchConfig, PlayerState,
+  Action, CardDef, Effect, GameEvent, GameState, HandCard, MatchConfig, PlayerState, Race,
   PredictionCondition, Seat, UnitState,
 } from './types.ts';
 
@@ -58,6 +58,31 @@ export function createMatch(cfg: MatchConfig): ApplyResult {
   for (let n = 0; n < OPENING_HAND[0]; n++) draw(g, first, ev);
   for (let n = 0; n < OPENING_HAND[1]; n++) draw(g, other(first), ev);
   startTurn(g, first, ev);
+  return { state: g, events: ev };
+}
+
+/**
+ * A scripted match for the tutorial: decks are drawn in the given order (no shuffle), `first` moves first,
+ * and Treasuries can start lower so the lesson stays short. Never used for real matches (no seed fairness).
+ */
+export function createScriptedMatch(cfg: {
+  matchId: string; players: [{ address: string; race: Race; deck: number[] }, { address: string; race: Race; deck: number[] }];
+  first: Seat; treasury?: [number, number];
+}): ApplyResult {
+  const mk = (i: 0 | 1): PlayerState => ({
+    address: cfg.players[i].address.toLowerCase(), race: cfg.players[i].race,
+    treasury: cfg.treasury?.[i] ?? STARTING_TREASURY, gas: 0, maxGas: 0, deck: [...cfg.players[i].deck],
+    hand: [], board: [], assets: [], predictions: [], automations: [], graveyard: [],
+    fatigue: 0, discount: 0, dividendsThisTurn: 0, stats: emptyStats(),
+  });
+  const g: GameState = {
+    version: 1, matchId: cfg.matchId, seed: keccakHex('scripted', cfg.matchId), turn: 0, active: cfg.first,
+    players: [mk(0), mk(1)], rngCounter: 0, nextUid: 1, status: 'active', winner: null,
+  };
+  const ev: GameEvent[] = [];
+  for (let n = 0; n < OPENING_HAND[0]; n++) draw(g, cfg.first, ev);
+  for (let n = 0; n < OPENING_HAND[1]; n++) draw(g, other(cfg.first), ev);
+  startTurn(g, cfg.first, ev);
   return { state: g, events: ev };
 }
 

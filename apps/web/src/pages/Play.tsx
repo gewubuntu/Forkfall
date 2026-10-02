@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import type { Address, Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useMyDecks } from '../chain/useMyDecks.ts';
+import { LearnBanner } from '../components/LearnBanner.tsx';
 import { deckName } from '../lib/deckNames.ts';
 import { RACE_INFO, raceName } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
@@ -134,6 +135,7 @@ export function Play() {
           </Link>
         )}
       </div>
+      <LearnBanner />
 
       <section aria-labelledby="race-h">
         <h2 id="race-h" className="sub">1 · Choose your race</h2>

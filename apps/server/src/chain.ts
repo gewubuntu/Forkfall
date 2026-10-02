@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { agentLeagueAbi, humanRegistryAbi, matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
+import { COLLECTIBLE } from '@forkfall/engine';
+import { agentLeagueAbi, cardRegistryAbi, humanRegistryAbi, matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
 import {
   BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, parseAbi,
   type Address, type Hex, type LocalAccount, type PublicClient,
@@ -30,6 +31,7 @@ export interface AddressBook {
   AgentRegistry: Address;
   HumanRegistry: Address;
   DeckRegistry: Address;
+  CardRegistry?: Address;
   [k: string]: unknown;
 }
 
@@ -137,6 +139,17 @@ export class Chain {
     if (!this.client) return 1;
     return Number(await this.client.readContract({ address: this.book!.MatchSettlement, abi: settlementAbi, functionName: 'currentSeason' }));
   }
+  /** Copies of each collectible card the player owns (tradeable + soulbound starter + foil), or null off-chain. */
+  async ownedCounts(player: Address): Promise<Map<number, number> | null> {
+    if (!this.client || !this.book?.CardRegistry) return null;
+    const ids = COLLECTIBLE.map((c) => BigInt(c.id));
+    const all = [...ids, ...ids.map((i) => i + 10_000n), ...ids.map((i) => i + 20_000n)];
+    const b = await this.client.readContract({ address: this.book.CardRegistry, abi: cardRegistryAbi, functionName: 'balanceOfBatch', args: [all.map(() => player), all] });
+    const m = new Map<number, number>();
+    COLLECTIBLE.forEach((c, i) => m.set(c.id, Number(b[i] + b[i + ids.length] + b[i + 2 * ids.length])));
+    return m;
+  }
+
   async deck(deckId: Hex, player: Address, ranked: boolean): Promise<{ race: number; cardIds: number[] } | null> {
     if (!this.client) return null;
     const ok = await this.client.readContract({ address: this.book!.DeckRegistry, abi: deckAbi, functionName: 'isValidFor', args: [deckId, player, ranked] });
