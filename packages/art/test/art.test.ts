@@ -1,7 +1,7 @@
 import { CARDS } from '@forkfall/engine';
 import { describe, expect, it } from 'vitest';
 import {
-  cardMetadata, cardSvg, collectionMetadata, erc1155IdHex, paletteFor, parseTokenId, PALETTES, PONCHO_PALETTE, SPRITE_SIZE, spritePixels, spriteSvg,
+  cardMetadata, cardSvg, collectionMetadata, ponchoArt, ponchoSvg, erc1155IdHex, paletteFor, parseTokenId, PALETTES, PONCHO_PALETTE, SPRITE_SIZE, spritePixels, spriteSvg,
   STARTER_OFFSET, tokenIds, wrap,
 } from '../src/index.ts';
 
@@ -51,6 +51,19 @@ describe('card frame', () => {
 });
 
 describe('Poncho set art', () => {
+  it('uses the Poncho Pals vector style: one distinct, well-formed picture per card', () => {
+    const ids = [41, 42, 43, 44, 45, 46, 47, 48, 1002];
+    const svgs = ids.map((id) => ponchoSvg(id));
+    expect(new Set(svgs).size).toBe(ids.length);
+    for (const svg of svgs) {
+      expect(svg.startsWith('<svg')).toBe(true);
+      expect(svg).toContain('#1e1440'); // thick navy outline
+      expect(svg).not.toMatch(/<[^>]*\bstroke-width="[^"]*"[^>]*\bstroke-width=/); // no duplicate attributes (invalid XML)
+    }
+    expect(spriteSvg(48)).toBe(ponchoSvg(48)); // the web and metadata use the same art
+    expect(ponchoArt(34)).toBeNull(); // core cards stay pixel art
+    expect(cardSvg(48)).toContain('PB');
+  });
   it('uses the Poncho palette, serape frame and set label', () => {
     expect(paletteFor(CARDS.find((c) => c.id === 48)!)).toBe(PONCHO_PALETTE);
     expect(paletteFor(CARDS.find((c) => c.id === 34)!)).toBe(PALETTES.neutral);

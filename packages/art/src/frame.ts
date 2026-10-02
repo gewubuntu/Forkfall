@@ -1,5 +1,6 @@
 import { card, SET_NAME, setOf, type CardDef, type Rarity } from '@forkfall/engine';
 import { paletteFor } from './palette.ts';
+import { isPonchoArt, PONCHO_VIEW, ponchoArt } from './poncho.ts';
 import { spritePixels, spriteRects, SPRITE_SIZE, toBase64 } from './sprite.ts';
 
 /**
@@ -83,7 +84,9 @@ export function cardSvg(cardId: number, opts: CardSvgOptions = {}): string {
 <rect width="${CARD_W}" height="${CARD_H}" rx="30" fill="${frameFill}"/>
 <rect x="14" y="14" width="${CARD_W - 28}" height="${CARD_H - 28}" rx="20" fill="url(#bd)" stroke="${pal.accent}" stroke-opacity=".55" stroke-width="2"/>
 <rect x="${artX - 30}" y="${artY - 6}" width="${art + 60}" height="${art + 12}" rx="14" fill="url(#art)" stroke="#000" stroke-opacity=".35" stroke-width="2"/>
-<svg x="${artX}" y="${artY}" width="${art}" height="${art}" viewBox="0 0 ${SPRITE_SIZE} ${SPRITE_SIZE}" shape-rendering="crispEdges">${spriteRects(spritePixels(cardId))}</svg>
+${isPonchoArt(cardId)
+    ? `<svg x="${artX - 24}" y="${artY - 2}" width="${art + 48}" height="${art + 4}" viewBox="0 0 ${PONCHO_VIEW} ${PONCHO_VIEW}" preserveAspectRatio="xMidYMid slice"><g>${ponchoArt(cardId)}</g></svg>`
+    : `<svg x="${artX}" y="${artY}" width="${art}" height="${art}" viewBox="0 0 ${SPRITE_SIZE} ${SPRITE_SIZE}" shape-rendering="crispEdges">${spriteRects(spritePixels(cardId))}</svg>`}
 ${collab ? serape(artX - 30, artY - 6, art + 60, art + 12) : ''}
 ${opts.foil ? `<defs><linearGradient id="foil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff7ad9" stop-opacity="0"/><stop offset=".35" stop-color="#ff7ad9" stop-opacity=".35"/><stop offset=".5" stop-color="#67e8f9" stop-opacity=".35"/><stop offset=".65" stop-color="#b6f23c" stop-opacity=".35"/><stop offset="1" stop-color="#fde68a" stop-opacity="0"/><animateTransform attributeName="gradientTransform" type="translate" values="-1 -1;1 1" dur="3s" repeatCount="indefinite"/></linearGradient></defs><rect x="${artX - 30}" y="${artY - 6}" width="${art + 60}" height="${art + 12}" rx="14" fill="url(#foil)" style="mix-blend-mode:color-dodge"/><g><rect x="${CARD_W - 142}" y="${artY + 8}" width="104" height="30" rx="15" fill="#1a1030" stroke="#ff9ae4" stroke-width="2"/><text x="${CARD_W - 90}" y="${artY + 29}" font-family="${FONT}" font-size="16" font-weight="800" letter-spacing="3" fill="#ff9ae4" text-anchor="middle">✦ FOIL</text></g>` : ''}
 ${opts.starter ? `<g><rect x="${artX - 30}" y="${artY + art - 12}" width="${art + 60}" height="26" fill="#0b0d12" fill-opacity=".85"/><text x="${CARD_W / 2}" y="${artY + art + 7}" font-family="${FONT}" font-size="16" font-weight="800" letter-spacing="3" fill="#e2e8f0" text-anchor="middle">STARTER · SOULBOUND</text></g>` : ''}

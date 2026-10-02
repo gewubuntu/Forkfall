@@ -1,5 +1,6 @@
 import { card, type CardDef } from '@forkfall/engine';
 import { paletteFor, type RacePalette } from './palette.ts';
+import { isPonchoArt, ponchoSvg } from './poncho.ts';
 
 /**
  * Placeholder pixel art that follows the GDD pixel style guide, generated per card:
@@ -628,6 +629,8 @@ export function spritePixels(cardId: number): (string | null)[] {
 
 /** The sprite as a compact SVG (horizontal runs merged), transparent background, crisp at any integer scale. */
 export function spriteSvg(cardId: number): string {
+  // The Poncho collab set uses its licensed vector style (Poncho Pals), not pixel art.
+  if (isPonchoArt(cardId)) return ponchoSvg(cardId);
   const px = spritePixels(cardId);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${N} ${N}" shape-rendering="crispEdges">${spriteRects(px)}</svg>`;
 }
