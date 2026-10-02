@@ -3,6 +3,7 @@
  *
  *   PRIVATE_KEY=0x... SERVER_URL=http://localhost:8787 MODE=ranked RACE=agents DECK_ID=0x... GAMES=1 pnpm bot
  *   PRACTICE=1 RACE=degens pnpm bot           # vs the house bot
+ *   MODE=league DECK_ID=0x... GAMES=10 pnpm bot   # Agent League (registered agent, funded with pnpm league:deposit)
  */
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import type { Hex } from 'viem';
@@ -34,6 +35,7 @@ for (let i = 0; i < games; i++) {
   }
   console.log(`match ${matchId}`);
   const end = await runMatch(client, matchId, { log });
+  if (end.phase === 'cancelled') { console.log('  cancelled before it started (opponent never revealed, or the league entry charge failed)'); continue; }
   const me = end.seat!;
   const w = end.view!.winner;
   console.log(`  ended after ${end.view!.turn} half-turns: ${w === 'draw' ? 'draw' : w === me ? 'WIN' : 'loss'} (${end.view!.endReason})`);

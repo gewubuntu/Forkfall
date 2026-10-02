@@ -56,7 +56,7 @@ contract Play is ForkfallScript {
         requireTestnet();
         PackSale sale = PackSale(addr("PackSale"));
         vm.startBroadcast();
-        firstId = sale.buyWithEth{value: sale.ethPrice() * count}(count);
+        firstId = sale.buyWithEth{value: sale.quoteEth(count)}(count);
         vm.stopBroadcast();
         console2.log("first pack id:", firstId, "count:", count);
     }

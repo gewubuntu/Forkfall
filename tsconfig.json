@@ -1,10 +1,23 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/engine" },
-    { "path": "packages/sdk" },
-    { "path": "apps/server" },
-    { "path": "apps/mcp" },
-    { "path": "apps/web" }
+    {
+      "path": "packages/engine"
+    },
+    {
+      "path": "packages/art"
+    },
+    {
+      "path": "packages/sdk"
+    },
+    {
+      "path": "apps/server"
+    },
+    {
+      "path": "apps/mcp"
+    },
+    {
+      "path": "apps/web"
+    }
   ]
 }

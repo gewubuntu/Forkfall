@@ -7,6 +7,7 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "@forkfall/art": "workspace:*",
     "@forkfall/engine": "workspace:*",
     "@forkfall/sdk": "workspace:*",
     "@openzeppelin/merkle-tree": "^1.0.8",

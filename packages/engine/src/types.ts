@@ -3,6 +3,8 @@ export type Faction = Race | 'neutral';
 export type Chain = 'base' | 'robinhood';
 export type CardType = 'unit' | 'action' | 'prediction' | 'asset';
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary';
+/** Card set: the core prototype set, or a themed collab set (never in starter decks). */
+export type CardSet = 'core' | 'poncho';
 export type Keyword = 'guard' | 'rush' | 'hold' | 'swarm' | 'firewall' | 'ape' | 'noBackfire' | 'predictionBonus';
 export type TargetKind = 'enemyUnit' | 'friendlyUnit' | 'anyUnit';
 
@@ -30,6 +32,7 @@ export type Effect =
   | { k: 'compute'; n: number }
   | { k: 'doubleAttack'; to: TargetSpec }
   | { k: 'grantRush'; to: TargetSpec }
+  | { k: 'addToHand'; card: number; n: number }
   | { k: 'automate'; effects: Effect[] };
 
 /** Conditions a Prophet can call on the opponent's next turn. Tier drives the Odds payoff. */
@@ -55,6 +58,8 @@ export interface CardDef {
   attack?: number;
   health?: number;
   rarity: Rarity;
+  /** Omitted = 'core'. */
+  set?: CardSet;
   keywords: Keyword[];
   text: string;
   collectible: boolean;
@@ -152,6 +157,7 @@ export type GameEvent =
   | { t: 'turnStart'; seat: Seat; turn: number }
   | { t: 'draw'; seat: Seat; uid: number; cardId: number; private: true }
   | { t: 'burn'; seat: Seat; cardId: number }
+  | { t: 'create'; seat: Seat; uid: number; cardId: number; private: true }
   | { t: 'fatigue'; seat: Seat; n: number }
   | { t: 'play'; seat: Seat; cardId: number; uid: number; ape?: boolean }
   | { t: 'predictionMade'; seat: Seat; uid: number; cardId: number; condition: PredictionCondition; private: true }

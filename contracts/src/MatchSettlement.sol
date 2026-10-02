@@ -18,6 +18,11 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 ///         stand-in for the GDD's on-chain replay dispute path.
 ///         Smart-wallet players may sign before their wallet exists: ERC-6492 signatures carry the wallet's
 ///         factory call, which this contract runs (deploying the wallet) before the ERC-1271 check.
+interface ILeague {
+    function checkResult(bytes32 matchId, address playerA, address playerB) external view;
+    function recordResult(bytes32 matchId, address winner) external;
+}
+
 contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardTransient {
     bytes32 public constant REFEREE_ROLE = keccak256("REFEREE_ROLE");
     bytes32 public constant SEASON_ADMIN_ROLE = keccak256("SEASON_ADMIN_ROLE");
@@ -25,6 +30,8 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     uint8 public constant MODE_CASUAL = 0;
     uint8 public constant MODE_RANKED = 1;
     uint8 public constant MODE_HUMAN = 2;
+    /// @notice Agent League: agents only, paid entry; standings live in AgentLeague, not the ranked ladder.
+    uint8 public constant MODE_LEAGUE = 3;
 
     /// @dev ERC-6492 suffix marking a signature wrapped as abi.encode(factory, factoryCalldata, signature).
     bytes32 private constant ERC6492_MAGIC = 0x6492649264926492649264926492649264926492649264926492649264926492;
@@ -60,6 +67,8 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     DeckRegistry public immutable deckRegistry;
 
     uint32 public currentSeason = 1;
+    /// @notice AgentLeague receiving league results (zero = league disabled).
+    ILeague public league;
     mapping(bytes32 => bool) public settled;
     mapping(uint32 => mapping(address => Stats)) private _stats;
 
@@ -185,8 +194,14 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
         if (settled[r.matchId]) revert AlreadySettled(r.matchId);
         if (r.playerA == address(0) || r.playerB == address(0) || r.playerA == r.playerB) revert BadPlayers();
         if (r.winner != address(0) && r.winner != r.playerA && r.winner != r.playerB) revert BadWinner();
-        if (r.mode > MODE_HUMAN) revert UnknownMode(r.mode);
-        if (r.mode != MODE_CASUAL) {
+        if (r.mode > MODE_LEAGUE) revert UnknownMode(r.mode);
+        if (r.mode == MODE_LEAGUE) {
+            // The league season is its week; the league checks this is a started match between these agents.
+            if (address(league) == address(0)) revert UnknownMode(r.mode);
+            league.checkResult(r.matchId, r.playerA, r.playerB);
+            _checkRankedPlayer(r.playerA, r.deckA, r.mode);
+            _checkRankedPlayer(r.playerB, r.deckB, r.mode);
+        } else if (r.mode != MODE_CASUAL) {
             if (r.season != currentSeason) revert WrongSeason(r.season);
             _checkRankedPlayer(r.playerA, r.deckA, r.mode);
             _checkRankedPlayer(r.playerB, r.deckB, r.mode);
@@ -220,6 +235,11 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     function _record(MatchResult calldata r, bool byReferee) internal {
         settled[r.matchId] = true;
         address loser = r.winner == address(0) ? address(0) : (r.winner == r.playerA ? r.playerB : r.playerA);
+        if (r.mode == MODE_LEAGUE) {
+            league.recordResult(r.matchId, r.winner);
+            emit MatchSettled(r.matchId, r.winner, loser, r.mode, r.season, r.turns, r.logHash, byReferee);
+            return;
+        }
         uint32 season = r.mode == MODE_CASUAL ? 0 : r.season; // casual stats are tracked under season 0
         Stats storage a = _stats[season][r.playerA];
         Stats storage b = _stats[season][r.playerB];
@@ -267,6 +287,10 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     function stats(uint32 season, address player) external view returns (Stats memory s) {
         s = _stats[season][player];
         if (s.rating == 0) s.rating = uint32(START_RATING);
+    }
+
+    function setLeague(ILeague league_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        league = league_;
     }
 
     function startSeason(uint32 season) external onlyRole(SEASON_ADMIN_ROLE) {

@@ -4,7 +4,7 @@ import {
 } from '@forkfall/engine';
 import { deckRegistryAbi } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { encodeAbiParameters, keccak256, parseEventLogs, type Address, type Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
@@ -17,6 +17,8 @@ import { ManaCurve } from '../components/ManaCurve.tsx';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
 import { deckName, setDeckName } from '../lib/deckNames.ts';
 import { spriteSvg } from '../lib/art.ts';
+import { useParticles } from '../lib/particles.ts';
+import { sfx } from '../lib/sfx.ts';
 
 const RACE_CODE: Record<Race, number> = { agents: 1, prophets: 2, brokers: 3, degens: 4 };
 const limitOf = (c: CardDef) => (c.rarity === 'legendary' ? MAX_LEGENDARY_COPIES : MAX_COPIES);
@@ -43,6 +45,8 @@ export function DeckBuilder() {
   const [name, setName] = useState('');
   const [query, setQuery] = useState('');
   const [hover, setHover] = useState<number | null>(null);
+  const flyFrom = useRef<HTMLElement | null>(null);
+  const { ref: confettiRef, burst } = useParticles();
   const [seeded, setSeeded] = useState(false);
 
   // Start from an existing deck (?from=<deckId>) or a starter list (?starter=1).
@@ -78,8 +82,29 @@ export function DeckBuilder() {
   const pool = COLLECTIBLE.filter((c) => (c.faction === race || c.faction === 'neutral')
     && (!query || c.name.toLowerCase().includes(query.toLowerCase()) || c.text.toLowerCase().includes(query.toLowerCase()))).sort(byCost);
 
-  const add = (id: number) => setCounts((m) => { const n = new Map(m); n.set(id, (n.get(id) ?? 0) + 1); return n; });
-  const remove = (id: number) => setCounts((m) => { const n = new Map(m); const v = (n.get(id) ?? 0) - 1; if (v <= 0) n.delete(id); else n.set(id, v); return n; });
+  const add = (id: number) => {
+    setCounts((m) => { const n = new Map(m); n.set(id, (n.get(id) ?? 0) + 1); return n; });
+    const from = flyFrom.current;
+    flyFrom.current = null;
+    sfx.deal(1);
+    requestAnimationFrame(() => flyIntoDeck(id, from));
+  };
+  const remove = (id: number) => {
+    setCounts((m) => { const n = new Map(m); const v = (n.get(id) ?? 0) - 1; if (v <= 0) n.delete(id); else n.set(id, v); return n; });
+    sfx.attack();
+    pulseRow(id, 'minus');
+  };
+
+  // Deck complete and valid: a small celebration once per completion.
+  const wasReady = useRef(registrable);
+  useEffect(() => {
+    if (registrable && !wasReady.current) {
+      sfx.done();
+      const r = document.querySelector('.deck-panel .meters')?.getBoundingClientRect();
+      if (r) burst(r.left + r.width / 2, r.top + r.height / 2, ['#3ecf8e', '#b6f23c', '#7dd3fc', '#ffffff'], 60, 7);
+    }
+    wasReady.current = registrable;
+  }, [registrable, burst]);
   const addBlock = (c: CardDef): string | null => {
     const inDeck = counts.get(c.id) ?? 0;
     if (size >= DECK_SIZE) return 'Deck is full (30 cards).';
@@ -109,6 +134,7 @@ export function DeckBuilder() {
 
   return (
     <div className="page builder">
+      <canvas ref={confettiRef} className="particles" aria-hidden />
       <div className="builder-head">
         <div>
           <Link className="back" to="/decks">← Decks</Link>
@@ -136,7 +162,8 @@ export function DeckBuilder() {
               const inDeck = counts.get(c.id) ?? 0;
               const block = addBlock(c);
               return (
-                <div key={c.id} className={`pool-cell ${total(c.id) === 0 ? 'unowned' : ''}`}>
+                <div key={c.id} className={`pool-cell ${total(c.id) === 0 ? 'unowned' : ''}`}
+                  onClickCapture={(e) => { flyFrom.current = (e.currentTarget as HTMLElement).querySelector('.gcard'); }}>
                   <GameCard cardId={c.id} size="hand" dimmed={!!block && inDeck === 0} onHover={setHover}
                     onClick={block ? undefined : () => add(c.id)} label={`${c.name}: ${block ?? 'add to deck'}`} />
                   <div className="pool-meta">
@@ -167,11 +194,11 @@ export function DeckBuilder() {
           <ol className="deck-list">
             {rows.length === 0 && <li className="muted">Click cards on the left to add them.</li>}
             {rows.map(({ c, n }) => (
-              <li key={c.id} className={n > total(c.id) ? 'short' : ''} onMouseEnter={() => setHover(c.id)} onMouseLeave={() => setHover(null)}
+              <li key={c.id} data-dl={c.id} className={n > total(c.id) ? 'short' : ''} onMouseEnter={() => setHover(c.id)} onMouseLeave={() => setHover(null)}
                 style={{ ['--rc' as string]: RACE_COLOR[c.faction] }}>
                 <span className="dl-cost">{c.cost}</span>
                 <span className={`dl-name r-${c.rarity}`}>{c.name}</span>
-                <span className="dl-n">×{n}</span>
+                <span className="dl-n" key={n}>×{n}</span>
                 <button className="mini-btn" onClick={() => remove(c.id)} aria-label={`Remove one ${c.name}`}>−</button>
                 <button className="mini-btn" onClick={() => add(c.id)} disabled={!!addBlock(c)} aria-label={`Add one ${c.name}`}>+</button>
               </li>
@@ -213,4 +240,33 @@ function Meter({ label, value, max, ok, exact }: { label: string; value: number;
 
 function Check({ ok, warn, children }: { ok: boolean; warn?: boolean; children: React.ReactNode }) {
   return <li className={ok ? 'ok' : warn ? 'warn' : 'bad'}><span aria-hidden>{ok ? '✓' : warn ? '!' : '✕'}</span><span>{children}</span></li>;
+}
+
+const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+function pulseRow(id: number, kind: 'plus' | 'minus') {
+  const row = document.querySelector<HTMLElement>(`.deck-list [data-dl="${id}"]`);
+  row?.animate(kind === 'plus'
+    ? [{ background: 'rgba(62, 207, 142, .35)' }, { background: 'transparent' }]
+    : [{ background: 'rgba(255, 93, 115, .35)', transform: 'translateX(-4px)' }, { transform: 'translateX(3px)' }, { background: 'transparent', transform: 'none' }],
+  { duration: 450, easing: 'ease-out' });
+}
+
+/** A copy of the card's art flies from the pool into its row in the deck list, then the row flashes. */
+function flyIntoDeck(id: number, from: HTMLElement | null) {
+  const to = document.querySelector<HTMLElement>(`.deck-list [data-dl="${id}"]`);
+  if (!from || !to || reducedMotion()) { pulseRow(id, 'plus'); return; }
+  const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+  const img = document.createElement('img');
+  img.src = spriteSvg(id);
+  img.className = 'fly-card';
+  Object.assign(img.style, { left: `${a.left + a.width / 2 - 40}px`, top: `${a.top + 20}px` });
+  document.body.appendChild(img);
+  const dx = b.left + 30 - (a.left + a.width / 2 - 40), dy = b.top + b.height / 2 - 40 - (a.top + 20);
+  const anim = img.animate([
+    { transform: 'translate(0, 0) scale(1) rotate(0)', opacity: 1 },
+    { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 60}px) scale(.8) rotate(-10deg)`, opacity: 1, offset: 0.5 },
+    { transform: `translate(${dx}px, ${dy}px) scale(.3) rotate(0)`, opacity: 0.2 },
+  ], { duration: 520, easing: 'cubic-bezier(.4,.1,.3,1)' });
+  anim.onfinish = () => { img.remove(); pulseRow(id, 'plus'); };
 }

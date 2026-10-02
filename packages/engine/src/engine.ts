@@ -515,6 +515,14 @@ function runEffects(g: GameState, seat: Seat, effects: Effect[], ctx: Ctx, ev: G
         break;
       }
       case 'automate': me.automations.push(e.effects); break;
+      case 'addToHand':
+        for (let i = 0; i < e.n; i++) {
+          if (me.hand.length >= HAND_LIMIT) { ev.push({ t: 'burn', seat, cardId: e.card }); continue; }
+          const uid = g.nextUid++;
+          me.hand.push({ uid, cardId: e.card });
+          ev.push({ t: 'create', seat, uid, cardId: e.card, private: true });
+        }
+        break;
     }
   }
 }

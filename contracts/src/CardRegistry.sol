@@ -7,13 +7,15 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 
 /// @title CardRegistry
 /// @notice ERC-1155 collection for Forkfall cards. Token id `n` (1..) is the tradeable card,
-///         and `STARTER_OFFSET + n` is its soulbound starter-deck twin: same card in game, never transferable.
+///         `STARTER_OFFSET + n` is its soulbound starter-deck twin (same card in game, never transferable), and
+///         `FOIL_OFFSET + n` is its foil: a tradeable cosmetic variant from packs that plays exactly like card n.
 contract CardRegistry is ERC1155, AccessControl, TestnetOnly {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
     bytes32 public constant CARD_ADMIN_ROLE = keccak256("CARD_ADMIN_ROLE");
 
     uint256 public constant STARTER_OFFSET = 10_000;
+    uint256 public constant FOIL_OFFSET = 20_000;
 
     uint8 public constant RACE_NEUTRAL = 0;
     uint8 public constant RARITY_LEGENDARY = 3;
@@ -36,6 +38,11 @@ contract CardRegistry is ERC1155, AccessControl, TestnetOnly {
     error AlreadyDefined(uint256 id);
 
     event CardDefined(uint256 indexed id, uint8 race, uint8 rarity, uint8 chain);
+    /// @notice ERC-7572: collection metadata changed.
+    event ContractURIUpdated();
+
+    /// @notice ERC-7572 collection metadata (name, description, image) for wallets and marketplaces.
+    string public contractURI;
 
     constructor(address admin, string memory uri_) ERC1155(uri_) {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -65,6 +72,11 @@ contract CardRegistry is ERC1155, AccessControl, TestnetOnly {
         _setURI(uri_);
     }
 
+    function setContractURI(string calldata uri_) external onlyRole(CARD_ADMIN_ROLE) {
+        contractURI = uri_;
+        emit ContractURIUpdated();
+    }
+
     function cardInfo(uint256 id) public view returns (CardInfo memory c) {
         c = _cards[baseId(id)];
         if (!c.exists) revert UnknownCard(id);
@@ -79,16 +91,22 @@ contract CardRegistry is ERC1155, AccessControl, TestnetOnly {
     }
 
     function baseId(uint256 id) public pure returns (uint256) {
-        return id >= STARTER_OFFSET ? id - STARTER_OFFSET : id;
+        return id >= FOIL_OFFSET ? id - FOIL_OFFSET : id >= STARTER_OFFSET ? id - STARTER_OFFSET : id;
     }
 
     function isStarter(uint256 id) public pure returns (bool) {
-        return id >= STARTER_OFFSET;
+        return id >= STARTER_OFFSET && id < FOIL_OFFSET;
     }
 
-    /// @notice Copies of a card a player can put in a deck: tradeable + soulbound starter copies.
+    function isFoil(uint256 id) public pure returns (bool) {
+        return id >= FOIL_OFFSET;
+    }
+
+    /// @notice Copies of a card a player can put in a deck: tradeable + soulbound starter + foil copies.
     function playableBalance(address owner, uint256 cardId) public view returns (uint256) {
-        return balanceOf(owner, cardId) + balanceOf(owner, cardId + STARTER_OFFSET);
+        return
+            balanceOf(owner, cardId) + balanceOf(owner, cardId + STARTER_OFFSET)
+                + balanceOf(owner, cardId + FOIL_OFFSET);
     }
 
     // ─── Mint / burn (PackSale, StarterDecks, Crafting) ─────────

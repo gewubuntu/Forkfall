@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAction, card, createMatch, eventsFor, IllegalAction, keccakHex, legalActions, playOut,
-  randomBot, RACES, RANKED_RARITY_CAP, COLLECTIBLE, starterDeck, validateDeck, viewFor, greedyBot,
+  randomBot, RACES, RANKED_RARITY_CAP, COLLECTIBLE, starterDeck, validateDeck, viewFor, greedyBot, setOf, TOKEN_TACO, HAND_LIMIT,
   type GameState, type Race, type Seat, type UnitState,
 } from '../src/index.ts';
 
@@ -64,7 +64,20 @@ describe('decks', () => {
     deck2[1] = deck2[2] = deck2[0];
     expect(validateDeck('agents', deck2).errors.join()).toMatch(/copies/);
   });
-  it('set has 40 collectible cards, 8 per race', () => {
+  it('Poncho set: 8 neutral Base cards (ids 41–48), never in starter decks, legal in any race', () => {
+    const poncho = COLLECTIBLE.filter((c) => setOf(c) === 'poncho');
+    expect(poncho.map((c) => c.id)).toEqual([41, 42, 43, 44, 45, 46, 47, 48]);
+    expect(poncho.every((c) => c.faction === 'neutral' && c.chain === 'base')).toBe(true);
+    expect(poncho.filter((c) => c.rarity === 'legendary')).toHaveLength(1);
+    for (const r of RACES) {
+      expect(starterDeck(r)).toHaveLength(30);
+      expect(starterDeck(r).some((id) => id > 40)).toBe(false);
+      const deck = starterDeck(r);
+      deck.splice(deck.indexOf(34), 2, 41, 41); // Validators → Poncho Kittens
+      expect(validateDeck(r, deck, true).errors).toEqual([]);
+    }
+  });
+  it('core set has 40 collectible cards, 8 per race', () => {
     const coll = Array.from({ length: 40 }, (_, i) => card(i + 1));
     for (const r of RACES) expect(coll.filter((c) => c.faction === r)).toHaveLength(8);
     expect(coll.filter((c) => c.faction === 'neutral')).toHaveLength(8);
@@ -204,6 +217,42 @@ describe('race mechanics', () => {
     const { g, uid } = withHand(newMatch('degens', 'agents'), 30, 1); // Hype Man cost 3, 1 gas
     const r = applyAction(g, g.active, { type: 'play', uid, ape: true });
     expect(r.events.some((e) => e.t === 'apeDownside')).toBe(true);
+  });
+});
+
+describe('Poncho set', () => {
+  it('Poncho Kitten adds a Taco to your hand; a Taco gives a friendly unit +1/+1 for 1 Gas', () => {
+    const { g, uid } = withHand(newMatch(), 41, 3);
+    const me = g.active;
+    const r = applyAction(g, me, { type: 'play', uid });
+    const taco = r.state.players[me].hand.find((h) => h.cardId === TOKEN_TACO)!;
+    expect(taco).toBeTruthy();
+    expect(r.events.some((e) => e.t === 'create' && e.cardId === TOKEN_TACO)).toBe(true);
+    expect(eventsFor(r.events, (1 - me) as Seat).some((e) => e.t === 'create')).toBe(false); // hidden from the opponent
+    const kitten = r.state.players[me].board.find((u) => u.cardId === 41)!;
+    const r2 = applyAction(r.state, me, { type: 'play', uid: taco.uid, target: kitten.uid });
+    const k2 = r2.state.players[me].board.find((u) => u.uid === kitten.uid)!;
+    expect([k2.attack, k2.health]).toEqual([2, 2]);
+    expect(r2.state.players[me].gas).toBe(1);
+  });
+  it('Tacos burn when the hand is full', () => {
+    const { g, uid } = withHand(newMatch(), 42, 5);
+    const me = g.active;
+    while (g.players[me].hand.length < HAND_LIMIT) g.players[me].hand.push({ uid: g.nextUid++, cardId: 34 });
+    const r = applyAction(g, me, { type: 'play', uid });
+    expect(r.state.players[me].hand).toHaveLength(HAND_LIMIT);
+    expect(r.events.filter((e) => e.t === 'burn' && e.cardId === TOKEN_TACO)).toHaveLength(1);
+  });
+  it('Sombrero Sentry leaves a Taco when it dies; Taco Truck makes one each turn', () => {
+    const g = structuredClone(newMatch());
+    const me = g.active, opp = (1 - me) as Seat;
+    const sentry = unit(g, opp, 44, { health: 1 });
+    unit(g, opp, 45);
+    const atk = unit(g, me, 34, { summonedTurn: -5 });
+    const r = applyAction(g, me, { type: 'attack', attacker: atk, target: sentry });
+    expect(r.state.players[opp].hand.filter((h) => h.cardId === TOKEN_TACO)).toHaveLength(1);
+    const r2 = applyAction(r.state, me, { type: 'endTurn' });
+    expect(r2.state.players[opp].hand.filter((h) => h.cardId === TOKEN_TACO)).toHaveLength(2);
   });
 });
 

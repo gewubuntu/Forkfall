@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { recoverTypedDataAddress, type Hex } from 'viem';
+import { recoverTypedDataAddress, type Address, type Hex } from 'viem';
 import { ForkfallClient, runMatch, RESULT_TYPES, MOVE_TYPES, actionHash, replayLog, verifyMoveSignatures, ZERO32, type MatchLog } from '@forkfall/sdk';
 import { Chain } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
@@ -243,6 +243,7 @@ describe('referee auto-settlement', () => {
       onchain.add(r.matchId);
       return ('0x' + 'ab'.repeat(32)) as Hex;
     },
+    settle: async (r: { matchId: Hex }) => { onchain.add(r.matchId); return ('0x' + 'cd'.repeat(32)) as Hex; },
   };
   const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => t, settler, resultGraceSeconds: 600 });
   const api = createApi(lob, { ratePerSec: 10_000 });
@@ -335,5 +336,114 @@ describe('referee auto-settlement', () => {
     await lob.settleDue();
     expect(lob.get(practice).referee).toBeUndefined();
     expect((await c.state(practice)).refereeAt).toBeUndefined();
+  });
+});
+
+describe('card metadata routes', () => {
+  it('serves ERC-1155 metadata by hex or decimal id, card images and collection metadata', async () => {
+    const hex = (12).toString(16).padStart(64, '0');
+    const m = await (await fetch(`${url}/metadata/cards/${hex}.json`)).json();
+    expect(m.name).toBe('Oracle Guard');
+    expect(m.image).toBe(`${url}/metadata/images/12.svg`);
+    const starter = await (await fetch(`${url}/metadata/cards/10012.json`)).json();
+    expect(starter.name).toBe('Oracle Guard (Starter)');
+    const img = await fetch(`${url}/metadata/images/10012.svg`);
+    expect(img.headers.get('content-type')).toBe('image/svg+xml');
+    expect(await img.text()).toContain('STARTER · SOULBOUND');
+    expect((await (await fetch(`${url}/metadata/contract.json`)).json()).name).toContain('Forkfall');
+    expect((await fetch(`${url}/metadata/cards/10008.json`)).status).toBe(404); // no Legendary starter copy
+    expect((await fetch(`${url}/metadata/cards/99.json`)).status).toBe(404);
+  });
+});
+
+describe('Agent League queue', () => {
+  const operators = new Map<string, Address>();
+  const balances = new Map<string, bigint>();
+  const started: string[] = [];
+  let failStart = false;
+  const settledFull: Hex[] = [];
+  const league = {
+    entryFee: async () => 500_000n,
+    currentWeek: async () => 3,
+    balanceOf: async (a: Address) => balances.get(a.toLowerCase()) ?? 0n,
+    operatorOf: async (a: Address) => operators.get(a.toLowerCase()) ?? ('0x' + '0'.repeat(40)) as Address,
+    start: async (id: Hex) => { await new Promise((r) => setTimeout(r, 5)); if (failStart) throw new Error('InsufficientBalance'); started.push(id); return ('0x' + 'ee'.repeat(32)) as Hex; },
+    cancel: async () => ('0x' + '00'.repeat(32)) as Hex,
+    info: async () => ({ enabled: true }) as never,
+  };
+  const settler = {
+    isSettled: async () => false,
+    settleByReferee: async () => ('0x' + 'ab'.repeat(32)) as Hex,
+    settle: async (r: { matchId: Hex }) => { settledFull.push(r.matchId); return ('0x' + 'cd'.repeat(32)) as Hex; },
+  };
+  const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), league, settler });
+  const api = createApi(lob, { ratePerSec: 10_000 });
+  let base = '';
+  beforeAll(async () => {
+    await new Promise<void>((r) => api.server.listen(0, r));
+    base = `http://127.0.0.1:${(api.server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => api.server.close());
+  const agent = async (operator: Address, funded = true) => {
+    const c = new ForkfallClient(base, privateKeyToAccount(generatePrivateKey()));
+    await c.connect({ agent: true });
+    operators.set(c.address.toLowerCase(), operator);
+    if (funded) balances.set(c.address.toLowerCase(), 5_000_000n);
+    return c;
+  };
+  const opA = privateKeyToAccount(generatePrivateKey()).address;
+  const opB = privateKeyToAccount(generatePrivateKey()).address;
+
+  it('admits only funded registered agents', async () => {
+    const human = new ForkfallClient(base, privateKeyToAccount(generatePrivateKey()));
+    await human.connect();
+    await expect(human.queue({ mode: 'league', race: 'agents' })).rejects.toThrow(/registered agents/);
+    const broke = await agent(opA, false);
+    await expect(broke.queue({ mode: 'league', race: 'agents' })).rejects.toThrow(/402|deposit at least 0.5 tUSDC/);
+    const off = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()) });
+    await expect(off.enqueue(broke.address, { mode: 'league', race: 'agents', seedCommit: ('0x' + '11'.repeat(32)) as Hex }, true)).rejects.toThrow(/not available/);
+  });
+
+  it('never pairs agents of the same operator, charges at start, and the referee settles signed results', async () => {
+    const a1 = await agent(opA);
+    const a2 = await agent(opA); // same operator
+    const b1 = await agent(opB);
+    expect((await a1.queue({ mode: 'league', race: 'agents' })).status).toBe('queued');
+    expect((await a2.queue({ mode: 'league', race: 'brokers' })).status).toBe('queued'); // not paired with a1
+    const q = await b1.queue({ mode: 'league', race: 'degens' });
+    expect(q.status).toBe('matched');
+    const m = lob.get(q.matchId!);
+    expect(m.players.map((p) => p.address)).toContain(a1.address);
+    expect(m.season).toBe(3); // league week
+
+    // Both reveal: nothing starts until the entry fees are charged on-chain.
+    await a1.reveal(q.matchId!); await b1.reveal(q.matchId!);
+    expect(m.phase).toBe('reveal');
+    for (let i = 0; i < 50 && m.phase === 'reveal'; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(m.phase).toBe('active');
+    expect(started).toEqual([q.matchId]);
+    expect(m.league).toMatchObject({ state: 'charged' });
+
+    await Promise.all([runMatch(a1, q.matchId!, { pollMs: 5 }), runMatch(b1, q.matchId!, { pollMs: 5 })]);
+    await lob.stepBots(); // referee co-signature
+    expect(m.result!.mode).toBe(3);
+    const r = await lob.settleDue();
+    expect(r.settled).toEqual([q.matchId]);
+    expect(settledFull).toEqual([q.matchId]);
+    await a2.leaveQueue(); // still waiting: no other operator was queued
+  });
+
+  it('cancels the match if charging the entry fees fails', async () => {
+    const x = await agent(opA);
+    const y = await agent(opB);
+    failStart = true;
+    await x.queue({ mode: 'league', race: 'agents' });
+    const q = await y.queue({ mode: 'league', race: 'prophets' });
+    await x.reveal(q.matchId!); await y.reveal(q.matchId!);
+    const m = lob.get(q.matchId!);
+    for (let i = 0; i < 50 && m.phase === 'reveal'; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(m.phase).toBe('cancelled');
+    expect(m.league).toMatchObject({ state: 'failed', error: 'InsufficientBalance' });
+    failStart = false;
   });
 });

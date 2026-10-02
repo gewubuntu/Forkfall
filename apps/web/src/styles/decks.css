@@ -92,3 +92,22 @@
   .pool-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
   .meters { grid-template-columns: 1fr; }
 }
+
+/* ─── Builder motion ─── */
+.fly-card { position: fixed; width: 80px; height: 80px; image-rendering: pixelated; pointer-events: none; z-index: 70; filter: drop-shadow(0 8px 12px rgba(0,0,0,.5)); }
+.dl-n { display: inline-block; animation: count-pop .3s cubic-bezier(.2,.9,.3,1.4); }
+@keyframes count-pop { from { transform: scale(1.7); color: #b6f23c; } }
+.deck-list li { animation: row-in .3s ease-out backwards; }
+@keyframes row-in { from { opacity: 0; transform: translateX(14px); } }
+.curve-bar { transition: height .35s cubic-bezier(.2,.9,.3,1.3); }
+.curve-col.up .curve-bar { animation: bar-flash .6s ease-out; }
+.curve-col.down .curve-bar { animation: bar-dip .6s ease-out; }
+.curve-col.up .curve-val, .curve-col.down .curve-val { animation: count-pop .3s cubic-bezier(.2,.9,.3,1.4); }
+@keyframes bar-flash { from { background: #b6f23c; box-shadow: 0 0 12px #b6f23c; } }
+@keyframes bar-dip { from { background: #ff5d73; } }
+.meter-bar i { transition: width .35s cubic-bezier(.2,.9,.3,1.2), background .3s; }
+.meter.ok .meter-bar i { animation: meter-glow 1s ease-out; }
+@keyframes meter-glow { from { box-shadow: 0 0 14px var(--ok); filter: brightness(1.5); } }
+@media (prefers-reduced-motion: reduce) {
+  .dl-n, .deck-list li, .curve-col .curve-bar, .curve-col .curve-val, .meter.ok .meter-bar i { animation: none !important; }
+}

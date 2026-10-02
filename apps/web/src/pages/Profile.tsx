@@ -1,11 +1,11 @@
 import {
-  agentRegistryAbi, agentURIFromFile, buildAgentRegistration, seasonRewardsAbi,
+  agentLeagueAbi, agentRegistryAbi, agentURIFromFile, buildAgentRegistration, faucetTokenAbi, seasonRewardsAbi,
   type AgentWalletProof, type HumanStatus, type PlayerReward,
 } from '@forkfall/sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { formatUnits, getAddress, isAddress, isHex, type Address } from 'viem';
+import { formatUnits, getAddress, isAddress, isHex, maxUint256, parseUnits, type Address } from 'viem';
 import { useReadContracts } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
@@ -312,8 +312,60 @@ function AgentRow({ a, owner, registry, onDone, run }: { a: AgentInfo; owner: Ad
           <div className="row-end"><button className="btn" onClick={() => setLinking(false)}>Cancel</button><button className="btn btn-primary" onClick={link}>Link wallet</button></div>
         </div>
       )}
+      {linked && <LeagueFunds agent={a.wallet} run={run} />}
       {err && <div className="alert err">{err}</div>}
     </li>
+  );
+}
+
+/** The agent's prepaid Agent League balance: entry fees are taken from it match by match. */
+function LeagueFunds({ agent, run }: { agent: Address; run: ReturnType<typeof useTx>['run'] }) {
+  const { chainId, contracts } = useHub();
+  const { me } = useAuth();
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState('5');
+  const league = contracts?.AgentLeague;
+  const reads = useReadContracts({
+    contracts: [
+      { address: league, abi: agentLeagueAbi, functionName: 'balanceOf', args: [agent], chainId: chainId as never },
+      { address: league, abi: agentLeagueAbi, functionName: 'entryFee', chainId: chainId as never },
+      { address: contracts?.TestUSDC, abi: faucetTokenAbi, functionName: 'allowance', args: [me!.address as Address, league!], chainId: chainId as never },
+      { address: contracts?.TestUSDC, abi: faucetTokenAbi, functionName: 'balanceOf', args: [me!.address as Address], chainId: chainId as never },
+    ] as const,
+    query: { enabled: !!league && !!contracts?.TestUSDC },
+  });
+  if (!league || !contracts?.TestUSDC) return null;
+  const bal = reads.data?.[0]?.result as bigint | undefined;
+  const fee = reads.data?.[1]?.result as bigint | undefined;
+  const allowance = (reads.data?.[2]?.result as bigint | undefined) ?? 0n;
+  const wallet = reads.data?.[3]?.result as bigint | undefined;
+  let want = 0n;
+  try { want = parseUnits(amount || '0', 6); } catch { /* invalid input */ }
+  const short = wallet !== undefined && want > wallet;
+  const drip = async () => {
+    if (await run('Get test USDC', { address: contracts.TestUSDC, abi: faucetTokenAbi, functionName: 'drip' })) await qc.invalidateQueries();
+  };
+  const fund = async () => {
+    const amt = want;
+    if (amt <= 0n || short) return;
+    if (allowance < amt && !(await run('Approve test USDC', { address: contracts.TestUSDC, abi: faucetTokenAbi, functionName: 'approve', args: [league, maxUint256] }))) return;
+    if (await run(`Fund league balance (${amount} tUSDC)`, { address: league, abi: agentLeagueAbi, functionName: 'depositFor', args: [agent, amt] })) await qc.invalidateQueries();
+  };
+  const withdraw = async () => {
+    if (bal && (await run('Withdraw league balance', { address: league, abi: agentLeagueAbi, functionName: 'withdraw', args: [agent, bal] }))) await qc.invalidateQueries();
+  };
+  const games = bal !== undefined && fee ? Number(bal / fee) : null;
+  return (
+    <div className="ar-league">
+      <span className="small">Agent League balance: <b>{bal === undefined ? '…' : formatUnits(bal, 6)} tUSDC</b>{games !== null && <span className="muted"> · {games} match{games === 1 ? '' : 'es'} at {formatUnits(fee!, 6)} each</span>}</span>
+      <div className="ar-fund">
+        <input aria-label="Amount to fund (tUSDC)" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} />
+        {short
+          ? <button className="btn" onClick={drip} title={`Your wallet has ${formatUnits(wallet!, 6)} tUSDC`}>Get test USDC</button>
+          : <button className="btn" onClick={fund} disabled={want <= 0n}>Fund</button>}
+        {!!bal && <button className="btn btn-ghost" onClick={withdraw}>Withdraw all</button>}
+      </div>
+    </div>
   );
 }
 

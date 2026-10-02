@@ -139,6 +139,21 @@ contract AgentsTest is Fixture {
         d.agents.registerWithWallet("ipfs://bot2", next, bot, deadline, stale);
     }
 
+    function test_registerWithWalletKeepsTheOperatorsOwnAgentLink() public {
+        // The operator's wallet already plays as agent #1; registering a second agent with its own wallet must
+        // not disturb that link (regression: agentOf(operator) used to be wiped).
+        vm.prank(alice);
+        uint256 own = d.agents.register("ipfs://alice-self");
+        uint256 next = d.agents.nextAgentId();
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = proof(botPk, next, bot, alice, deadline);
+        vm.prank(alice);
+        uint256 id = d.agents.registerWithWallet("ipfs://bot", next, bot, deadline, sig);
+        assertEq(d.agents.agentOf(alice), own);
+        assertEq(d.agents.walletLinks(alice), 1);
+        assertEq(d.agents.agentOf(bot), id);
+    }
+
     function test_transferClearsWalletAndBurnDeregisters() public {
         vm.prank(bot);
         uint256 id = d.agents.register("ipfs://self");

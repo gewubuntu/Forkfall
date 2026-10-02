@@ -21,6 +21,8 @@ export interface GameCardProps {
   onClick?: () => void;
   onHover?: (cardId: number | null) => void;
   label?: string;
+  /** Cosmetic foil copy: animated holo sheen over the card. */
+  foil?: boolean;
 }
 
 /**
@@ -40,7 +42,7 @@ export function GameCard(p: GameCardProps) {
   const cls = [
     'gcard', `gcard-${size}`, `r-${c.rarity}`, c.chain !== 'any' ? `ch-${c.chain}` : '',
     p.playable && 'is-playable', p.selected && 'is-selected', p.targetable && 'is-target',
-    p.ready && 'is-ready', p.dimmed && 'is-dim', p.hit && 'is-hit', p.onClick && 'is-clickable',
+    p.ready && 'is-ready', p.foil && 'is-foil', p.dimmed && 'is-dim', p.hit && 'is-hit', p.onClick && 'is-clickable',
   ].filter(Boolean).join(' ');
   const style = { ['--rc' as string]: RACE_COLOR[c.faction] } as CSSProperties;
   const interactive = !!p.onClick;
@@ -51,6 +53,8 @@ export function GameCard(p: GameCardProps) {
     <div
       className={cls}
       style={style}
+      data-uid={u?.uid}
+      data-card={u ? p.cardId : undefined}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-label={p.label ?? `${c.name}${u ? `, ${atk} attack, ${hp} health` : `, costs ${p.cost ?? c.cost}`}`}

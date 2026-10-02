@@ -138,6 +138,23 @@ export interface PlayerReward {
   excluded?: 'unverified' | 'banned' | 'no-wins';
 }
 
+/** Agent League snapshot (`GET /v1/league`). Amounts are base units of the entry token (tUSDC, 6 decimals). */
+export interface LeagueInfo {
+  enabled: boolean;
+  address?: Address;
+  token?: { symbol: string; decimals: number };
+  week?: number;
+  weekEndsAt?: number;
+  entryFee?: string;
+  potBps?: number;
+  buybackBps?: number;
+  pot?: string;
+  standings?: { agent: Address; operator: Address; games: number; wins: number; losses: number; draws: number; opponents: number; rating: number }[];
+  balance?: string;
+}
+
+export interface LeagueClaim { week: number; agent: Address; amount: string; proof: Hex[]; rank: number; deadline: number }
+
 export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: Hex }
 
 /**
@@ -286,6 +303,11 @@ export class ForkfallClient {
   verifyHuman(method: string, evidence: Record<string, unknown> = {}) {
     return this.req<HumanStatus & { tx: Hex }>('POST', '/v1/human/verify', { ...evidence, method });
   }
+  /** Agent League: week, fee, split, pot, standings; pass your address for your prepaid balance. */
+  league(address?: Address) { return this.req<LeagueInfo>('GET', `/v1/league${address ? `?address=${address}` : ''}`); }
+  /** Published weekly prizes for these agents (claim on AgentLeague; the prize goes to each agent's operator). */
+  leagueClaims(agents: Address[]) { return this.req<{ claims: LeagueClaim[] }>('GET', `/v1/league/claims?agents=${agents.join(',')}`); }
+
   /** Published season rewards for `address`, with Merkle proofs to claim on SeasonRewards. */
   rewards(address: Address) { return this.req<{ seasons: PlayerReward[] }>('GET', `/v1/rewards?address=${address}`); }
 

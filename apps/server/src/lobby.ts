@@ -8,7 +8,7 @@ import {
   type Delegation, type MatchLog, type MatchResult, type MatchSnapshot, type MatchSummary, type Mode,
 } from '@forkfall/sdk';
 import { recoverAddress, type Address, type Hex, type LocalAccount, type TypedDataDomain } from 'viem';
-import type { Chain, RefereeSettler } from './chain.ts';
+import type { Chain, LeagueOps, RefereeSettler } from './chain.ts';
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -57,6 +57,8 @@ export interface Match {
   refereeSig?: Hex;
   /** Auto-settlement by the referee when the loser never signs. */
   referee?: RefereeSettlement;
+  /** Agent League: entry fees charged on-chain when the match starts (pending → charged), or why it failed. */
+  league?: { state: 'charging' | 'charged' | 'failed'; tx?: Hex; error?: string };
 }
 
 export interface RefereeSettlement {
@@ -85,6 +87,8 @@ export interface LobbyOptions {
   settler?: RefereeSettler | null;
   /** Attempts before giving up on auto-settling a match (default 3). */
   settleAttempts?: number;
+  /** Agent League (paid agents-only queue); null/absent = league disabled. */
+  league?: LeagueOps | null;
 }
 
 /** What the server keeps on disk for a finished match: the public log plus the collected signatures. */
@@ -108,6 +112,8 @@ interface QueueEntry {
   at: number;
   /** Last time the client checked its queue status; entries that go quiet are dropped. */
   seen: number;
+  /** League: the agent's operator (owner of its ERC-8004 identity); never paired with the same operator. */
+  operator?: Address;
 }
 
 /**
@@ -166,6 +172,18 @@ export class Lobby {
     return agent;
   }
 
+  /** League entry: a registered agent with enough prepaid balance for the entry fee (402 = deposit first). */
+  private async leagueEntry(address: Address): Promise<Address> {
+    const league = this.opts.league;
+    if (!league) throw new ApiError(503, 'the Agent League is not available on this server (no AgentLeague contract)');
+    const [operator, balance, fee] = await Promise.all([league.operatorOf(address), league.balanceOf(address), league.entryFee()]);
+    if (/^0x0{40}$/i.test(operator)) throw new ApiError(403, 'the Agent League is for registered agents (ERC-8004 AgentRegistry)');
+    if (balance < fee) {
+      throw new ApiError(402, `league balance too low: deposit at least ${Number(fee - balance) / 1e6} tUSDC into AgentLeague (entry fee ${Number(fee) / 1e6} per match)`);
+    }
+    return operator;
+  }
+
   // ─── Queue ────────────────────────────────────────────────────
   async enqueue(address: Address, body: { mode: Mode; race: Race; deck?: number[]; deckId?: Hex; seedCommit: Hex }, agent: boolean) {
     if (!(body.mode in MODES)) throw new ApiError(400, 'unknown mode');
@@ -173,17 +191,21 @@ export class Lobby {
     this.leaveQueue(address);
     const isAgent = await this.checkEligibility(address, body.mode, agent);
     const { deck, deckId } = await this.resolveDeck(address, body.mode, body.race, body.deck, body.deckId);
+    const operator = body.mode === 'league' ? await this.leagueEntry(address) : undefined;
     const ticket = keccakHex(address, String(this.now()), randomHex32());
-    const me: QueueEntry = { ticket, address, mode: body.mode, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit, at: this.now(), seen: this.now() };
+    const me: QueueEntry = { ticket, address, mode: body.mode, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit, at: this.now(), seen: this.now(), operator };
     this.byAddressTicket.set(address, ticket);
     this.pruneQueue();
-    const idx = this.queue.findIndex((q) => q.mode === me.mode && q.address !== address);
+    // League: agents of the same operator are never paired (no farming your own pot).
+    const idx = this.queue.findIndex((q) => q.mode === me.mode && q.address !== address
+      && (me.mode !== 'league' || q.operator?.toLowerCase() !== operator?.toLowerCase()));
     if (idx < 0) {
       this.queue.push(me);
       return { status: 'queued' as const, ticket };
     }
     const [opp] = this.queue.splice(idx, 1);
-    const season = await this.opts.chain.season();
+    // League results carry the league week as their season; rated modes the ladder season.
+    const season = me.mode === 'league' ? await this.opts.league!.currentWeek() : await this.opts.chain.season();
     const m = this.newMatch(me.mode, season, [this.seatFrom(opp), this.seatFrom(me)]);
     this.matchedTickets.set(opp.ticket, m.id);
     this.matchedTickets.set(ticket, m.id);
@@ -259,6 +281,16 @@ export class Lobby {
 
   private maybeStart(m: Match) {
     if (m.phase !== 'reveal' || !m.players.every((p) => p.seedShare && p.deckSalt)) return;
+    // League: charge both entry fees on-chain first (only once both agents showed up); start when mined.
+    if (m.mode === 'league' && m.league?.state !== 'charged') {
+      if (m.league) return; // charging in flight, or failed
+      m.league = { state: 'charging' };
+      this.opts.league!.start(m.id, m.players[0].address, m.players[1].address).then(
+        (tx) => { m.league = { state: 'charged', tx }; this.maybeStart(m); },
+        (e) => { m.league = { state: 'failed', error: (e as Error).message }; m.phase = 'cancelled'; this.changed(m); },
+      );
+      return;
+    }
     const [a, b] = m.players;
     const seed = combineSeeds(m.id, a.seedShare!, b.seedShare!);
     const r = createMatch({
@@ -336,7 +368,7 @@ export class Lobby {
     const now = this.now();
     this.pruneQueue();
     for (const m of this.matches.values()) {
-      if (m.phase === 'reveal' && now - m.createdAt > this.revealMs) { m.phase = 'cancelled'; this.changed(m); continue; }
+      if (m.phase === 'reveal' && now - m.createdAt > this.revealMs && m.league?.state !== 'charging') { m.phase = 'cancelled'; this.changed(m); continue; }
       if (m.phase !== 'active') continue;
       const seat = m.state!.active;
       const deadline = m.clock.turnStartedAt + this.turnMs + m.clock.bank[seat];
@@ -504,14 +536,17 @@ export class Lobby {
       if (r && (r.state !== 'failed' || r.attempts >= maxAttempts || (r.retryAt ?? 0) > this.now())) continue;
       let s;
       try { s = this.settlement(m.id); } catch { continue; } // still waiting for the winner's signature
-      if (!('winnerSig' in s)) continue; // fully signed: the players settle it themselves
+      // Fully signed: players settle it themselves, except league matches, which the referee submits.
+      if (!('winnerSig' in s) && m.mode !== 'league') continue;
       m.referee = { state: 'submitting', attempts: (r?.attempts ?? 0) + 1 };
       this.changed(m);
       try {
         if (await settler.isSettled(m.id)) {
           m.referee = { ...m.referee, state: 'settled' };
         } else {
-          const tx = await settler.settleByReferee(m.result, s.winnerSig);
+          const tx = 'winnerSig' in s
+            ? await settler.settleByReferee(m.result, s.winnerSig)
+            : await settler.settle(m.result, s.sigA, s.sigB, s.refereeSig);
           m.referee = { ...m.referee, state: 'settled', tx };
         }
         out.settled.push(m.id);

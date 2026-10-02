@@ -10,8 +10,9 @@ import {Crafting} from "../src/Crafting.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {HumanRegistry} from "../src/HumanRegistry.sol";
 import {DeckRegistry} from "../src/DeckRegistry.sol";
-import {MatchSettlement} from "../src/MatchSettlement.sol";
+import {MatchSettlement, ILeague} from "../src/MatchSettlement.sol";
 import {SeasonRewards} from "../src/SeasonRewards.sol";
+import {AgentLeague, IEloTable} from "../src/AgentLeague.sol";
 import {FaucetToken} from "../src/TestTokens.sol";
 import {Set1Cards} from "../src/generated/Set1Cards.sol";
 
@@ -23,7 +24,11 @@ import {Set1Cards} from "../src/generated/Set1Cards.sol";
 ///
 /// Env: REFEREE_ADDRESS  server key (REFEREE_ROLE) that co-signs ranked results; defaults to the deployer
 ///      TREASURY_ADDRESS receives pack sale proceeds; defaults to the deployer
-///      CARD_URI         ERC-1155 metadata template; PACK_PRICE_WEI pack price in wei
+///      METADATA_BASE    where card metadata is served: the referee server's /metadata
+///                       (https://<server>/metadata) or a pinned `pnpm art:export` folder (ipfs://<cid>);
+///                       defaults to http://localhost:8787/metadata on Anvil
+///      CARD_URI / CONTRACT_URI  override the derived <base>/cards/{id}.json and <base>/contract.json
+///      PACK_PRICE_WEI   pack price in wei
 contract Deploy is ForkfallScript {
     struct Deployed {
         CardRegistry cards;
@@ -35,6 +40,7 @@ contract Deploy is ForkfallScript {
         DeckRegistry decks;
         MatchSettlement settlement;
         SeasonRewards rewards;
+        AgentLeague league;
         FaucetToken usdc;
         FaucetToken fall;
     }
@@ -44,18 +50,29 @@ contract Deploy is ForkfallScript {
         address deployer = msg.sender;
         address referee = vm.envOr("REFEREE_ADDRESS", deployer);
         address payable treasury = payable(vm.envOr("TREASURY_ADDRESS", deployer));
-        string memory uri = vm.envOr("CARD_URI", string("https://forkfall.example/cards/{id}.json"));
+        string memory base =
+            vm.envOr("METADATA_BASE", block.chainid == 31337 ? string("http://localhost:8787/metadata") : string(""));
+        string memory uri =
+            vm.envOr("CARD_URI", bytes(base).length > 0 ? string.concat(base, "/cards/{id}.json") : string(""));
+        string memory contractUri =
+            vm.envOr("CONTRACT_URI", bytes(base).length > 0 ? string.concat(base, "/contract.json") : string(""));
+        require(
+            bytes(uri).length > 0,
+            "Set METADATA_BASE (https://<referee server>/metadata or ipfs://<cid> from pnpm art:export) or CARD_URI"
+        );
         uint256 packPrice = vm.envOr("PACK_PRICE_WEI", uint256(0.0001 ether));
 
         console2.log("Deploying Forkfall hub to chain", block.chainid);
         console2.log("  deployer", deployer);
         console2.log("  referee ", referee);
         console2.log("  treasury", treasury);
+        console2.log("  card URI", uri);
 
         uint256 startBlock = block.number;
         vm.startBroadcast();
         d = deployAll(deployer, referee, uri, packPrice);
         if (treasury != deployer) d.packs.setTreasury(treasury);
+        if (bytes(contractUri).length > 0) d.cards.setContractURI(contractUri);
         vm.stopBroadcast();
 
         writeBook(d, deployer, referee, startBlock);
@@ -80,6 +97,11 @@ contract Deploy is ForkfallScript {
         d.rewards = new SeasonRewards(admin);
         d.usdc = new FaucetToken("Forkfall Test USDC", "tUSDC", 6, 100e6, admin);
         d.fall = new FaucetToken("Forkfall Test Token", "tFALL", 18, 1_000 ether, admin);
+        // Agent League: 0.50 tUSDC per agent per match; 80% weekly pot, 10% buyback, 10% operations.
+        d.league =
+            new AgentLeague(admin, d.usdc, d.agents, IEloTable(address(d.settlement)), referee, admin, admin, 0.5e6);
+        d.league.setSettlement(address(d.settlement));
+        d.settlement.setLeague(ILeague(address(d.league)));
 
         d.cards.grantRole(d.cards.MINTER_ROLE(), address(d.starters));
         d.cards.grantRole(d.cards.MINTER_ROLE(), address(d.packs));
@@ -92,6 +114,7 @@ contract Deploy is ForkfallScript {
         d.humans.grantRole(d.humans.ATTESTOR_ROLE(), referee);
         d.packs.setTokenPrice(address(d.usdc), 2e6);
         d.packs.setTokenPrice(address(d.fall), 100 ether);
+        d.packs.setKind(1, "Poncho booster", Set1Cards.poncho());
     }
 
     function writeBook(Deployed memory d, address deployer, address referee, uint256 startBlock) internal {
@@ -109,6 +132,7 @@ contract Deploy is ForkfallScript {
         vm.serializeAddress(k, "DeckRegistry", address(d.decks));
         vm.serializeAddress(k, "MatchSettlement", address(d.settlement));
         vm.serializeAddress(k, "SeasonRewards", address(d.rewards));
+        vm.serializeAddress(k, "AgentLeague", address(d.league));
         vm.serializeAddress(k, "TestUSDC", address(d.usdc));
         string memory json = vm.serializeAddress(k, "TestFALL", address(d.fall));
         vm.writeJson(json, bookPath());

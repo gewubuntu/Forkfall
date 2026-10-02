@@ -8,5 +8,5 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/engine" }, { "path": "../../packages/sdk" }]
+  "references": [{ "path": "../../packages/engine" }, { "path": "../../packages/sdk" }, { "path": "../../packages/art" }]
 }

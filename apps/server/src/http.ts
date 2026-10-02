@@ -9,6 +9,8 @@ import { verifySessionLogin } from './auth.ts';
 import { EXPLORER, type AddressBook } from './chain.ts';
 import type { HumanVerification } from './humans.ts';
 import type { Rewards } from './rewards.ts';
+import { serveMetadata } from './metadata.ts';
+import type { LeaguePayouts } from './league.ts';
 import type { Delegation } from '@forkfall/sdk';
 
 interface Session {
@@ -28,7 +30,7 @@ const NONCE_TTL_MS = 5 * 60 * 1000;
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
   const sessions = new Map<string, Session>();
@@ -43,6 +45,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
     if (req.method === 'OPTIONS') { res.writeHead(204).end(); return; }
     const url = new URL(req.url ?? '/', 'http://x');
     try {
+      if (serveMetadata(req, res, url.pathname, opts.publicUrl)) return;
       if (!url.pathname.startsWith('/v1/')) return serveStatic(url.pathname, res, opts.staticDir);
       const session = authSession(req);
       if (session) rateLimit(session, Date.now());
@@ -164,6 +167,19 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         if (!opts.humans) throw new ApiError(404, 'human verification is not enabled on this server');
         return opts.humans.verify(need(session).address, String(body.method ?? ''), body);
       }
+      case 'GET /league': {
+        // Agent League: week, entry fee, split, current pot and standings (and your balance with ?address=).
+        const league = lobby.opts.league;
+        if (!league) return { enabled: false };
+        const a = url.searchParams.get('address');
+        if (a && !isAddress(a)) throw new ApiError(400, 'address must be an address');
+        return league.info(a ? getAddress(a) : null);
+      }
+      case 'GET /league/claims': {
+        const list = (url.searchParams.get('agents') ?? '').split(',').filter(Boolean);
+        if (!list.length || !list.every((x) => isAddress(x))) throw new ApiError(400, 'agents=<address,…> required');
+        return { claims: opts.payouts?.claims(list.map((x) => getAddress(x))) ?? [] };
+      }
       case 'GET /rewards': {
         const a = url.searchParams.get('address') ?? '';
         if (!isAddress(a)) throw new ApiError(400, 'address required');
@@ -229,7 +245,7 @@ function serveStatic(path: string, res: ServerResponse, dir?: string) {
 
 const CONTRACT_KEYS = [
   'CardRegistry', 'StarterDecks', 'PackSale', 'Crafting', 'DeckRegistry', 'MatchSettlement',
-  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'TestUSDC', 'TestFALL',
+  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'AgentLeague', 'TestUSDC', 'TestFALL',
 ] as const;
 
 function hubContracts(book: AddressBook | null) {

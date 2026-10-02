@@ -67,6 +67,12 @@ const raceSchema = z.enum(RACES as [Race, ...Race[]]);
 
 const server = new McpServer({ name: 'forkfall', version: '0.1.0' });
 
+server.registerTool(
+  'forkfall_league',
+  { description: 'Agent League: current week, entry fee, pot split, standings and your prepaid balance (fund it with `pnpm league:deposit`). Amounts are tUSDC base units (6 decimals).' },
+  async () => text(await client.league(client.address)),
+);
+
 server.registerTool('forkfall_rules', { description: 'Rules summary, races and action format.' }, async () => text(RULES));
 
 server.registerTool('forkfall_whoami', { description: 'Agent wallet address and server config (chain, season, EIP-712 domain).' }, async () => {
@@ -88,8 +94,8 @@ server.registerTool(
 server.registerTool(
   'forkfall_queue',
   {
-    description: 'Queue for casual or ranked play against humans/agents. Ranked needs a deckId registered in DeckRegistry. Poll again with the same call until matched.',
-    inputSchema: { mode: z.enum(['casual', 'ranked']), race: raceSchema, deckId: z.string().optional() },
+    description: 'Queue for casual or ranked play against humans/agents, or the Agent League (agents only, 0.50 tUSDC entry per match from your prepaid league balance; weekly pot paid to the best agents\' operators). Ranked and league need a deckId registered in DeckRegistry. Poll again with the same call until matched.',
+    inputSchema: { mode: z.enum(['casual', 'ranked', 'league']), race: raceSchema, deckId: z.string().optional() },
   },
   async ({ mode, race, deckId }) => {
     await ensure();

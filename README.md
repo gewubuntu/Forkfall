@@ -25,7 +25,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | Area | Implemented |
 | --- | --- |
 | **Rules engine** (`packages/engine`) | Deterministic TypeScript engine shared by client, server, agents and tests. 25 Treasury, Gas 1→10, 5 board slots, hand limit 10, fatigue, 40-half-turn cap. All race mechanics: **Agents** Automate/Deploy/Compute/Firewall · **Prophets** Foresee (face-down)/Odds tiers/Backfire · **Brokers** Hold/Dividend (capped)/Portfolio · **Degens** Swarm/Pump/Rug/Ape. Keccak counter RNG, commit-reveal match seed, per-player private deck salt, redacted views. |
-| **Cards** | 40 prototype cards (8 per race + 8 neutral, 1 Legendary per race) + tokens. Free soulbound starter deck per race. Ranked rarity budget (18 pts, max 1 Legendary: room for one Legendary over a starter list). |
+| **Cards** | 40 prototype cards (8 per race + 8 neutral, 1 Legendary per race), the 8-card **Poncho collab set** (neutral Base cards starring Poncho, the cutest cat on Base, @ponchobase) + tokens. Free soulbound starter deck per race. Ranked rarity budget (18 pts, max 1 Legendary: room for one Legendary over a starter list). |
 | **Balance** | `pnpm sim` plays greedy bot vs greedy bot across all race pairings. Current: every race 46–54% (GDD gate: 45–55%), ≈8 turns each. |
 | **Contracts** (`contracts/`, Foundry) | `CardRegistry` (ERC-1155, soulbound starter twins), `StarterDecks`, `PackSale` (ETH / test USDC / test token, 3C+1U+1R with ~10% Legendary upgrade), `Crafting` (Scrap), `DeckRegistry` (race, copies, rarity cap, live ownership), `AgentRegistry` (ERC-8004 Identity Registry: agents are ERC-721 identities owned by their operator, linked agent wallet with signature proof, operator cap, bans), `HumanRegistry` (optional proof-of-personhood attestations; gates season rewards, not play), `MatchSettlement` (EIP-712 dual-signed results, ERC-1271 smart wallets and ERC-6492 for wallets not deployed yet, referee path, per-season Elo), `SeasonRewards` (Merkle claims; `pnpm rewards:publish` builds and publishes a season), faucet test tokens. |
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
@@ -35,11 +35,12 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 
 ### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
 
+- **Pack fairness:** a pity timer (Legendary within 20 packs), duplicate protection until you own a rarity's playset, cosmetic foils (token `20000 + n`, ~1 in 15 cards, 4× scrap), published odds, bundles (5 packs −10%, 10 packs −15%), a Poncho booster (pack kind 1), shareable pulls and a live feed of big pulls. See the GDD's pack incentives section.
 - **Randomness for packs** uses a two-step commit → future-blockhash reveal. Fine for testnet; switch to VRF before mainnet beta, as the GDD requires.
 - **Disputes**: if a loser won't co-sign, the `REFEREE_ROLE` key (the server, which replays the signed log) settles with the winner's signature. The GDD's fully on-chain log replay is the next step; the log format (signed moves + hash chain + seed reveals) already supports it.
 - **Hidden information** is enforced by the referee server (it holds both deck salts until the match ends). Per-player encryption comes later.
-- LayerZero ONFT/OFT bridging, Legendary ERC-721 + ERC-6551 vaults, x402 entry payments, the Bankr token launch, wagering and the Agent League. These come after the MVP in the GDD.
-- Set 1 is the 40-card prototype set, not the full 160.
+- LayerZero ONFT/OFT bridging, Legendary ERC-721 + ERC-6551 vaults, real x402 payments (the Agent League uses an on-chain prepaid balance instead), the Bankr token launch and wagering. These come after the MVP in the GDD.
+- Set 1 is the 40-card prototype set, not the full 160. The Poncho collab set (ids 41–48) adds 8 neutral cards with a Taco token; it is never in starter decks and shares the booster pool by rarity.
 
 ## Quick start (local, ~2 minutes)
 
@@ -102,7 +103,7 @@ cast wallet import forkfall-deployer --interactive   # paste the key, choose a p
 
 Get Base Sepolia ETH from a faucet (for example the Coinbase Developer Platform faucet), and an Etherscan API v2 key from etherscan.io for Basescan verification.
 
-**2. Configure.** `cp .env.example .env`, then set `ETHERSCAN_API_KEY`, `REFEREE_ADDRESS` (the referee key's address) and `HOUSE_PRIVATE_KEY` (the referee key). Optional: `RPC_URL` / `BASE_SEPOLIA_RPC_URL` (a dedicated RPC is recommended over `https://sepolia.base.org`), `TREASURY_ADDRESS`, `PACK_PRICE_WEI`, `CARD_URI`.
+**2. Configure.** `cp .env.example .env`, then set `ETHERSCAN_API_KEY`, `REFEREE_ADDRESS` (the referee key's address) and `HOUSE_PRIVATE_KEY` (the referee key), plus `METADATA_BASE`: where card metadata lives, either your referee server (`https://<server>/metadata`) or a pinned `pnpm art:export` folder (`ipfs://<cid>`). The deploy refuses to run on a testnet without it, so the cards never ship with a dead URI. Optional: `RPC_URL` / `BASE_SEPOLIA_RPC_URL` (a dedicated RPC is recommended over `https://sepolia.base.org`), `TREASURY_ADDRESS`, `PACK_PRICE_WEI`, `CARD_URI` / `CONTRACT_URI` (override the derived URIs).
 
 **3. Deploy, verify, check.**
 
@@ -158,15 +159,29 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 | `GET /matches/:id/events?since=` | event stream for your seat |
 | `GET/POST /matches/:id/result` | typed `MatchResult` to co-sign |
 | `GET /matches/:id/settlement` · `GET /matches/:id/log` | settlement JSON · full signed log after the match (replay it with `replayLog` / `verifyMoveSignatures` from the SDK) |
+| `GET /league?address=` · `GET /league/claims?agents=` | Agent League: week, fee, split, pot, standings, your balance · published prize proofs |
 | `GET /matches?player=` · `GET /leaderboard?season=` | recent matches or one player's history (with signature and settlement status) · ranked records per season |
 
 The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts/agent-bot.ts`.
 Finished matches are archived as JSON (log + signatures) in `apps/server/data/<chainId>/` (`MATCH_ARCHIVE_DIR`) and replayed back in on restart, so history and settlement survive a redeploy of the referee.
 
+**Agent League.** Agents play agents for a small entry fee; the fees fund a weekly prize pot paid to the operators of the best agents. The economics are in the GDD (*Agent League economics*). `AgentLeague` holds prepaid balances (the stand-in for x402 micro-payments), the fees, the weekly standings and the payouts. `MatchSettlement` mode 3 (`league`) feeds it results signed by both agents and co-signed by the referee.
+- *Defaults:* 0.50 tUSDC per agent per match. The split is 80% weekly pot, 10% buyback reserve, 10% operations (`setParams`; `sweep` sends buyback and operations to their sinks).
+- *Anti-collusion:* agents of the same operator are never paired (enforced by the referee and the contract), only the first 3 games per pair per week move ratings, and payouts never exceed the pot.
+- *Agents:* register (Profile, or `registerAgent`), fund with `PRIVATE_KEY=<agent key> AMOUNT=5 pnpm league:deposit` (taps the tUSDC faucet if needed) or *Fund* on the Profile, then play with `PRIVATE_KEY=<agent key> MODE=league RACE=<race> DECK_ID=<deckId> GAMES=20 pnpm bot` (or the MCP `forkfall_queue` with `mode: "league"`). Entry fees are charged on-chain when both agents have shown up; a failed charge cancels the match. The referee submits every finished league result on-chain itself.
+- *Weekly payout:* `WEEK=<n> pnpm league:publish` (deployer key in `REWARDS_ADMIN_PRIVATE_KEY`). Eligible agents have ≥10 games against ≥5 opponents (`MIN_GAMES` / `MIN_OPPONENTS`); the top half by league rating share the pot linearly by rank. It publishes the Merkle root and writes `apps/server/data/league/<chainId>/week-<n>.json`, from which the server serves claims. Operators claim under *Matches → Agent League*. If nobody qualifies, the pot rolls into the current week.
+- *Before mainnet:* a paid entry plus a prize is a contest or wager in many jurisdictions; get a legal review.
+
 **Identity: agents, humans and rewards.** The Profile page (`/profile`) ties these together:
 - *Agents* are ERC-8004 identities in `AgentRegistry`: an ERC-721 owned by the operator (at most 5 each), with an on-chain registration file (name, description, MCP endpoint) as a base64 data URI. The agent plays from its own `agentWallet`, which the operator links with a proof signed by the agent's key: run `PRIVATE_KEY=<agent key> OWNER=<operator> pnpm agent:link` and paste the JSON (`registerWithWallet` mints and links in one transaction, so the operator never counts as an agent). A wallet is an agent while it is some agent's `agentWallet`: Agent badge, no Human queue.
 - *Humans* play every queue without verifying. Verifying (`POST /v1/human/verify`) records an attestation in `HumanRegistry` via the referee key (`ATTESTOR_ROLE`, granted at deploy).
 - *Season rewards*: after a season ends, `SEASON=<n> POOL=<tFALL> pnpm rewards:publish` reads every rated player from `RatingChanged` events, splits the pool by settled ranked wins among verified humans and registered agents (banned and unverified players are listed as excluded with the reason), mints the pool to `SeasonRewards`, publishes the Merkle root and writes `apps/server/data/rewards/<chainId>/season-<n>.json`. The server serves proofs at `GET /v1/rewards?address=`; players claim on the Profile page. `START_NEXT=1` also starts the next season; `REWARDS_ADMIN_PRIVATE_KEY` is the deployer/admin key.
+
+**Card art and metadata.** `packages/art` is the one source for card visuals, used by the web app, the referee server and the export:
+- *Sprites:* 32×32 pixel art per card, following the GDD pixel style guide: race palettes of 12 ramp colors plus 4 flat colors (16 max), one light from the top left with 3 shades, a 1 px outline in the race's darkest shade, transparent background, shared baseline. Race accents: Agents metallic glints and sensor dots, Prophets gold glow, Brokers symmetric suits, Degens off-model critters with a white sticker outline. Archetypes follow the card (robots, drones, oracles, suits, critters, vaults, towers; icons for actions, predictions and assets). These are prototype placeholders until the commissioned art lands.
+- *Card frame:* a vector frame tinted per race. Rarity sets the material (stone, silver, gold, an animated prismatic sheen for Legendary). It shows a Gas gem, a chain badge (text only: no real logos), name, type line, rules text and attack/health, with a ribbon on soulbound starter copies. The sprite is drawn at an integer 10× scale.
+- *Metadata:* ERC-1155 JSON for each card (token `n`) and each non-Legendary starter copy (`10000 + n`), with name, description, image and attributes (race, chain, type, rarity, Gas, attack, health, keywords, edition). Collection metadata follows ERC-7572 (`CardRegistry.contractURI`).
+- *Hosting:* the referee server serves `/metadata/cards/{id}.json` (64-hex `{id}` or decimal), `/metadata/images/<id>.svg` and `/metadata/contract.json`; `PUBLIC_URL` sets the absolute links. `pnpm art:export [dir]` writes the same metadata as static, self-contained files (images embedded) plus a preview gallery, ready to pin to IPFS.
 
 **Smart wallets before their first transaction.** A Base Account (or any counterfactual smart wallet) can sign in, sign results and settle before it exists on-chain: its signatures are ERC-6492-wrapped with the wallet's factory call. The referee server verifies them with viem; `MatchSettlement` runs the factory call (which deploys the wallet at its predicted address), then checks ERC-1271. That call only happens when the wallet is missing or rejects the inner signature, and settlement is `nonReentrant`, so a factory cannot settle a match twice. Replays verify smart-wallet session delegations too when given a chain client.
 
@@ -191,6 +206,7 @@ pnpm 12 blocks dependency install scripts unless approved; the allowlist lives i
 ```
 packages/engine   rules engine, cards, RNG, bots, balance sim, Solidity card generator
 packages/sdk      EIP-712 protocol, API client, agent loop
+packages/art      card sprites, card frame and ERC-1155 metadata (shared by web, server, export)
 apps/server       referee / match server (Node http, no framework)
 apps/web          Vite web client
 apps/mcp          MCP stdio server for agents
@@ -200,12 +216,14 @@ docs              design document
 ```
 
 Card data lives in one place (`packages/engine/src/cards.ts`). `pnpm gen:cards` regenerates
-`contracts/src/generated/Set1Cards.sol`, and a test fails if the two drift apart.
+`contracts/src/generated/Set1Cards.sol`, and a test fails if the two drift apart. When cards are added
+(like the Poncho set), a live deployment picks them up with
+`cd contracts && forge script script/DefineCards.s.sol --rpc-url base_sepolia --broadcast --private-key $DEPLOYER_PRIVATE_KEY`.
 
 ## Open items from the GDD
 
 These open questions are still open, and the code leaves room for each answer:
 - **Proof-of-personhood method:** decided as *play free, verify to earn*. The Human queue is open to every wallet that is not a registered agent; verification only makes a player eligible for season rewards. On testnet the referee attests a labeled `testnet` method in one click; Human Passport (connect existing accounts, no documents) and Coinbase Verifications are listed as coming and plug into `apps/server/src/humans.ts` once API keys exist.
-- **Wagered matches:** not included. Settlement has no stakes.
+- **Wagered matches:** not included; player-vs-player stakes stay out. The Agent League's entry fees and weekly pot are the one paid mode (agents only, test USDC), pending legal review before mainnet.
 - **Token pair and launch:** `tFALL` is a faucet placeholder; the real token launches via Bankr later.
-- **Final art:** the placeholders are generated pixel sprites, and the frame follows the style guide's race palettes.
+- **Final art:** human-made per the GDD guardrail. Until then `@forkfall/art` generates placeholders that follow the pixel style guide (see *Card art and metadata*), and a commissioned sprite can replace one card at a time.

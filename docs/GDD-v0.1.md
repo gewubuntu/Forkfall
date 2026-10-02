@@ -115,6 +115,26 @@ Set 1 ships 160 cards: 36 per race plus 16 neutral. Every new player and agent g
 
 - **Starter decks:** one per race, free and soulbound, so they cannot be sold or farmed. They are playable in every mode, including ranked.
 - **Packs:** bought with ETH, USDC or USDG, or with the game token. Pack contents come from VRF randomness.
+
+### Pack incentives without pay-to-win (testnet prototype)
+
+Packs must stay fun and fair, never stronger: the ranked rarity cap is the guardrail. The prototype adds:
+
+| Lever | Rule | Where |
+| --- | --- | --- |
+| Pity timer | A Legendary is guaranteed within 20 packs per wallet; the counter resets on any Legendary. The shop shows the packs left. | `PackSale.packsSinceLegendary`, `packsUntilPity` |
+| Duplicate protection | A slot skips cards you already hold at the deck limit (2, or 1 for a Legendary, counting this pack) until you hold the playset of that rarity. | `PackSale.roll` |
+| Foils | About 1 card in 15 is a foil: token `20000 + n`, same card in play, animated holo, tradeable, scraps for 4×, can't be crafted. | `CardRegistry.FOIL_OFFSET`, `Crafting` |
+| Published odds | Odds table next to the Buy buttons, enforced by the contract. | Collection shop |
+| Set progress | Per set (four races, Neutral, Poncho): cards owned, playset bar, milestones (all Commons → card back, every card → title, full playset → animated badge). | Collection |
+| Bundles | 5 packs 10% off, 10 packs 15% off, for ETH and tokens. | `PackSale.bundlePrice`, `quoteEth`, `quoteToken` |
+| Themed boosters | Pack kinds: kind 0 is the Set 1 booster (every card); kind 1 is the Poncho booster (Poncho cards only, Poncho himself as the Legendary). Same price, pity, duplicate protection and foils. | `PackSale.setKind`, `buyWithEthOf`, `buyWithTokenOf` |
+| Shareable pulls | After a reveal: a 1200×630 pull image (native share sheet or download) and ready-made posts for X and Farcaster. | Pack reveal |
+| Pull feed | "Recent big pulls": Legendaries and foils from on-chain PackOpened events, live in the shop. | Collection shop |
+
+Milestone rewards are shown as goals today; the cosmetics themselves come with the cosmetics pass. Still to come, after the legal review: pack sales feeding the season pot.
+
+**Legal gate:** paid random packs of tradeable cards are treated as gambling in some countries (Belgium in particular; others require odds disclosure or age limits). Published odds, the pity timer and direct crafting help, but mainnet packs need legal review, and packs are never marketed as an investment.
 - **Crafting:** burn duplicates for Scrap, then spend Scrap to craft any card. This is the main sink.
 - **Legendary vaults:** each Legendary owns a wallet. It holds cosmetics and match trophies, and it can hold other assets in later seasons.
 
@@ -138,8 +158,30 @@ Forkfall uses a hybrid look: pixel-art characters inside a clean, modern card fr
 **Guardrails:**
 
 - No real logos on cards: no Base, Robinhood or Bankr marks.
-- No borrowed meme IP; every critter is an original design.
+- No borrowed meme IP without a license: every critter is an original design, except licensed collab sets made with the IP holder's permission (see the Poncho collab set).
 - Proposed: final art is human-made, and AI is used only for concepts and prototype placeholders.
+
+### Poncho collab set (testnet prototype)
+
+A licensed collab with **Poncho**, the cutest cat on Base (@ponchobase): a cat in a striped poncho, often holding a taco. Eight neutral cards from Base (ids 41–48), so every race can play them, plus a **Taco** token.
+
+| # | Card | Rarity | Cost | Stats | Text |
+| --- | --- | --- | --- | --- | --- |
+| 41 | Poncho Kitten | Common | 1 | 1/1 | Add a Taco to your hand. |
+| 42 | Taco Tuesday | Common | 2 | action | Add 2 Tacos to your hand. |
+| 43 | Salsa Slinger | Common | 3 | 2/2 | Deal 2 damage to a random enemy unit (or the enemy Treasury). |
+| 44 | Sombrero Sentry | Common | 3 | 2/4 | Guard. When this dies, add a Taco to your hand. |
+| 45 | Taco Truck | Uncommon | 4 | 2/5 | At the start of your turn, add a Taco to your hand. |
+| 46 | Poncho Posse | Uncommon | 4 | 3/3 | Give all friendly units +1/+1. |
+| 47 | Mariachi Cat | Rare | 5 | 4/4 | Rush. Add 2 Tacos to your hand. |
+| 48 | Poncho, Cutest Cat on Base | Legendary | 7 | 5/6 | Guard. Add 2 Tacos to your hand. At the start of your turn, give all friendly units +1/+1. |
+| – | Taco (token) | – | 1 | action | Give a friendly unit +1/+1. |
+
+- **Mechanic:** Tacos are cheap, flexible buffs that go to your hand (hidden from the opponent). A full hand burns them.
+- **Not in starters:** the set comes from Set 1 boosters (same pool, by rarity) and crafting, so starter decks and the core balance gate are unchanged.
+- **Balance target:** a side-grade, not a must-play. Swapping any one Poncho card for its core counterpart lands at 46–53% for greedy bots; a deck with all eight Poncho cards wins about 55–57% against plain starters (`pnpm sim 200 poncho`, gate ≤ 58%).
+- **Art:** licensed Poncho Pals style, not pixel art: flat vector busts with thick navy outlines, a wide head with cheek tufts, white muzzle and forehead stripe, big glossy eyes, an ω smile, blush, a paw holding an item and a geometric poncho with a PB badge, on flat colour backgrounds. Every card is its own pal built from traits (fur: ginger, grey, tan; hats: sombrero, headband; eyes: happy, sunglasses, laser; items: taco, salsa, mic, cash), plus a taco, a taco truck and a posse scene. Rendered as SVG by `packages/art/src/poncho.ts`.
+- **Existing deployments** add the cards with `forge script script/DefineCards.s.sol` (no redeploy).
 
 **Production:** Set 1 needs 160 illustrations plus 8 animated Legendaries before the mainnet beta. The prototype's 40 test cards run on placeholder art.
 
@@ -186,7 +228,7 @@ Humans and agents use one protocol with two front ends: the web and mobile app f
 | Mode | Who plays | Stakes |
 | --- | --- | --- |
 | Ranked | Humans and agents together, with badges | Season rewards |
-| Agent League | Registered agents only | Prize pool funded by fees |
+| Agent League | Registered agents only, paid entry (0.50 per match) | Weekly prize pot funded by entry fees (see Agent League economics) |
 | Human queue | Verified humans only | Season rewards |
 | Challenge the Bot | Humans against a top agent | Bounty paid by the agent's owner |
 | Casual | Anyone | None |
@@ -236,6 +278,22 @@ The game token launches through Bankr, and its 95% share of the 0.7% swap fee fu
 | Treasury | Swap fees, pack sales, marketplace royalty (5%), tournament entry | Prize pools, agent compute, audits |
 | Players | Ranked rewards, tournament prizes | Packs, crafting with Scrap, entry fees |
 | Token | Buybacks from pack revenue | Burns on crafting and on Legendary upgrades |
+
+### Agent League economics (testnet prototype)
+
+Agents play agents for a small entry fee paid from a prepaid balance (the on-chain stand-in for x402 micro-payments). The fees fund a weekly prize pot, token buybacks and operations, so agents have a direct reason to keep playing, and the pot rewards being good rather than playing a lot.
+
+| Parameter | Value | Why |
+| --- | --- | --- |
+| Entry fee | 0.50 USDC per agent per match (1.00 per match) | About an agent's own compute cost per game, so it doesn't deter play |
+| Fee split | 80% weekly pot · 10% token buyback · 10% operations | A large pot share keeps the average agent's cost at 20% of fees |
+| Season | Weekly | Frequent payouts keep agents engaged |
+| Eligibility | ≥10 league games against ≥5 different opponents in the week | Blocks farming against one partner |
+| Payout | Top half of eligible agents by league rating, linear by rank | Many agents earn something; the best earn most |
+| Paid to | The agent's operator (owner of its ERC-8004 identity) | Accountability for the money flow |
+| Anti-collusion | Same-operator agents never paired; only the first 3 games per pair per week are rated; the referee picks opponents | Throwing games to a sister agent does not pay |
+
+The pot is funded only by fees, plus optional sponsor top-ups (`fundPot`), so payouts never exceed what came in. An average agent loses 20% of its fees and only above-average agents profit, which favors building better agents over running more of them. Leftover prizes roll into the next week's pot. Before mainnet the league needs a legal review: a paid entry plus a prize pot is a contest or wager in many jurisdictions, and token buybacks raise their own questions.
 
 **Guardrails:** in-game Dividends and Brokers' "portfolios" are game mechanics, not real yield. No holding of real tokenized stocks inside cards until legal review, because Stock Token availability varies by jurisdiction.
 

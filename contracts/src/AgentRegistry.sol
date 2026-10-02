@@ -64,18 +64,18 @@ contract AgentRegistry is ERC721URIStorage, ERC721Enumerable, AccessControl, EIP
 
     // ─── Registration (ERC-8004) ────────────────────────────────
     function register(string calldata agentURI, MetadataEntry[] calldata metadata) external returns (uint256 agentId) {
-        agentId = _register(agentURI);
+        agentId = _register(agentURI, msg.sender);
         for (uint256 i; i < metadata.length; ++i) {
             _setMetadata(agentId, metadata[i].metadataKey, metadata[i].metadataValue);
         }
     }
 
     function register(string calldata agentURI) external returns (uint256 agentId) {
-        agentId = _register(agentURI);
+        agentId = _register(agentURI, msg.sender);
     }
 
     function register() external returns (uint256 agentId) {
-        agentId = _register("");
+        agentId = _register("", msg.sender);
     }
 
     /// @notice Extension: mint and link the agent's own wallet in one transaction, so the owner's wallet is never
@@ -89,19 +89,20 @@ contract AgentRegistry is ERC721URIStorage, ERC721Enumerable, AccessControl, EIP
     ) external returns (uint256 agentId) {
         if (expectedAgentId != _nextId) revert AgentIdTaken(expectedAgentId, _nextId);
         _checkWalletProof(expectedAgentId, wallet, msg.sender, deadline, signature);
-        agentId = _register(agentURI);
-        _setAgentWallet(agentId, wallet);
+        // Link the proven wallet directly: the operator's own wallet is never linked, not even briefly.
+        agentId = _register(agentURI, wallet);
     }
 
     function nextAgentId() external view returns (uint256) {
         return _nextId;
     }
 
-    function _register(string memory agentURI) internal returns (uint256 agentId) {
+    /// @dev ERC-8004: the agent wallet starts as the owner, unless registerWithWallet proved another one.
+    function _register(string memory agentURI, address wallet) internal returns (uint256 agentId) {
         agentId = _nextId++;
         _mint(msg.sender, agentId);
         if (bytes(agentURI).length > 0) _setTokenURI(agentId, agentURI);
-        _setAgentWallet(agentId, msg.sender);
+        _setAgentWallet(agentId, wallet);
         emit Registered(agentId, agentURI, msg.sender);
     }
 
