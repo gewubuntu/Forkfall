@@ -1,6 +1,10 @@
 import { card, type Rarity } from '@forkfall/engine';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { GameCard } from './GameCard.tsx';
+
+/** Foils come back from PackSale as FOIL_OFFSET + id. */
+const FOIL_OFFSET = 20_000;
+const baseOf = (id: number) => (id >= FOIL_OFFSET ? id - FOIL_OFFSET : id);
 import { LOGO_MARK } from '../lib/art.ts';
 import { useParticles } from '../lib/particles.ts';
 import { isMuted, setMuted, sfx } from '../lib/sfx.ts';
@@ -38,7 +42,7 @@ export function PackReveal({ ids, fresh, packId, onClose, next }: {
   const packRef = useRef<HTMLButtonElement>(null);
   const cardRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const best: Rarity = (ids ?? []).reduce<Rarity>((b, id) => (ORDER.indexOf(card(id).rarity) > ORDER.indexOf(b) ? card(id).rarity : b), 'common');
+  const best: Rarity = (ids ?? []).reduce<Rarity>((b, id) => (ORDER.indexOf(card(baseOf(id)).rarity) > ORDER.indexOf(b) ? card(baseOf(id)).rarity : b), 'common');
   // Every pack holds a Rare, so the pack itself only teases a Legendary (rays and pink glow).
   const tier = best === 'legendary' ? 3 : 1;
   const done = phase === 'dealt' && flipped.length > 0 && flipped.every(Boolean);
@@ -73,7 +77,8 @@ export function PackReveal({ ids, fresh, packId, onClose, next }: {
     if (!ids || flipped[i]) return;
     setFlipped((f) => f.map((x, j) => (j === i ? true : x)));
     if (reduced) return;
-    const r = card(ids[i]).rarity;
+    const r = card(baseOf(ids[i])).rarity;
+    if (ids[i] >= FOIL_OFFSET) setTimeout(() => { const c2 = center(cardRefs.current[i]); burst(c2.x, c2.y, ['#ff7ad9', '#67e8f9', '#b6f23c', '#fde68a', '#ffffff'], 50, 8); sfx.flip('rare'); }, 200);
     sfx.flip(r);
     const c = center(cardRefs.current[i]);
     burst(c.x, c.y, BURST[r].colors, BURST[r].n, BURST[r].power);
@@ -135,19 +140,21 @@ export function PackReveal({ ids, fresh, packId, onClose, next }: {
           {phase === 'dealt' && ids && (
             <div className="reveal-row">
               {ids.map((id, i) => {
-                const c = card(id);
+                const c = card(baseOf(id));
+                const foil = id >= FOIL_OFFSET;
                 return (
                   <button key={i} ref={(el) => { cardRefs.current[i] = el; }}
-                    className={`flip deal ${flipped[i] ? 'on' : ''} r-${c.rarity}`}
+                    className={`flip deal ${flipped[i] ? 'on' : ''} r-${c.rarity} ${foil ? 'foil' : ''}`}
                     style={{ ['--dx' as string]: `${(ids.length - 1) / 2 * 152 - i * 152}px`, ['--i' as string]: i } as CSSProperties}
                     onClick={() => flip(i)}
-                    aria-label={flipped[i] ? `${c.name}, ${c.rarity}${fresh[i] ? ', new' : ''}` : 'Face-down card, reveal'}>
+                    aria-label={flipped[i] ? `${foil ? 'Foil ' : ''}${c.name}, ${c.rarity}${fresh[i] ? ', new' : ''}` : 'Face-down card, reveal'}>
                     <span className="flip-inner">
                       <span className="flip-back" aria-hidden><img src={LOGO_MARK} alt="" /></span>
                       <span className="flip-front">
-                        <GameCard cardId={id} size="hand" />
+                        <GameCard cardId={c.id} size="hand" foil={foil} />
                         {fresh[i] && <span className="new-badge">NEW</span>}
-                        <span className="rarity-tag">{RARITY_LABEL[c.rarity]}</span>
+                        {foil && <span className="foil-badge">✦ FOIL</span>}
+                        <span className="rarity-tag">{foil ? 'Foil · ' : ''}{RARITY_LABEL[c.rarity]}</span>
                       </span>
                     </span>
                   </button>

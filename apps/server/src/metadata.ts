@@ -1,4 +1,4 @@
-import { cardMetadata, cardSvg, collectionMetadata, parseTokenId, STARTER_OFFSET } from '@forkfall/art';
+import { cardMetadata, cardSvg, collectionMetadata, parseTokenId, splitTokenId } from '@forkfall/art';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
@@ -21,7 +21,7 @@ export function serveMetadata(req: IncomingMessage, res: ServerResponse, path: s
   } else if (m && parseTokenId(m[2]) !== null && (m[1] === 'cards' ? m[2].endsWith('.json') : m[2].endsWith('.svg'))) {
     const id = parseTokenId(m[2])!;
     if (m[1] === 'cards') send('application/json', JSON.stringify(cardMetadata(id, { imageBase: `${origin}/metadata/images`, appUrl: origin })));
-    else send('image/svg+xml', cardSvg(id >= STARTER_OFFSET ? id - STARTER_OFFSET : id, { starter: id >= STARTER_OFFSET }));
+    else { const t = splitTokenId(id); send('image/svg+xml', cardSvg(t.baseId, { starter: t.starter, foil: t.foil })); }
   } else {
     res.writeHead(404, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'no such card metadata' }));

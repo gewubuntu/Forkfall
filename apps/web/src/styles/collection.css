@@ -227,3 +227,32 @@
   .tilt-inner { transform: none !important; }
   .cd-art.fx-craft .tilt-inner, .cd-art.fx-craft::before, .cd-ghost { animation: none; }
 }
+
+/* ─── Foils ─── */
+.gcard.is-foil::before { content: ''; position: absolute; inset: 0; border-radius: 10px; pointer-events: none; z-index: 1; mix-blend-mode: color-dodge;
+  background: linear-gradient(115deg, transparent 20%, rgba(255,122,217,.45) 35%, rgba(103,232,249,.45) 45%, rgba(182,242,60,.45) 55%, rgba(255,226,122,.45) 65%, transparent 80%);
+  background-size: 250% 250%; animation: foil-sweep 3s linear infinite; }
+@keyframes foil-sweep { from { background-position: 100% 100%; } to { background-position: 0% 0%; } }
+.foil-badge { position: absolute; top: -10px; left: -8px; z-index: 3; font-size: 11px; font-weight: 800; letter-spacing: .06em; padding: 3px 8px; border-radius: 99px;
+  background: linear-gradient(90deg, #ff7ad9, #67e8f9, #b6f23c); color: #1a1030; box-shadow: 0 0 14px rgba(255,122,217,.6); }
+.own-badge i.foil-count { color: #ff9ae4; }
+
+/* ─── Shop perks and odds ─── */
+.pack-perks { margin: 0; padding-left: 18px; font-size: 13.5px; display: flex; flex-direction: column; gap: 3px; color: var(--muted); }
+.pack-perks b { color: var(--text); }
+.pity-n { color: #ff9ae4 !important; font-family: var(--font-pixel); font-size: 16px; }
+.odds summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.odds table { font-size: 12.5px; border-collapse: collapse; margin-top: 6px; }
+.odds td { padding: 2px 10px 2px 0; }
+
+/* ─── Set progress ─── */
+.set-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.set-card { padding: 10px 12px; border-radius: var(--r); background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--rc); }
+.set-top { display: flex; justify-content: space-between; align-items: baseline; }
+.set-top b { color: var(--rc); font-family: var(--font-pixel); font-size: 16px; }
+.set-top span { font-variant-numeric: tabular-nums; font-weight: 700; }
+.set-bar { height: 6px; border-radius: 99px; background: var(--panel-3); overflow: hidden; margin: 6px 0 8px; }
+.set-bar i { display: block; height: 100%; background: var(--rc); transition: width .5s cubic-bezier(.2,.9,.3,1.2); }
+.set-ms { list-style: none; margin: 0; padding: 0; font-size: 12px; display: flex; flex-direction: column; gap: 2px; color: var(--dim); }
+.set-ms li.done { color: var(--ok); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .gcard.is-foil::before { animation: none; } }

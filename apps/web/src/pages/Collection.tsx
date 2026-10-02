@@ -11,6 +11,7 @@ import { useHub } from '../chain/useHub.ts';
 import { useOwned, type Owned } from '../chain/useOwned.ts';
 import { GameCard } from '../components/GameCard.tsx';
 import { PackReveal } from '../components/PackReveal.tsx';
+import { FOIL_OFFSET } from '../chain/useOwned.ts';
 import { TiltCard } from '../components/TiltCard.tsx';
 import { useParticles } from '../lib/particles.ts';
 import { sfx } from '../lib/sfx.ts';
@@ -63,6 +64,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
       { address: c.PackSale, abi: packSaleAbi, functionName: 'packIdsOf', args: [player], chainId: cid },
       ...[0, 1, 2, 3].map((r) => ({ address: c.Crafting, abi: craftingAbi, functionName: 'scrapValue', args: [BigInt(r)], chainId: cid } as const)),
       ...[0, 1, 2, 3].map((r) => ({ address: c.Crafting, abi: craftingAbi, functionName: 'craftCost', args: [BigInt(r)], chainId: cid } as const)),
+      { address: c.PackSale, abi: packSaleAbi, functionName: 'packsUntilPity', args: [player], chainId: cid },
     ],
   });
   const r = reads.data?.map((x) => x.result);
@@ -77,6 +79,8 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const packIds = (r?.[11] as readonly bigint[] | undefined) ?? [];
   const scrapValue = [12, 13, 14, 15].map((i) => Number((r?.[i] as bigint | undefined) ?? 0n));
   const craftCost = [16, 17, 18, 19].map((i) => Number((r?.[i] as bigint | undefined) ?? 0n));
+  /** Packs until the pity timer guarantees a Legendary (undefined on an older PackSale without it). */
+  const untilPity = r?.[20] !== undefined ? Number(r[20] as bigint) : undefined;
 
   const packs = useReadContracts({
     contracts: packIds.map((id) => ({ address: c.PackSale, abi: packSaleAbi, functionName: 'packs', args: [id], chainId: cid } as const)),
@@ -98,7 +102,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const [ownedOnly, setOwnedOnly] = useState(false);
   const [confirmExtras, setConfirmExtras] = useState(false);
 
-  const total = (id: number) => (owned.get(id)?.tradeable ?? 0) + (owned.get(id)?.soulbound ?? 0);
+  const total = balances.total;
   const ownedKinds = COLLECTIBLE.filter((cd) => total(cd.id) > 0).length;
   const now = Math.floor(Date.now() / 1000);
   const dripReady = lastDrip === 0 || now >= lastDrip + 86_400;
@@ -143,7 +147,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
     if (opened && opened.eventName === 'PackOpened') {
       const ids = opened.args.cardIds.map(Number);
       const seen = new Map(before);
-      const fresh = ids.map((cid2) => { const was = seen.get(cid2) ?? 0; seen.set(cid2, was + 1); return was === 0; });
+      const fresh = ids.map((raw) => { const cid2 = raw >= FOIL_OFFSET ? raw - FOIL_OFFSET : raw; const was = seen.get(cid2) ?? 0; seen.set(cid2, was + 1); return was === 0; });
       setReveal({ ids, fresh, packId: id });
     } else {
       setReveal(null);
@@ -155,7 +159,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
   };
 
   const extras = COLLECTIBLE.map((cd) => {
-    const o = owned.get(cd.id) ?? { tradeable: 0, soulbound: 0 };
+    const o = owned.get(cd.id) ?? { tradeable: 0, soulbound: 0, foil: 0 };
     const limit = cd.rarity === 'legendary' ? MAX_LEGENDARY_COPIES : MAX_COPIES;
     const keepTradeable = Math.max(0, limit - o.soulbound);
     return { cd, n: Math.max(0, o.tradeable - keepTradeable) };
@@ -196,6 +200,8 @@ function CollectionLive({ chainId }: { chainId: number }) {
       )}
       {(balances.error || reads.error) && <div className="alert err">Couldn’t read the chain: {(balances.error ?? reads.error)!.message.split('\n')[0]}</div>}
 
+      <SetProgress total={total} loading={loading} />
+
       {/* ─── Starter decks ─── */}
       <section aria-labelledby="starter-h">
         <h2 id="starter-h" className="sub">Free starter decks</h2>
@@ -225,6 +231,20 @@ function CollectionLive({ chainId }: { chainId: number }) {
             <div className="shop-body">
               <h3>Set 1 booster</h3>
               <p className="muted">5 cards: 3 Common, 1 Uncommon, 1 Rare, which upgrades to <b>Legendary</b> about 1 in 10. Each pack is sealed to a future block and opened a few seconds later, so nobody can pick the result.</p>
+              <ul className="pack-perks">
+                <li><b>Pity timer:</b> {untilPity !== undefined ? <>a Legendary is guaranteed within <b className="pity-n">{untilPity}</b> more pack{untilPity === 1 ? '' : 's'}.</> : 'a Legendary is guaranteed within 20 packs.'}</li>
+                <li><b>No dead duplicates:</b> you won’t get a 3rd copy (2nd of a Legendary) until you own the playset of that rarity.</li>
+                <li><b>✦ Foils:</b> about 1 card in 15 is a foil. Same card in play, animated holo, scraps for 4×.</li>
+              </ul>
+              <details className="odds"><summary>Published odds</summary>
+                <table><tbody>
+                  <tr><td>Slots 1–3</td><td>Common</td><td>100%</td></tr>
+                  <tr><td>Slot 4</td><td>Uncommon</td><td>100%</td></tr>
+                  <tr><td>Slot 5</td><td>Rare / Legendary</td><td>90% / 10% (100% at pity)</td></tr>
+                  <tr><td>Any card</td><td>Foil</td><td>6.67%</td></tr>
+                </tbody></table>
+                <p className="muted small">Enforced by the PackSale contract; the cards come from a future block hash (testnet; VRF before mainnet).</p>
+              </details>
               <div className="qty" role="group" aria-label="Number of packs">
                 <button className="btn" onClick={() => setQty((q) => Math.max(1, q - 1))} disabled={qty <= 1} aria-label="Fewer">−</button>
                 <span><b>{qty}</b> pack{qty > 1 ? 's' : ''}</span>
@@ -300,12 +320,12 @@ function CollectionLive({ chainId }: { chainId: number }) {
         </div>
         <div className="card-grid">
           {shown.map((cd) => {
-            const o = owned.get(cd.id) ?? { tradeable: 0, soulbound: 0 };
-            const n = o.tradeable + o.soulbound;
+            const o = owned.get(cd.id) ?? { tradeable: 0, soulbound: 0, foil: 0 };
+            const n = o.tradeable + o.soulbound + o.foil;
             return (
               <div key={cd.id} className={`grid-cell ${n === 0 ? 'missing' : ''}`}>
-                <TiltCard rarity={cd.rarity}><GameCard cardId={cd.id} size="hand" onClick={() => setDetail(cd.id)} label={`${cd.name}, ${n} owned. Details`} /></TiltCard>
-                <span className={`own-badge ${n === 0 ? 'zero' : ''}`}>{n === 0 ? 'Not owned' : `×${n}`}{o.soulbound > 0 && <i title={`${o.soulbound} soulbound starter cop${o.soulbound === 1 ? 'y' : 'ies'}`}>◆{o.soulbound}</i>}</span>
+                <TiltCard rarity={o.foil ? 'legendary' : cd.rarity}><GameCard cardId={cd.id} size="hand" foil={o.foil > 0} onClick={() => setDetail(cd.id)} label={`${cd.name}, ${n} owned. Details`} /></TiltCard>
+                <span className={`own-badge ${n === 0 ? 'zero' : ''}`}>{n === 0 ? 'Not owned' : `×${n}`}{o.soulbound > 0 && <i title={`${o.soulbound} soulbound starter cop${o.soulbound === 1 ? 'y' : 'ies'}`}>◆{o.soulbound}</i>}{o.foil > 0 && <i className="foil-count" title={`${o.foil} foil${o.foil === 1 ? '' : 's'}`}>✦{o.foil}</i>}</span>
               </div>
             );
           })}
@@ -348,6 +368,49 @@ function CollectionLive({ chainId }: { chainId: number }) {
             ? () => { const p = unopened.find((x) => block! > x.revealBlock)!; setReveal(null); open(p.id); } : undefined} />
       )}
     </div>
+  );
+}
+
+const SETS: { key: string; label: string; color: string; cards: CardDef[] }[] = [
+  ...RACES.map((r) => ({ key: r, label: RACE_INFO[r].name, color: RACE_COLOR[r], cards: COLLECTIBLE.filter((c) => c.faction === r && setOf(c) === 'core') })),
+  { key: 'neutral', label: 'Neutral', color: RACE_COLOR.neutral, cards: COLLECTIBLE.filter((c) => c.faction === 'neutral' && setOf(c) === 'core') },
+  { key: 'poncho', label: 'Poncho', color: 'var(--poncho)', cards: COLLECTIBLE.filter((c) => setOf(c) === 'poncho') },
+];
+
+/** Milestones per set: a card back for every Common, a title for every card, a badge for the full playset. */
+const MILESTONES = [
+  { key: 'commons', label: 'All Commons', reward: 'card back', test: (cs: CardDef[], n: (id: number) => number) => cs.filter((c) => c.rarity === 'common').every((c) => n(c.id) > 0) },
+  { key: 'all', label: 'Every card', reward: 'title', test: (cs: CardDef[], n: (id: number) => number) => cs.every((c) => n(c.id) > 0) },
+  { key: 'playset', label: 'Full playset', reward: 'animated badge', test: (cs: CardDef[], n: (id: number) => number) => cs.every((c) => n(c.id) >= (c.rarity === 'legendary' ? 1 : 2)) },
+];
+
+/** Collection goals: progress per set (cards owned, playset copies) and milestone rewards. */
+function SetProgress({ total, loading }: { total: (id: number) => number; loading: boolean }) {
+  return (
+    <section aria-labelledby="sets-h">
+      <h2 id="sets-h" className="sub">Set progress</h2>
+      <div className="set-grid">
+        {SETS.map((s) => {
+          const owned = s.cards.filter((c) => total(c.id) > 0).length;
+          const copies = s.cards.reduce((a, c) => a + Math.min(total(c.id), c.rarity === 'legendary' ? 1 : 2), 0);
+          const need = s.cards.reduce((a, c) => a + (c.rarity === 'legendary' ? 1 : 2), 0);
+          return (
+            <div key={s.key} className="set-card" style={{ ['--rc' as string]: s.color }}>
+              <div className="set-top"><b>{s.label}</b><span>{loading ? '…' : `${owned}/${s.cards.length}`}</span></div>
+              <div className="set-bar" role="meter" aria-valuemin={0} aria-valuemax={need} aria-valuenow={copies} aria-label={`${s.label} playset progress`}>
+                <i style={{ width: `${(copies / need) * 100}%` }} />
+              </div>
+              <ul className="set-ms">
+                {MILESTONES.map((m) => {
+                  const done = !loading && m.test(s.cards, total);
+                  return <li key={m.key} className={done ? 'done' : ''} title={`${m.label}: unlocks a ${s.label} ${m.reward}`}>{done ? '✓' : '○'} {m.label} <span className="muted">· {m.reward}</span></li>;
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -401,6 +464,7 @@ function CardDetail({ cd, owned, scrap, scrapValue, craftCost, busy, onClose, on
               <dt>Rarity</dt><dd style={{ textTransform: 'capitalize' }}>{cd.rarity}</dd>
               <dt>Tradeable</dt><dd>{owned.tradeable}</dd>
               <dt>Soulbound</dt><dd>{owned.soulbound}</dd>
+              <dt>Foil</dt><dd>{owned.foil ? `✦ ${owned.foil}` : 0}</dd>
               <dt>Your Scrap</dt><dd>{scrap}</dd>
               <dt>Token</dt><dd><a href={`/metadata/images/${cd.id}.svg`} target="_blank" rel="noreferrer">Card image ↗</a> · <a href={`/metadata/cards/${cd.id}.json`} target="_blank" rel="noreferrer">metadata ↗</a></dd>
             </dl>

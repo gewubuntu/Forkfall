@@ -35,6 +35,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 
 ### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
 
+- **Pack fairness:** a pity timer (Legendary within 20 packs), duplicate protection until you own a rarity's playset, cosmetic foils (token `20000 + n`, ~1 in 15 cards, 4× scrap) and published odds. See the GDD's pack incentives section.
 - **Randomness for packs** uses a two-step commit → future-blockhash reveal. Fine for testnet; switch to VRF before mainnet beta, as the GDD requires.
 - **Disputes**: if a loser won't co-sign, the `REFEREE_ROLE` key (the server, which replays the signed log) settles with the winner's signature. The GDD's fully on-chain log replay is the next step; the log format (signed moves + hash chain + seed reveals) already supports it.
 - **Hidden information** is enforced by the referee server (it holds both deck salts until the match ends). Per-player encryption comes later.

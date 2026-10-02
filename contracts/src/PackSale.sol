@@ -11,6 +11,9 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 /// @title PackSale
 /// @notice Sells 5-card Set 1 packs for ETH or an allowlisted ERC-20 (test USDC, test game token).
 ///         Pack: 3 Common, 1 Uncommon, 1 Rare that upgrades to Legendary ~1 in 10.
+///         Fairness: a pity timer guarantees a Legendary within `PITY_PACKS` packs per wallet, and duplicate
+///         protection skips cards the opener already holds at the deck limit (2, or 1 for a Legendary) until
+///         every card of that rarity is at the limit. Each card is a cosmetic foil ~1 in 15 (same card in play).
 /// @dev Testnet randomness is two-step commit/blockhash: buying commits to a future block, opening
 ///      reads that block's hash. Good enough for testnet; the GDD requires VRF before mainnet beta.
 contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
@@ -22,6 +25,8 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
     uint256 public constant LEGENDARY_UPGRADE_BPS = 1_000; // 10%
     uint256 public constant MAX_PACKS_PER_TX = 10;
     uint256 public constant REVEAL_DELAY = 2;
+    uint256 public constant PITY_PACKS = 20;
+    uint256 public constant FOIL_BPS = 667; // ~1 in 15 cards
 
     CardRegistry public immutable cards;
     address payable public treasury;
@@ -36,6 +41,8 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
 
     Pack[] public packs;
     mapping(address => uint256[]) private _packsOf;
+    /// @notice Packs opened since this wallet's last Legendary (the pity counter).
+    mapping(address => uint256) public packsSinceLegendary;
 
     error BadCount();
     error WrongPayment();
@@ -112,30 +119,68 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
             return ids;
         }
         p.opened = true;
-        ids = roll(keccak256(abi.encode(bh, packId, p.owner, address(this))));
+        bool pity = packsSinceLegendary[msg.sender] + 1 >= PITY_PACKS;
+        ids = roll(keccak256(abi.encode(bh, packId, p.owner, address(this))), msg.sender, pity);
         uint256[] memory mintIds = new uint256[](CARDS_PER_PACK);
         uint256[] memory amounts = new uint256[](CARDS_PER_PACK);
+        bool gotLegendary;
         for (uint256 i; i < CARDS_PER_PACK; ++i) {
             mintIds[i] = ids[i];
             amounts[i] = 1;
+            if (cards.cardInfo(ids[i]).rarity == 3) gotLegendary = true;
         }
+        packsSinceLegendary[msg.sender] = gotLegendary ? 0 : packsSinceLegendary[msg.sender] + 1;
         cards.mintBatch(msg.sender, mintIds, amounts);
         emit PackOpened(packId, msg.sender, ids);
     }
 
-    /// @notice Deterministic pack contents for a given random word.
-    function roll(bytes32 rand) public view returns (uint256[5] memory ids) {
-        uint256[] memory commons = cards.cardsOfRarity(0);
-        uint256[] memory uncommons = cards.cardsOfRarity(1);
-        uint256[] memory rares = cards.cardsOfRarity(2);
+    /// @notice Packs left until the pity timer guarantees a Legendary for `who` (1 = the next pack).
+    function packsUntilPity(address who) external view returns (uint256) {
+        return PITY_PACKS - packsSinceLegendary[who];
+    }
+
+    /// @notice Deterministic pack contents for a random word, opener and pity flag. Foils come back as
+    ///         `FOIL_OFFSET + id`.
+    function roll(bytes32 rand, address opener, bool forceLegendary) public view returns (uint256[5] memory ids) {
         uint256[] memory legendaries = cards.cardsOfRarity(3);
+        uint256[5] memory got; // base ids already in this pack, for duplicate protection within the pack
         for (uint256 i; i < 3; ++i) {
-            ids[i] = commons[uint256(keccak256(abi.encode(rand, i))) % commons.length];
+            got[i] = _pick(cards.cardsOfRarity(0), uint256(keccak256(abi.encode(rand, i))), opener, got, 2);
         }
-        ids[3] = uncommons[uint256(keccak256(abi.encode(rand, 3))) % uncommons.length];
-        bool upgrade = uint256(keccak256(abi.encode(rand, "legendary"))) % 10_000 < LEGENDARY_UPGRADE_BPS;
-        uint256[] memory top = upgrade && legendaries.length > 0 ? legendaries : rares;
-        ids[4] = top[uint256(keccak256(abi.encode(rand, 4))) % top.length];
+        got[3] = _pick(cards.cardsOfRarity(1), uint256(keccak256(abi.encode(rand, 3))), opener, got, 2);
+        bool upgrade =
+            forceLegendary || uint256(keccak256(abi.encode(rand, "legendary"))) % 10_000 < LEGENDARY_UPGRADE_BPS;
+        bool legendary = upgrade && legendaries.length > 0;
+        got[4] = _pick(
+            legendary ? legendaries : cards.cardsOfRarity(2),
+            uint256(keccak256(abi.encode(rand, 4))),
+            opener,
+            got,
+            legendary ? 1 : 2
+        );
+        for (uint256 i; i < CARDS_PER_PACK; ++i) {
+            bool foil = uint256(keccak256(abi.encode(rand, "foil", i))) % 10_000 < FOIL_BPS;
+            ids[i] = foil ? got[i] + cards.FOIL_OFFSET() : got[i];
+        }
+    }
+
+    /// @dev Start at a random card of `pool`; walk forward to the first one the opener holds fewer than `limit`
+    ///      of (counting this pack). If every card is at the limit, keep the random pick (extras can be scrapped).
+    function _pick(uint256[] memory pool, uint256 r, address opener, uint256[5] memory got, uint256 limit)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 start = r % pool.length;
+        for (uint256 k; k < pool.length; ++k) {
+            uint256 id = pool[(start + k) % pool.length];
+            uint256 have = cards.playableBalance(opener, id);
+            for (uint256 j; j < 5; ++j) {
+                if (got[j] == id) have++;
+            }
+            if (have < limit) return id;
+        }
+        return pool[start];
     }
 
     /// @notice Every pack id ever bought by `owner` (opened or not), oldest first.

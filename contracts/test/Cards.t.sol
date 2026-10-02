@@ -183,7 +183,7 @@ contract CardsTest is Fixture {
     }
 
     function testFuzz_rollAlwaysValidRarities(bytes32 rand) public view {
-        uint256[5] memory ids = d.packs.roll(rand);
+        uint256[5] memory ids = d.packs.roll(rand, alice, false);
         for (uint256 i; i < 3; ++i) {
             assertEq(d.cards.cardInfo(ids[i]).rarity, 0);
         }
@@ -194,7 +194,7 @@ contract CardsTest is Fixture {
     function test_legendaryRateAboutTenPercent() public view {
         uint256 legendary;
         for (uint256 i; i < 2000; ++i) {
-            uint256[5] memory ids = d.packs.roll(keccak256(abi.encode(i)));
+            uint256[5] memory ids = d.packs.roll(keccak256(abi.encode(i)), alice, false);
             if (d.cards.cardInfo(ids[4]).rarity == 3) legendary++;
         }
         assertGt(legendary, 140);
@@ -246,5 +246,91 @@ contract CardsTest is Fixture {
         new CardRegistry(admin, "");
         vm.chainId(46630);
         new CardRegistry(admin, "");
+    }
+
+    // ─── Fairness and foils ─────────────────────────────────────
+    function openPacks(address who, uint256 n) internal returns (uint256[5][] memory all) {
+        vm.deal(who, 1 ether);
+        all = new uint256[5][](n);
+        uint256 opened;
+        while (opened < n) {
+            uint256 batch = n - opened > 10 ? 10 : n - opened;
+            vm.prank(who);
+            uint256 first = d.packs.buyWithEth{value: 0.0001 ether * batch}(batch);
+            vm.roll(block.number + 3);
+            for (uint256 i; i < batch; ++i) {
+                vm.prank(who);
+                all[opened++] = d.packs.open(first + i);
+            }
+        }
+    }
+
+    function test_pityGuaranteesALegendaryWithin20Packs() public {
+        for (uint256 trial; trial < 3; ++trial) {
+            address who = makeAddr(string(abi.encode("pity", trial)));
+            uint256[5][] memory all = openPacks(who, 20);
+            bool any;
+            for (uint256 i; i < 20; ++i) {
+                if (d.cards.cardInfo(all[i][4]).rarity == 3) any = true;
+            }
+            assertTrue(any, "a Legendary within 20 packs");
+            assertLe(d.packs.packsSinceLegendary(who), 19);
+            assertEq(d.packs.packsUntilPity(who), 20 - d.packs.packsSinceLegendary(who));
+        }
+        // Forced roll always yields a Legendary.
+        assertEq(d.cards.cardInfo(d.packs.roll(keccak256("x"), alice, true)[4]).rarity, 3);
+    }
+
+    function test_duplicateProtectionFillsTheSetFirst() public {
+        // Open enough packs to see every Common; nobody gets a third copy of a Common
+        // until they hold two of every Common.
+        address who = makeAddr("collector");
+        uint256 nCommons = d.cards.cardsOfRarity(0).length;
+        openPacks(who, (nCommons * 2) / 3 + 2);
+        uint256[] memory commons = d.cards.cardsOfRarity(0);
+        uint256 maxHeld;
+        uint256 minHeld = type(uint256).max;
+        for (uint256 i; i < commons.length; ++i) {
+            uint256 h = d.cards.playableBalance(who, commons[i]);
+            if (h > maxHeld) maxHeld = h;
+            if (h < minHeld) minHeld = h;
+        }
+        assertTrue(maxHeld <= 2 || minHeld >= 2, "no third copy before the Common set is complete");
+        assertGe(minHeld, 1);
+    }
+
+    function test_foilsAreCosmeticPlayableAndScrapForMore() public {
+        uint256[5][] memory all = openPacks(alice, 40);
+        uint256 foils;
+        uint256 foilId;
+        for (uint256 i; i < 40; ++i) {
+            for (uint256 j; j < 5; ++j) {
+                if (d.cards.isFoil(all[i][j])) {
+                    foils++;
+                    foilId = all[i][j];
+                }
+            }
+        }
+        assertGt(foils, 2, "about 1 in 15 cards is a foil");
+        assertLt(foils, 30);
+        uint256 base = d.cards.baseId(foilId);
+        assertEq(base, foilId - d.cards.FOIL_OFFSET());
+        assertFalse(d.cards.isStarter(foilId));
+        assertGe(d.cards.playableBalance(alice, base), 1, "foils count for decks");
+        // Foils trade like normal cards.
+        vm.prank(alice);
+        d.cards.safeTransferFrom(alice, bob, foilId, 1, "");
+        assertEq(d.cards.balanceOf(bob, foilId), 1);
+        // Scrapping a foil pays 4x; foils can't be crafted.
+        uint256 before = d.crafting.scrap(bob);
+        uint256[] memory ids = new uint256[](1);
+        uint256[] memory amts = new uint256[](1);
+        (ids[0], amts[0]) = (foilId, 1);
+        vm.prank(bob);
+        d.crafting.scrapCards(ids, amts);
+        assertEq(d.crafting.scrap(bob) - before, d.crafting.scrapValue(d.cards.cardInfo(foilId).rarity) * 4);
+        vm.expectRevert(abi.encodeWithSelector(Crafting.FoilNotCraftable.selector, foilId));
+        vm.prank(bob);
+        d.crafting.craft(foilId);
     }
 }

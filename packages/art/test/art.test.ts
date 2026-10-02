@@ -73,7 +73,13 @@ describe('ERC-1155 metadata', () => {
     expect(parseTokenId('1000')).toBeNull(); // tokens (Drone) are never minted
   });
   it('describes every token with attributes, and starter copies as soulbound', () => {
-    expect(tokenIds()).toHaveLength(48 + 36);
+    expect(tokenIds()).toHaveLength(48 + 36 + 48);
+    const f = cardMetadata(20_008);
+    expect(f.name).toBe('The Launcher (Foil)');
+    expect(f.attributes).toEqual(expect.arrayContaining([{ trait_type: 'Edition', value: 'Foil' }]));
+    expect(f.properties.foil).toBe(true);
+    expect(parseTokenId(erc1155IdHex(20_041) + '.json')).toBe(20_041);
+    expect(cardSvg(8, { foil: true })).toContain('✦ FOIL');
     const p = cardMetadata(48);
     expect(p.name).toBe('Poncho, Cutest Cat on Base');
     expect(p.attributes).toEqual(expect.arrayContaining([{ trait_type: 'Set', value: 'Poncho (collab)' }, { trait_type: 'Chain of origin', value: 'Base' }]));

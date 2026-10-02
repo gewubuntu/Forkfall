@@ -115,6 +115,22 @@ Set 1 ships 160 cards: 36 per race plus 16 neutral. Every new player and agent g
 
 - **Starter decks:** one per race, free and soulbound, so they cannot be sold or farmed. They are playable in every mode, including ranked.
 - **Packs:** bought with ETH, USDC or USDG, or with the game token. Pack contents come from VRF randomness.
+
+### Pack incentives without pay-to-win (testnet prototype)
+
+Packs must stay fun and fair, never stronger: the ranked rarity cap is the guardrail. The prototype adds:
+
+| Lever | Rule | Where |
+| --- | --- | --- |
+| Pity timer | A Legendary is guaranteed within 20 packs per wallet; the counter resets on any Legendary. The shop shows the packs left. | `PackSale.packsSinceLegendary`, `packsUntilPity` |
+| Duplicate protection | A slot skips cards you already hold at the deck limit (2, or 1 for a Legendary, counting this pack) until you hold the playset of that rarity. | `PackSale.roll` |
+| Foils | About 1 card in 15 is a foil: token `20000 + n`, same card in play, animated holo, tradeable, scraps for 4×, can't be crafted. | `CardRegistry.FOIL_OFFSET`, `Crafting` |
+| Published odds | Odds table next to the Buy buttons, enforced by the contract. | Collection shop |
+| Set progress | Per set (four races, Neutral, Poncho): cards owned, playset bar, milestones (all Commons → card back, every card → title, full playset → animated badge). | Collection |
+
+Milestone rewards are shown as goals today; the cosmetics themselves come with the cosmetics pass. Next levers: bundles, themed packs (a Poncho booster), shareable pulls, and pack sales feeding the season pot.
+
+**Legal gate:** paid random packs of tradeable cards are treated as gambling in some countries (Belgium in particular; others require odds disclosure or age limits). Published odds, the pity timer and direct crafting help, but mainnet packs need legal review, and packs are never marketed as an investment.
 - **Crafting:** burn duplicates for Scrap, then spend Scrap to craft any card. This is the main sink.
 - **Legendary vaults:** each Legendary owns a wallet. It holds cosmetics and match trophies, and it can hold other assets in later seasons.
 
