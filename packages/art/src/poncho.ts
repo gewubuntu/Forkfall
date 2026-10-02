@@ -1,4 +1,5 @@
 import { card, setOf } from '@forkfall/engine';
+import { PONCHO_IMAGES } from './ponchoImages.ts';
 
 /**
  * Poncho collab art in the Poncho Pals style (licensed): flat vector, thick navy outlines, a bust of a chibi cat
@@ -229,6 +230,9 @@ export const isPonchoArt = (cardId: number): boolean => {
 /** Inner SVG (no <svg> wrapper) for a Poncho card in the 400×400 box, or null for other cards. */
 export function ponchoArt(cardId: number): string | null {
   if (!isPonchoArt(cardId)) return null;
+  // Generated artwork (from the Poncho-trained image model) wins over the vector pal when it exists.
+  const img = PONCHO_IMAGES[cardId];
+  if (img) return `<image href="${img}" x="0" y="0" width="${PONCHO_VIEW}" height="${PONCHO_VIEW}" preserveAspectRatio="xMidYMid slice"/>`;
   const id = `p${cardId}`;
   const bg = (c: string) => `<rect width="400" height="400" fill="${c}"/>`;
   switch (cardId) {

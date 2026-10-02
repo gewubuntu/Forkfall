@@ -1,7 +1,8 @@
 import { CARDS } from '@forkfall/engine';
+import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  cardMetadata, cardSvg, collectionMetadata, ponchoArt, ponchoSvg, erc1155IdHex, paletteFor, parseTokenId, PALETTES, PONCHO_PALETTE, SPRITE_SIZE, spritePixels, spriteSvg,
+  cardMetadata, cardSvg, collectionMetadata, ponchoArt, ponchoSvg, PONCHO_IMAGES, erc1155IdHex, paletteFor, parseTokenId, PALETTES, PONCHO_PALETTE, SPRITE_SIZE, spritePixels, spriteSvg,
   STARTER_OFFSET, tokenIds, wrap,
 } from '../src/index.ts';
 
@@ -55,13 +56,18 @@ describe('Poncho set art', () => {
     const ids = [41, 42, 43, 44, 45, 46, 47, 48, 1002];
     const svgs = ids.map((id) => ponchoSvg(id));
     expect(new Set(svgs).size).toBe(ids.length);
-    for (const svg of svgs) {
+    for (const [i, svg] of svgs.entries()) {
       expect(svg.startsWith('<svg')).toBe(true);
-      expect(svg).toContain('#1e1440'); // thick navy outline
+      if (PONCHO_IMAGES[ids[i]]) expect(svg).toContain('<image href="data:image/');
+      else expect(svg).toContain('#1e1440'); // vector pal: thick navy outline
       expect(svg).not.toMatch(/<[^>]*\bstroke-width="[^"]*"[^>]*\bstroke-width=/); // no duplicate attributes (invalid XML)
     }
     expect(spriteSvg(48)).toBe(ponchoSvg(48)); // the web and metadata use the same art
     expect(ponchoArt(34)).toBeNull(); // core cards stay pixel art
+  });
+  it('embeds every generated image in assets/poncho (run pnpm art:poncho-images after adding one)', () => {
+    const files = readdirSync(new URL('../assets/poncho', import.meta.url)).filter((f) => /^\d+\.(jpe?g|png)$/i.test(f));
+    expect(Object.keys(PONCHO_IMAGES).map(Number).sort()).toEqual(files.map((f) => Number(f.split('.')[0])).sort());
     expect(cardSvg(48)).toContain('PB');
   });
   it('uses the Poncho palette, serape frame and set label', () => {
