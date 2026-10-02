@@ -7,16 +7,19 @@ import { useAuth } from '../auth/AuthProvider.tsx';
 import { useMyDecks } from '../chain/useMyDecks.ts';
 import { LearnBanner } from '../components/LearnBanner.tsx';
 import { QuestPanel } from '../components/QuestPanel.tsx';
+import { ChallengeWaiting, IncomingChallenges, loadWaiting, saveWaiting } from '../components/Challenges.tsx';
+import { isAddress } from 'viem';
 import { deckName } from '../lib/deckNames.ts';
 import { RACE_INFO, raceName } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { shortAddr } from '../lib/format.ts';
 
-type Tab = 'practice' | Mode;
+type Tab = 'practice' | Mode | 'friend';
 const TABS: { id: Tab; label: string; blurb: string }[] = [
   { id: 'practice', label: 'Practice', blurb: 'Play the house bot. Nothing at stake, starts instantly.' },
   { id: 'casual', label: 'Casual', blurb: 'Humans and agents, no rating. Uses your race’s starter deck.' },
   { id: 'ranked', label: 'Ranked', blurb: 'Season Elo for humans and agents together. Needs a registered, ranked-legal deck.' },
+  { id: 'friend', label: 'Friend', blurb: 'Send a link to a friend, human or agent: a casual match starts the moment they accept. Optionally lock it to one wallet.' },
   { id: 'human', label: 'Human queue', blurb: 'Humans only: no registered agents. Rated like Ranked; needs a registered deck. Verify on your profile to earn rewards.' },
 ];
 
@@ -41,6 +44,8 @@ export function Play() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<LiveMatch[]>([]);
+  const [waiting, setWaiting] = useState<string | null>(loadWaiting);
+  const [friend, setFriend] = useState('');
   const [, tick] = useState(0);
 
   const { decks } = useMyDecks(me?.address as Address | undefined);
@@ -84,7 +89,7 @@ export function Play() {
         const q = await client.queueStatus();
         if (!alive) return;
         if (q.status === 'matched' && q.matchId && searching) { navigate(`/match/${q.matchId}`); return; }
-        if (q.status === 'queued' && !searching) setSearching({ mode: pref.tab === 'practice' ? 'casual' : (pref.tab as Mode), since: Date.now() });
+        if (q.status === 'queued' && !searching) setSearching({ mode: pref.tab === 'practice' || pref.tab === 'friend' ? 'casual' : (pref.tab as Mode), since: Date.now() });
         if (q.status === 'idle' && searching) setSearching(null);
       } catch { /* transient */ }
     };
@@ -116,6 +121,13 @@ export function Play() {
 
   const cancel = () => run(async () => { await client!.leaveQueue(); setSearching(null); });
 
+  const challengeFriend = () => run(async () => {
+    const to = friend.trim();
+    if (to && !isAddress(to)) throw new Error('That isn’t a wallet address (0x…). Leave it empty for a link anyone can use.');
+    const c = await client!.createChallenge({ race: pref.race, ...(to ? { to: to as Address } : {}), ...(chosen ? { deck: chosen.cardIds } : {}) });
+    saveWaiting(c.code); setWaiting(c.code);
+  });
+
   const tab = TABS.find((t) => t.id === pref.tab)!;
   const needsDeck = pref.tab === 'ranked' || pref.tab === 'human';
   // Deck choices: your registered, still-owned decks of this race (ranked-legal only for rated queues).
@@ -137,6 +149,7 @@ export function Play() {
         )}
       </div>
       <LearnBanner races />
+      <IncomingChallenges />
 
       <section aria-labelledby="race-h">
         <h2 id="race-h" className="sub">1 · Choose your race</h2>
@@ -171,6 +184,14 @@ export function Play() {
 
         <div className="panel mode-panel">
           <p className="muted">{tab.blurb}</p>
+
+          {pref.tab === 'friend' && !waiting && (
+            <div className="opts">
+              <label className="grow">Only this wallet (optional)
+                <input value={friend} onChange={(e) => setFriend(e.target.value)} placeholder="0x… or leave empty for a link anyone can use" spellCheck={false} />
+              </label>
+            </div>
+          )}
 
           {pref.tab === 'practice' && (
             <div className="opts">
@@ -208,7 +229,13 @@ export function Play() {
           {humanBlocked && <p className="hint warn">Agent wallets can’t join the Human queue. Play Ranked instead.</p>}
           {error && <div className="alert err" role="alert"><span>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss">✕</button></div>}
 
-          {searching ? (
+          {pref.tab === 'friend' && waiting ? (
+            <ChallengeWaiting code={waiting} onDone={() => setWaiting(null)} />
+          ) : pref.tab === 'friend' ? (
+            <button className="btn btn-primary btn-lg" disabled={busy || !!mine} onClick={challengeFriend}>
+              {busy ? <span className="spinner" /> : null} Create challenge link
+            </button>
+          ) : searching ? (
             <div className="searching" role="status">
               <span className="radar" aria-hidden />
               <div>

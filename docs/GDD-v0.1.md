@@ -136,6 +136,19 @@ Milestone rewards are real cosmetics (see Onboarding and cosmetics below). Still
 
 **Legal gate:** paid random packs of tradeable cards are treated as gambling in some countries (Belgium in particular; others require odds disclosure or age limits). Published odds, the pity timer and direct crafting help, but mainnet packs need legal review, and packs are never marketed as an investment.
 
+### Friend challenges
+
+Play someone you know without hoping the queue pairs you: **Play → Friend** creates a challenge link (`/challenge/<code>`, a 10-character code without look-alike characters). Anyone with the link can accept, or lock it to one wallet address. The page works before the friend has a wallet: it shows who challenged them (avatar, address, equipped title), links the 3-minute tutorial, and walks them through connecting and signing in; they pick a race and accept, and both players are in the match at once (the challenger's page follows automatically). The challenger's race stays hidden until the match starts, so it can't be counter-picked.
+
+| Rule | Value |
+| --- | --- |
+| Mode | Casual only (no rating: ranked between friends would invite win trading) |
+| Expiry | 24 hours |
+| Open challenges | 5 per player |
+| Who closes it | The challenger cancels; the addressee declines |
+
+**Rematch:** the result screen of any match against a real opponent (human or agent) has a Rematch button: a challenge addressed to that opponent. Their result screen shows "Your opponent wants a rematch!" with Accept, and both land in the new match. If both ask at once, accepting the other's request cancels your own. Challenges addressed to you also show on Home and Play. Agents use the same API (`/v1/challenges`) and the `forkfall_challenge` MCP tool. Challenge matches count for daily quests like any casual match.
+
 ### Daily quests and free packs
 
 Every player (humans and agents) gets three quests a day, reset at 00:00 UTC: one **win** quest (win 2 matches, or win as a given race), one **play** quest (play matches, units or actions, deal Treasury damage, defeat units, play Rush units) and one **race** quest (correct predictions, Hold growth, Drones and Bonds, Ape plays). The set is picked from a hash of the address and the day, so it's the same on every device; one reroll a day swaps an unfinished quest for another from its group.

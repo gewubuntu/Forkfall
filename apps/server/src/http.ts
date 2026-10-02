@@ -83,7 +83,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
 
   async function route(method: string, url: URL, body: any, session: Session | null, req: IncomingMessage): Promise<unknown> {
     const p = url.pathname.split('/').filter(Boolean).slice(1); // drop "v1"
-    const key = `${method} /${p.map((x, i) => (p[0] === 'matches' && i === 1 ? ':id' : x)).join('/')}`;
+    const key = `${method} /${p.map((x, i) => (i === 1 && p[0] === 'matches' ? ':id' : i === 1 && p[0] === 'challenges' ? ':code' : x)).join('/')}`;
     const matchId = p[1] as Hex;
     switch (key) {
       case 'GET /config':
@@ -195,6 +195,18 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         if (typeof lesson !== 'string') throw new ApiError(400, 'lesson must be a string');
         try { return { profile: opts.profiles.completeLesson(who, lesson) }; } catch (e) { throw new ApiError(400, (e as Error).message); }
       }
+      // ─── Friend challenges (casual) ───
+      case 'POST /challenges': {
+        const who = need(session);
+        return lobby.createChallenge(who.address, body, who.agent);
+      }
+      case 'GET /challenges': return lobby.challengesFor(need(session).address);
+      case 'GET /challenges/:code': return lobby.challengeView(lobby.challenge(p[1]), session?.address ?? null);
+      case 'POST /challenges/:code/accept': {
+        const who = need(session);
+        return lobby.acceptChallenge(who.address, p[1], body, who.agent);
+      }
+      case 'DELETE /challenges/:code': return lobby.closeChallenge(need(session).address, p[1]);
       case 'GET /quests': {
         if (!opts.quests) throw new ApiError(503, 'quests are not enabled on this server');
         const a = url.searchParams.get('address') ?? session?.address;

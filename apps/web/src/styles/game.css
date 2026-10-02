@@ -447,3 +447,27 @@
 .quests.compact .quest { padding: 8px 10px; }
 .result-quests { max-height: 40vh; overflow: auto; }
 @media (prefers-reduced-motion: reduce) { .q-bar i { transition: none; } }
+
+/* ─── Friend challenges ──────────────────────────────── */
+.challenge-wait { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: var(--r); border: 1px solid color-mix(in srgb, var(--agents) 40%, var(--line)); background: color-mix(in srgb, var(--agents) 6%, var(--bg-2)); }
+.challenge-wait.closed { flex-direction: row; align-items: center; justify-content: space-between; }
+.cw-head { display: flex; align-items: center; gap: 12px; }
+.cw-link { display: flex; gap: 8px; flex-wrap: wrap; }
+.cw-link input { flex: 1; min-width: 200px; font-family: var(--font-mono); font-size: 13px; padding: 8px 10px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.challenge-wait > .btn-ghost { align-self: flex-start; }
+.challenger { display: inline-flex; align-items: center; gap: 10px; }
+.challenger .avatar.sm { width: 34px; height: 34px; }
+.challenger > span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.incoming { margin: 0 0 18px; border-color: color-mix(in srgb, var(--degens) 45%, var(--line)); }
+.incoming h2 { font-size: 17px; margin: 0 0 8px; }
+.incoming ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.incoming li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.inc-actions { margin-left: auto; display: flex; gap: 8px; }
+.challenge-page { max-width: 760px; }
+.challenge-card h1 { font-size: 22px; margin: 6px 0 4px; }
+.ch-kicker { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--degens); font-weight: 700; }
+.ch-connect { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.challenge-card .race-pick { margin: 8px 0; }
+.rematch { margin-top: 12px; text-align: left; }
+.rematch-offer { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--degens) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--degens) 45%, var(--line)); }
+@media (max-width: 640px) { .challenge-card .race-pick { grid-template-columns: repeat(2, 1fr); } }
