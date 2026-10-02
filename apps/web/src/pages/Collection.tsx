@@ -87,7 +87,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
 
   // ─── UI state ─────────────────────────────────────────────────
   const [qty, setQty] = useState(1);
-  const [reveal, setReveal] = useState<{ ids: number[]; fresh: boolean[] } | null>(null);
+  const [reveal, setReveal] = useState<{ ids: number[] | null; fresh: boolean[]; packId: bigint } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<number | null>(null);
   const [faction, setFaction] = useState<Faction | 'all' | 'poncho'>('all');
@@ -132,16 +132,20 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const open = async (id: bigint) => {
     setNotice(null);
     const before = new Map(COLLECTIBLE.map((cd) => [cd.id, total(cd.id)]));
+    setReveal({ ids: null, fresh: [], packId: id }); // the pack wobbles on stage while the transaction confirms
     const rc = await tx.run(`Open pack #${id}`, { address: c.PackSale, abi: packSaleAbi, functionName: 'open', args: [id] });
-    if (!rc) return;
+    if (!rc) { setReveal(null); return; }
     const logs = parseEventLogs({ abi: packSaleAbi, logs: rc.logs });
     const opened = logs.find((l) => l.eventName === 'PackOpened');
     if (opened && opened.eventName === 'PackOpened') {
       const ids = opened.args.cardIds.map(Number);
       const seen = new Map(before);
       const fresh = ids.map((cid2) => { const was = seen.get(cid2) ?? 0; seen.set(cid2, was + 1); return was === 0; });
-      setReveal({ ids, fresh });
-    } else if (logs.some((l) => l.eventName === 'PackRecommitted')) {
+      setReveal({ ids, fresh, packId: id });
+    } else {
+      setReveal(null);
+    }
+    if (!opened && logs.some((l) => l.eventName === 'PackRecommitted')) {
       setNotice(`Pack #${id} waited too long (over 256 blocks), so it was re-sealed to a new block. Open it again in a few seconds.`);
     }
     refresh();
@@ -334,7 +338,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
       )}
 
       {reveal && (
-        <PackReveal ids={reveal.ids} fresh={reveal.fresh} onClose={() => setReveal(null)}
+        <PackReveal key={String(reveal.packId)} ids={reveal.ids} fresh={reveal.fresh} packId={reveal.packId} onClose={() => setReveal(null)}
           next={unopened.find((p) => block !== undefined && block > p.revealBlock)
             ? () => { const p = unopened.find((x) => block! > x.revealBlock)!; setReveal(null); open(p.id); } : undefined} />
       )}
