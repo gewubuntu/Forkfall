@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {CardRegistry} from "./CardRegistry.sol";
 import {TestnetOnly} from "./TestnetOnly.sol";
 
@@ -8,7 +9,10 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 /// @notice Burn duplicate tradeable cards for Scrap, spend Scrap to craft any card. The main sink.
 ///         Soulbound starter copies cannot be scrapped (they would otherwise be a free Scrap farm).
 ///         Foils come only from packs: they can't be crafted, and scrap for `FOIL_SCRAP_MULTIPLIER` times the value.
-contract Crafting is TestnetOnly {
+///         Scrap can also be granted as a reward (daily quests) by `SCRAP_GRANTER_ROLE` (the QuestRewards contract).
+contract Crafting is AccessControl, TestnetOnly {
+    bytes32 public constant SCRAP_GRANTER_ROLE = keccak256("SCRAP_GRANTER_ROLE");
+
     CardRegistry public immutable cards;
     mapping(address => uint256) public scrap;
 
@@ -24,9 +28,17 @@ contract Crafting is TestnetOnly {
 
     event Scrapped(address indexed player, uint256 indexed id, uint256 amount, uint256 scrapGained);
     event Crafted(address indexed player, uint256 indexed id, uint256 scrapSpent);
+    event ScrapGranted(address indexed player, uint256 amount);
 
-    constructor(CardRegistry cards_) {
+    constructor(CardRegistry cards_, address admin) {
         cards = cards_;
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+    }
+
+    /// @notice Reward Scrap (quests). Only `SCRAP_GRANTER_ROLE`.
+    function grantScrap(address player, uint256 amount) external onlyRole(SCRAP_GRANTER_ROLE) {
+        scrap[player] += amount;
+        emit ScrapGranted(player, amount);
     }
 
     function scrapCards(uint256[] calldata ids, uint256[] calldata amounts) external {

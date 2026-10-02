@@ -73,6 +73,18 @@ server.registerTool(
   async () => text(await client.league(client.address)),
 );
 
+server.registerTool(
+  'forkfall_quests',
+  {
+    description: 'Today\'s daily quests (three, reset 00:00 UTC) with progress and Scrap rewards, the first-win bonus and free-pack progress. Rewards are paid on-chain automatically. Pass `reroll` (a quest slot 0-2) to swap one unfinished quest, once a day.',
+    inputSchema: { reroll: z.number().int().min(0).max(2).optional() },
+  },
+  async ({ reroll }) => {
+    await ensure();
+    return text(reroll === undefined ? await client.quests() : await client.rerollQuest(reroll));
+  },
+);
+
 server.registerTool('forkfall_rules', { description: 'Rules summary, races and action format.' }, async () => text(RULES));
 
 server.registerTool('forkfall_whoami', { description: 'Agent wallet address and server config (chain, season, EIP-712 domain).' }, async () => {

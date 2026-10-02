@@ -13,6 +13,8 @@ import { friendlyError } from '../chain/errors.ts';
 import { useHub } from '../chain/useHub.ts';
 import { useSeasonStats, useSettled, useSettleMatch } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
+import { QuestPanel } from '../components/QuestPanel.tsx';
+import { useQueryClient } from '@tanstack/react-query';
 import { describeEvent, KEYWORD_HELP, KEYWORD_LABEL, RACE_INFO, raceName } from '../game/meta.ts';
 import { FxLayer } from '../game/FxLayer.tsx';
 import { summarize, useCountUp } from '../game/summary.ts';
@@ -452,6 +454,7 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
         <p className="muted">{reason} · turn {v.turn} · Treasury {Math.max(0, v.players[firstSeat(seat)].treasury)} – {Math.max(0, v.players[1 - firstSeat(seat)].treasury)}</p>
         <MatchStats events={events} seat={firstSeat(seat)} spectator={seat === null} />
         {seat !== null && <RatingChange s={s} seat={seat} />}
+        {seat !== null && <QuestProgress />}
         {seat !== null && (
           <div className="result-sign">
             {!signed ? (
@@ -477,6 +480,13 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
       </div>
     </div>
   );
+}
+
+/** Quest progress after the match: refetched now that the referee has counted it. */
+function QuestProgress() {
+  const qc = useQueryClient();
+  useEffect(() => { qc.invalidateQueries({ queryKey: ['quests'] }); }, [qc]);
+  return <div className="result-quests"><QuestPanel compact /></div>;
 }
 
 /** Damage, kills and cards played for the viewer (counting up), plus their MVP card. */

@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { COLLECTIBLE } from '@forkfall/engine';
-import { agentLeagueAbi, cardRegistryAbi, humanRegistryAbi, matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
+import { agentLeagueAbi, cardRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, type MatchResult } from '@forkfall/sdk';
 import {
   BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, parseAbi,
   type Address, type Hex, type LocalAccount, type PublicClient,
@@ -186,6 +186,24 @@ function writer(chain: Chain, account: LocalAccount) {
 }
 
 const forContract = (r: MatchResult) => ({ ...r, mode: Number(r.mode), season: Number(r.season), turns: Number(r.turns) });
+
+/** Daily quest payouts through QuestRewards (the referee holds REWARDER_ROLE). */
+export interface QuestRewarder {
+  reward(player: Address, claimId: Hex, scrap: number, packKind: number, packCount: number): Promise<Hex>;
+  claimed(claimId: Hex): Promise<boolean>;
+}
+
+export function questRewarder(chain: Chain, referee: LocalAccount): QuestRewarder | null {
+  if (!chain.client || !chain.book?.QuestRewards || !chain.rpcUrl) return null;
+  const client = chain.client;
+  const address = chain.book.QuestRewards as Address;
+  const send = writer(chain, referee);
+  return {
+    reward: (player, claimId, scrap, packKind, packCount) =>
+      send(address, questRewardsAbi, 'reward', [player, claimId, BigInt(scrap), packKind, BigInt(packCount)]),
+    claimed: (claimId) => client.readContract({ address, abi: questRewardsAbi, functionName: 'claimed', args: [claimId] }),
+  };
+}
 
 export function refereeSettler(chain: Chain, referee: LocalAccount): RefereeSettler | null {
   if (!chain.client || !chain.book || !chain.rpcUrl) return null;

@@ -136,6 +136,22 @@ Milestone rewards are real cosmetics (see Onboarding and cosmetics below). Still
 
 **Legal gate:** paid random packs of tradeable cards are treated as gambling in some countries (Belgium in particular; others require odds disclosure or age limits). Published odds, the pity timer and direct crafting help, but mainnet packs need legal review, and packs are never marketed as an investment.
 
+### Daily quests and free packs
+
+Every player (humans and agents) gets three quests a day, reset at 00:00 UTC: one **win** quest (win 2 matches, or win as a given race), one **play** quest (play matches, units or actions, deal Treasury damage, defeat units, play Rush units) and one **race** quest (correct predictions, Hold growth, Drones and Bonds, Ape plays). The set is picked from a hash of the address and the day, so it's the same on every device; one reroll a day swaps an unfinished quest for another from its group.
+
+| Reward | Amount | Rule |
+| --- | --- | --- |
+| Daily quest | 25–40 Scrap | per quest, three a day |
+| First win of the day | 50 Scrap | any win |
+| Free pack | 1 Set 1 booster | complete 10 daily quests in a week (Monday to Sunday, UTC). The period is configurable: `QUEST_PACK_DAYS=14` makes it every two weeks (goal 20) |
+
+A full day pays about 150 Scrap: roughly three Commons or one Uncommon crafted. The referee counts progress from the matches it refereed (it replays every signed move, so progress can't be faked). Practice against the house bot counts, but every reward is bounded per day, so playing more never earns more than the day's quests. Matches shorter than 4 turns don't count (no instant-concede farming).
+
+Payouts are automatic and on-chain: the referee calls `QuestRewards.reward` (it holds `REWARDER_ROLE`), which grants Scrap through `Crafting.grantScrap` and free packs through `PackSale.grantPacks`. A free pack is a normal sealed pack: same odds, pity timer, duplicate protection and foils. Each reward has a unique claim id (chain, address, day, quest), so a retried transaction never pays twice; failed payouts retry with backoff. Per-claim caps (500 Scrap, 2 packs) and a global daily budget (200,000 Scrap, 1,000 packs) bound what a leaked referee key could hand out. Quests are shown on Home and Play, and on the result screen after every match.
+
+Free packs are not sold and not paid for, so they don't change the paid-pack legal question; pack sales feeding the season pot is still waiting on the legal review.
+
 ### Onboarding and cosmetics
 
 **Guided first match (`/learn`).** A new player's first game is a tutorial against a gentle scripted Degens bot, played entirely in the browser with the real rules engine and match effects; no wallet, server or chain is needed. Decks are stacked (`createScriptedMatch`: no shuffle, fixed first player) and the bot's Treasury starts at 12, so a full lesson takes about five turns. The player's Agents deck opens with Compute Node, Launch Bot and Bridge Runner; the bot plays its hand in order, so Cold Wallet (Guard) lands on its second turn. A coach in the sidebar (pinned to the bottom on phones) walks through 11 lessons, glowing on the thing to click; each lesson completes when the player actually does it, in any order:

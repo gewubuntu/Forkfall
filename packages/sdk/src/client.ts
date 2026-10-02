@@ -104,6 +104,22 @@ export interface MatchSummary {
 
 export interface RefereeStatus { state: 'submitting' | 'settled' | 'failed'; tx?: Hex; error?: string; willRetry?: boolean }
 
+export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain'; tx?: Hex; error?: string }
+
+/** Today's daily quests, the first-win bonus and free-pack progress (`GET /v1/quests`). */
+export interface QuestStatus {
+  /** UTC day number; quests reset at `resetsAt` (ms). */
+  day: number;
+  resetsAt: number;
+  /** Whether this server pays rewards on-chain (QuestRewards). Off-chain servers only track progress. */
+  paysOnChain: boolean;
+  rerollsLeft: number;
+  quests: { slot: number; id: string; group: string; text: string; goal: number; progress: number; scrap: number; done: boolean; payout?: QuestPayoutStatus }[];
+  firstWin: { done: boolean; scrap: number; payout?: QuestPayoutStatus };
+  /** Free pack: complete `goal` daily quests between `startsAt` and `endsAt` (ms). */
+  pack: { goal: number; completed: number; kind: number; periodDays: number; startsAt: number; endsAt: number; payout?: QuestPayoutStatus };
+}
+
 /** A player's lessons and equipped cosmetics (`GET /v1/profile`). */
 export interface PlayerProfile extends Equipped { tutorial: boolean; lessons: string[] }
 
@@ -318,6 +334,10 @@ export class ForkfallClient {
   /** Records a finished lesson: 'basics' (the tutorial, default), 'prophets', 'brokers' or 'degens'. */
   completeTutorial(lesson = 'basics') { return this.req<{ profile: PlayerProfile }>('POST', '/v1/profile/tutorial', { lesson }); }
   /** Equip cosmetics (null clears a slot); the server refuses locked ones. */
+  /** Today's quests for a player (defaults to you). */
+  quests(address?: Address) { return this.req<QuestStatus>('GET', `/v1/quests${address ? `?address=${address}` : ''}`); }
+  /** Swap one of today's unfinished quests for another (one reroll a day). */
+  rerollQuest(slot: number) { return this.req<QuestStatus>('POST', '/v1/quests/reroll', { slot }); }
   equip(want: Partial<Equipped>) { return this.req<{ profile: PlayerProfile }>('POST', '/v1/profile/cosmetics', want); }
 
   rewards(address: Address) { return this.req<{ seasons: PlayerReward[] }>('GET', `/v1/rewards?address=${address}`); }

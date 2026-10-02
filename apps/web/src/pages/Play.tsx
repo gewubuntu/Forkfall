@@ -6,6 +6,7 @@ import type { Address, Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useMyDecks } from '../chain/useMyDecks.ts';
 import { LearnBanner } from '../components/LearnBanner.tsx';
+import { QuestPanel } from '../components/QuestPanel.tsx';
 import { deckName } from '../lib/deckNames.ts';
 import { RACE_INFO, raceName } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
@@ -229,6 +230,8 @@ export function Play() {
           {mine && !searching && <p className="hint">Finish or concede your current match first.</p>}
         </div>
       </section>
+
+      <QuestPanel />
 
       <section aria-labelledby="live-h">
         <h2 id="live-h" className="sub">Live &amp; recent matches</h2>

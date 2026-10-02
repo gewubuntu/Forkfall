@@ -3,11 +3,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
-import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, leagueOps, refereeSettler } from './chain.ts';
+import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
 import { LeaguePayouts, leagueDir } from './league.ts';
 import { HumanVerification } from './humans.ts';
 import { Rewards, rewardsDir } from './rewards.ts';
 import { Profiles, profilesFile } from './profiles.ts';
+import { finishedMatch, Quests, questsFile } from './quests.ts';
 import { createApi } from './http.ts';
 import { Lobby, type ArchivedMatch } from './lobby.ts';
 
@@ -68,6 +69,16 @@ const league = chain.online ? leagueOps(chain, house) : null;
 // Player profiles: tutorial completion and equipped cosmetics (unlocks checked against on-chain balances).
 const profiles = new Profiles(env.PROFILES_FILE ?? profilesFile(root, chainId), (a) => chain.ownedCounts(a));
 
+// Daily quests: progress from finished matches, Scrap and free-pack payouts through QuestRewards (needs testnet ETH).
+const quests = new Quests({
+  file: env.QUESTS_FILE ?? questsFile(root, chainId),
+  rewarder: chain.online ? questRewarder(chain, house) : null,
+  chainId,
+  periodDays: env.QUEST_PACK_DAYS ? Number(env.QUEST_PACK_DAYS) : undefined,
+  packGoal: env.QUEST_PACK_GOAL ? Number(env.QUEST_PACK_GOAL) : undefined,
+  packKind: env.QUEST_PACK_KIND ? Number(env.QUEST_PACK_KIND) : undefined,
+});
+
 const lobby = new Lobby({
   chain,
   profiles,
@@ -92,6 +103,10 @@ if (existsSync(archiveDir)) {
 // Export a Foundry-ready settlement file as soon as a match has enough signatures.
 lobby.onChange = (m) => {
   if (m.phase !== 'ended') return;
+  try {
+    const f = finishedMatch(m);
+    if (f) quests.record(f);
+  } catch (e) { console.error('quest tracking failed', e); }
   try {
     mkdirSync(archiveDir, { recursive: true });
     writeFileSync(join(archiveDir, `${m.id}.json`), JSON.stringify(lobby.archive(m.id)));
@@ -120,11 +135,21 @@ const settleLoop = async () => {
 };
 if (settler) settleLoop();
 
+const questLoop = async () => {
+  try {
+    const r = await quests.payDue();
+    for (const p of r.paid) console.log(`quest reward paid to ${p.address}: ${p.scrap ? `${p.scrap} Scrap` : `${p.packs} pack`} (${p.ref}) ${p.tx ?? ''}`);
+    for (const p of r.failed) console.warn(`quest reward for ${p.address} (${p.ref}) will retry: ${p.error}`);
+  } catch (e) { console.error('quest payout loop error', e); }
+  setTimeout(questLoop, Number(env.QUEST_PAY_INTERVAL_MS ?? 5000));
+};
+if (quests.paysOnChain) questLoop();
+
 const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
-const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)) });
+const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)) });
 const port = Number(env.PORT ?? 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);
@@ -137,6 +162,7 @@ server.listen(port, () => {
   console.log(`  house bot / referee address ${house.address}${env.HOUSE_PRIVATE_KEY ? '' : ' (ephemeral key)'}`);
   console.log(`  human verification: ${humans.verifiers.filter((v) => v.available).map((v) => v.id).join(', ') || 'none'}${chain.online ? '' : ' (off-chain: status only)'}`);
   console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
+  console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);
   console.log(`  match archive → ${archiveDir} (${restored} restored)`);
