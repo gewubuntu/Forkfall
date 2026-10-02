@@ -1,4 +1,4 @@
-import { card, COLLECTIBLE, MAX_COPIES, MAX_LEGENDARY_COPIES, RACES, RARITIES, type CardDef, type Faction, type Race, type Rarity } from '@forkfall/engine';
+import { card, COLLECTIBLE, MAX_COPIES, MAX_LEGENDARY_COPIES, RACES, RARITIES, setOf, type CardDef, type Faction, type Race, type Rarity } from '@forkfall/engine';
 import { craftingAbi, faucetTokenAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -90,7 +90,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const [reveal, setReveal] = useState<{ ids: number[]; fresh: boolean[] } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [detail, setDetail] = useState<number | null>(null);
-  const [faction, setFaction] = useState<Faction | 'all'>('all');
+  const [faction, setFaction] = useState<Faction | 'all' | 'poncho'>('all');
   const [rarity, setRarity] = useState<Rarity | 'all'>('all');
   const [ownedOnly, setOwnedOnly] = useState(false);
   const [confirmExtras, setConfirmExtras] = useState(false);
@@ -165,7 +165,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
   };
 
   const shown = COLLECTIBLE.filter((cd) =>
-    (faction === 'all' || cd.faction === faction) && (rarity === 'all' || cd.rarity === rarity) && (!ownedOnly || total(cd.id) > 0));
+    (faction === 'all' || (faction === 'poncho' ? setOf(cd) === 'poncho' : cd.faction === faction)) && (rarity === 'all' || cd.rarity === rarity) && (!ownedOnly || total(cd.id) > 0));
 
   const loading = balances.isLoading || reads.isLoading;
 
@@ -275,6 +275,10 @@ function CollectionLive({ chainId }: { chainId: number }) {
                   {f === 'all' ? 'All' : f === 'neutral' ? 'Neutral' : RACE_INFO[f].name}
                 </button>
               ))}
+              <button className={`chip-btn ${faction === 'poncho' ? 'on' : ''}`} style={{ ['--rc' as string]: 'var(--poncho)' }}
+                aria-pressed={faction === 'poncho'} onClick={() => setFaction('poncho')} title="Poncho collab set: neutral cards from Base, playable in any deck">
+                🌮 Poncho set
+              </button>
             </div>
             <select value={rarity} onChange={(e) => setRarity(e.target.value as Rarity | 'all')} aria-label="Rarity">
               <option value="all">All rarities</option>

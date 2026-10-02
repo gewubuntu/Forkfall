@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Prototype Set 1 card data (40 collectible cards) mirrored from the rules engine.
+/// @notice Card data (48 collectible cards: core prototype set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 40;
+    uint256 internal constant COUNT = 48;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](40);
-        races = new uint8[](40);
-        rarities = new uint8[](40);
-        chains = new uint8[](40);
+        ids = new uint16[](48);
+        races = new uint8[](48);
+        rarities = new uint8[](48);
+        chains = new uint8[](48);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -56,6 +56,14 @@ library Set1Cards {
         ids[37] = 38; races[37] = 0; rarities[37] = 1; chains[37] = 0; // MEV Searcher
         ids[38] = 39; races[38] = 0; rarities[38] = 1; chains[38] = 0; // Hard Fork
         ids[39] = 40; races[39] = 0; rarities[39] = 2; chains[39] = 0; // Genesis Block
+        ids[40] = 41; races[40] = 0; rarities[40] = 0; chains[40] = 1; // Poncho Kitten
+        ids[41] = 42; races[41] = 0; rarities[41] = 0; chains[41] = 1; // Taco Tuesday
+        ids[42] = 43; races[42] = 0; rarities[42] = 0; chains[42] = 1; // Salsa Slinger
+        ids[43] = 44; races[43] = 0; rarities[43] = 0; chains[43] = 1; // Sombrero Sentry
+        ids[44] = 45; races[44] = 0; rarities[44] = 1; chains[44] = 1; // Taco Truck
+        ids[45] = 46; races[45] = 0; rarities[45] = 1; chains[45] = 1; // Poncho Posse
+        ids[46] = 47; races[46] = 0; rarities[46] = 2; chains[46] = 1; // Mariachi Cat
+        ids[47] = 48; races[47] = 0; rarities[47] = 3; chains[47] = 1; // Poncho, Cutest Cat on Base
     }
 
     /// @notice Free starter deck (30 cards) for race 1..4.

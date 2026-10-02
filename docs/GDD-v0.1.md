@@ -138,8 +138,30 @@ Forkfall uses a hybrid look: pixel-art characters inside a clean, modern card fr
 **Guardrails:**
 
 - No real logos on cards: no Base, Robinhood or Bankr marks.
-- No borrowed meme IP; every critter is an original design.
+- No borrowed meme IP without a license: every critter is an original design, except licensed collab sets made with the IP holder's permission (see the Poncho collab set).
 - Proposed: final art is human-made, and AI is used only for concepts and prototype placeholders.
+
+### Poncho collab set (testnet prototype)
+
+A licensed collab with **Poncho**, the cutest cat on Base (@ponchobase): a cat in a striped poncho, often holding a taco. Eight neutral cards from Base (ids 41–48), so every race can play them, plus a **Taco** token.
+
+| # | Card | Rarity | Cost | Stats | Text |
+| --- | --- | --- | --- | --- | --- |
+| 41 | Poncho Kitten | Common | 1 | 1/1 | Add a Taco to your hand. |
+| 42 | Taco Tuesday | Common | 2 | action | Add 2 Tacos to your hand. |
+| 43 | Salsa Slinger | Common | 3 | 2/2 | Deal 2 damage to a random enemy unit (or the enemy Treasury). |
+| 44 | Sombrero Sentry | Common | 3 | 2/4 | Guard. When this dies, add a Taco to your hand. |
+| 45 | Taco Truck | Uncommon | 4 | 2/5 | At the start of your turn, add a Taco to your hand. |
+| 46 | Poncho Posse | Uncommon | 4 | 3/3 | Give all friendly units +1/+1. |
+| 47 | Mariachi Cat | Rare | 5 | 4/4 | Rush. Add 2 Tacos to your hand. |
+| 48 | Poncho, Cutest Cat on Base | Legendary | 7 | 5/6 | Guard. Add 2 Tacos to your hand. At the start of your turn, give all friendly units +1/+1. |
+| – | Taco (token) | – | 1 | action | Give a friendly unit +1/+1. |
+
+- **Mechanic:** Tacos are cheap, flexible buffs that go to your hand (hidden from the opponent). A full hand burns them.
+- **Not in starters:** the set comes from Set 1 boosters (same pool, by rarity) and crafting, so starter decks and the core balance gate are unchanged.
+- **Balance target:** a side-grade, not a must-play. Swapping any one Poncho card for its core counterpart lands at 46–53% for greedy bots; a deck with all eight Poncho cards wins about 55–57% against plain starters (`pnpm sim 200 poncho`, gate ≤ 58%).
+- **Art:** styled after Poncho's profile picture: a ginger chibi cat with a white muzzle, big shiny eyes, blush and an open smile; a blue sombrero with a red zigzag band; a blue poncho with red and white triangles; a taco held up in paw; warm orange backdrop. The frame adds red, white and blue poncho stripes and a dark panel behind the rules text. Sprites stay within the style guide (32×32, ≤ 16 colours, 1 px outline).
+- **Existing deployments** add the cards with `forge script script/DefineCards.s.sol` (no redeploy).
 
 **Production:** Set 1 needs 160 illustrations plus 8 animated Legendaries before the mainnet beta. The prototype's 40 test cards run on placeholder art.
 

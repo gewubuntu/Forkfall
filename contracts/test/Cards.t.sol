@@ -11,11 +11,15 @@ import {TestnetOnly} from "../src/TestnetOnly.sol";
 
 contract CardsTest is Fixture {
     function test_set1Defined() public view {
-        assertEq(d.cards.allCards().length, 40);
-        assertEq(d.cards.cardsOfRarity(3).length, 4); // one legendary per race
+        assertEq(d.cards.allCards().length, 48); // 40 core + 8 Poncho collab
+        assertEq(d.cards.cardsOfRarity(3).length, 5); // one legendary per race + Poncho
         CardRegistry.CardInfo memory c = d.cards.cardInfo(8); // The Launcher
         assertEq(c.race, 1);
         assertEq(c.rarity, 3);
+        CardRegistry.CardInfo memory p = d.cards.cardInfo(48); // Poncho, Cutest Cat on Base
+        assertEq(p.race, 0);
+        assertEq(p.rarity, 3);
+        assertEq(p.chain, 1);
     }
 
     function test_metadataUrisAreAdminSettable() public {

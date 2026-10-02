@@ -1,5 +1,5 @@
 import { card, type CardDef } from '@forkfall/engine';
-import { PALETTES, type RacePalette } from './palette.ts';
+import { paletteFor, type RacePalette } from './palette.ts';
 
 /**
  * Placeholder pixel art that follows the GDD pixel style guide, generated per card:
@@ -428,9 +428,129 @@ function bond(cv: Canvas) {
   cv.ellipse(20, 20, 2, 2, 'a');
 }
 
+// ─── Poncho collab set ────────────────────────────────────────────────────────
+interface CatOpts { taco?: boolean; /** Sombrero; on by default (Poncho's signature look). */ hat?: boolean; guitar?: boolean; salsa?: boolean; tail?: boolean }
+
+/**
+ * Poncho as on his profile picture: ginger chibi cat with a white muzzle, big shiny eyes, blush and an open
+ * smile; blue sombrero with a red zigzag band; blue poncho with red and white triangles and a red zigzag collar.
+ * Feet on `base`, scaled by `k` (1 = full card size).
+ */
+function ponchoCat(cv: Canvas, cx: number, base: number, k: number, o: CatOpts = {}) {
+  const S = (v: number) => Math.round(v * k);
+  const top = base - S(10);
+  const hat = o.hat !== false;
+  // Tail first, so the poncho overlaps its root (right side; the taco is held up on the left).
+  if (o.tail !== false && !o.guitar) {
+    cv.line(cx + S(7), base - S(2), cx + S(11), base - S(7), 'a');
+    cv.line(cx + S(7), base - S(1), cx + S(12), base - S(7), 'a');
+  }
+  // Poncho: blue, a red zigzag collar, a row of red triangles and a row of white ones.
+  cv.poly([[cx - S(3), top], [cx + S(3) + 1, top], [cx + S(9) + 1, base], [cx - S(9), base]], 'c');
+  const onPoncho = (x: number, y: number, m: Mat) => { if (cv.get(x, y) === 'c') cv.set(x, y, m); };
+  for (let x = cx - S(4); x <= cx + S(4) + 1; x++) { onPoncho(x, top, 'b'); if ((x - cx) % 2 === 0) onPoncho(x, top + 1, 'b'); }
+  const tri = (y: number, m: Mat, down: boolean, step: number) => {
+    for (let x0 = cx - S(9); x0 <= cx + S(9); x0 += step) {
+      onPoncho(x0, y + (down ? 1 : 0), m); onPoncho(x0 - 1, y + (down ? 0 : 1), m); onPoncho(x0 + 1, y + (down ? 0 : 1), m); onPoncho(x0, y + (down ? 0 : 1), m);
+    }
+  };
+  if (k >= 0.6) { tri(top + S(4), 'b', true, 4); tri(top + S(7), 'eye', false, 4); }
+  else { for (let x = cx - S(9); x <= cx + S(9); x += 2) onPoncho(x, top + S(5), 'b'); }
+  cv.rect(cx - S(5), base, Math.max(1, S(2)), 1, 'a'); cv.rect(cx + S(4), base, Math.max(1, S(2)), 1, 'a'); // feet
+  // Head: ginger with a white muzzle, ears with pink insides.
+  const hy = top - S(5);
+  cv.poly([[cx - S(7), hy - S(2)], [cx - S(6), hy - S(9)], [cx - S(1), hy - S(5)]], 'a');
+  cv.poly([[cx + S(7) + 1, hy - S(2)], [cx + S(6) + 1, hy - S(9)], [cx + S(1) + 1, hy - S(5)]], 'a');
+  cv.ellipse(cx + 0.5, hy, S(7), S(6), 'a');
+  cv.set(cx - S(5), hy - S(6), 'b'); cv.set(cx + S(5) + 1, hy - S(6), 'b');
+  cv.ellipse(cx + 0.5, hy + S(3), S(4), S(2.2), 'eye'); // white muzzle, lower face only
+  const ew = Math.max(1, S(2)), eh = k >= 0.9 ? 3 : ew; // big, tall, shiny eyes
+  const ex = [cx - S(4), cx + S(3)];
+  for (const x of ex) cv.rect(x, hy - S(1), ew, eh, 'pupil');
+  if (k >= 0.6) for (const x of ex) cv.set(x, hy - S(1), 'eye'); // catchlights
+  cv.set(cx, hy + S(1.5), 'pupil'); cv.set(cx + 1, hy + S(1.5), 'pupil'); // nose
+  if (k >= 0.9) {
+    cv.set(cx, hy + S(3), 'b'); cv.set(cx + 1, hy + S(3), 'b'); // open smile, tongue
+    cv.set(cx - S(6), hy + S(2), 'b'); cv.set(cx + S(6) + 1, hy + S(2), 'b'); // blush
+  } else cv.set(cx, hy + S(2.5), 'b');
+  if (hat) {
+    const by = hy - S(5);
+    cv.ellipse(cx + 0.5, by, S(11), Math.max(1, S(1.6)), 'c'); // brim
+    if (k >= 0.9) for (let x = cx - S(10); x <= cx + S(10) + 1; x++) { // red zigzag band
+      const y = by + ((((x - cx) % 4) + 4) % 4 < 2 ? 0 : 1);
+      if (cv.get(x, y) === 'c') cv.set(x, y, 'b');
+    }
+    cv.ellipse(cx + 0.5, by - S(3), S(4), S(3), 'c'); // crown
+    cv.rect(cx - S(3), by - S(3), S(6) + 1, 1, 'b'); cv.rect(cx - S(2), by - S(5), S(4) + 1, 1, 'b'); // crown stripes
+  }
+  if (o.taco) { // held up on the left, beside the cheek, as on the profile picture
+    const tx = cx - S(9), ty = hy + S(4);
+    taco(cv, tx, ty, Math.max(2, S(3.5)), Math.max(2, S(3)));
+    cv.rect(tx + S(2), ty + S(1), Math.max(1, S(2)), Math.max(1, S(2)), 'a'); // paw
+  }
+  if (o.salsa) {
+    const bx = cx - S(10), by = top + S(1);
+    cv.rect(bx, by, S(3), S(6), 'b'); cv.rect(bx + 1, by - S(2), Math.max(1, S(1)), S(2), 'd'); // bottle + nozzle
+    cv.rect(bx + S(3), by + S(3), Math.max(1, S(2)), Math.max(1, S(2)), 'a'); // paw
+  }
+  if (o.guitar) {
+    const gx = cx + S(6), gy = top + S(6);
+    cv.line(gx, gy, gx + S(6), gy - S(10), 'a'); cv.line(gx + 1, gy, gx + S(6) + 1, gy - S(10), 'a'); // neck
+    cv.ellipse(gx, gy, S(3), S(3), 'd'); cv.set(gx, gy, 'pupil'); // body + sound hole
+    cv.rect(gx - S(3), gy - S(3), Math.max(1, S(2)), Math.max(1, S(2)), 'a'); // strumming paw
+  }
+}
+
+/** Side-view taco: a half-moon shell (round side down) with lettuce and salsa on top. */
+function taco(cv: Canvas, cx: number, cy: number, rx: number, ry: number) {
+  for (let y = cy; y <= cy + ry; y++) for (let x = cx - rx; x <= cx + rx; x++) {
+    const dx = (x - cx) / (rx + 0.35), dy = (y - cy) / (ry + 0.35);
+    if (dx * dx + dy * dy <= 1) cv.set(x, y, 'd');
+  }
+  for (let x = cx - rx + 1; x <= cx + rx - 1; x++) {
+    cv.set(x, cy - 1, (x + cx) % 3 === 0 ? 'b' : 'glow');
+    if ((x + cx) % 2 === 0 && rx >= 4) cv.set(x, cy - 2, 'glow');
+  }
+}
+
+function tacoTruck(cv: Canvas) {
+  cv.rect(3, 13, 20, 12, 'c'); // box
+  cv.rect(23, 16, 6, 9, 'c'); cv.rect(24, 17, 4, 3, 'eye'); // cab + windshield
+  cv.rect(6, 16, 12, 5, 'pupil'); // serving hatch
+  ponchoCatHead(cv, 12, 20); // the chef peeking out
+  for (let x = 4; x < 22; x++) cv.set(x, 12, x % 4 < 2 ? 'b' : 'd'); // awning
+  cv.ellipse(8, 25, 2, 2, 'pupil'); cv.ellipse(24, 25, 2, 2, 'pupil'); // wheels
+  cv.set(8, 25, 'a'); cv.set(24, 25, 'a');
+  taco(cv, 12, 8, 5, 3); // roof sign
+}
+
+function ponchoCatHead(cv: Canvas, cx: number, cy: number) {
+  cv.poly([[cx - 3, cy - 1], [cx - 3, cy - 4], [cx - 1, cy - 2]], 'a');
+  cv.poly([[cx + 4, cy - 1], [cx + 4, cy - 4], [cx + 2, cy - 2]], 'a');
+  cv.ellipse(cx + 0.5, cy, 3, 2, 'a');
+  cv.set(cx - 1, cy, 'pupil'); cv.set(cx + 2, cy, 'pupil'); cv.set(cx, cy + 1, 'b'); cv.set(cx + 1, cy + 1, 'b');
+}
+
+function poncho(cv: Canvas, c: CardDef) {
+  switch (c.slug) {
+    case 'poncho-kitten': return ponchoCat(cv, 18, BASE, 0.75, { taco: true, hat: false });
+    case 'taco-tuesday': taco(cv, 10, 18, 7, 6); taco(cv, 21, 12, 7, 6); return;
+    case 'taco-token': return taco(cv, 16, 16, 10, 8);
+    case 'salsa-slinger': return ponchoCat(cv, 18, BASE, 1, { salsa: true, hat: false });
+    case 'sombrero-sentry': return ponchoCat(cv, 16, BASE, 1);
+    case 'taco-truck': return tacoTruck(cv);
+    case 'poncho-posse':
+      ponchoCat(cv, 6, BASE - 6, 0.5, { tail: false }); ponchoCat(cv, 26, BASE - 6, 0.5, { tail: false });
+      return ponchoCat(cv, 17, BASE, 0.65, { taco: true, tail: false, hat: false });
+    case 'mariachi-cat': return ponchoCat(cv, 14, BASE, 1, { guitar: true });
+    default: return ponchoCat(cv, 18, BASE, 1, { taco: true }); // Poncho
+  }
+}
+
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 function draw(cv: Canvas, r: Rng, c: CardDef) {
   const f = c.faction;
+  if (c.set === 'poncho') return poncho(cv, c);
   if (c.type === 'prediction') return has(c, 'tea') ? teacup(cv) : has(c, 'star') ? starChart(cv, r) : crystalBall(cv, r);
   if (c.type === 'asset') return firewall(cv);
   if (c.type === 'action') {
@@ -464,7 +584,7 @@ function draw(cv: Canvas, r: Rng, c: CardDef) {
 /** Final colors per pixel (null = transparent), after shading, outline and race accents. */
 export function spritePixels(cardId: number): (string | null)[] {
   const c = card(cardId);
-  const pal: RacePalette = PALETTES[c.faction];
+  const pal: RacePalette = paletteFor(c);
   const r = rng(cardId * 7919 + 17);
   const cv = new Canvas();
   draw(cv, r, c);

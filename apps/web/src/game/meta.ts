@@ -43,6 +43,7 @@ export function describeEvent(e: GameEvent, viewer: number | null, races: [Race,
     case 'automate': return `${whose(e.seat)} automation fired`;
     case 'apeDownside': return `Ape downside: ${e.kind === 'treasury' ? 'lost 2 Treasury' : e.kind === 'discard' ? 'discarded a card' : 'unit came in fragile'}`;
     case 'fatigue': return `${who(e.seat)} took ${e.n} fatigue`;
+    case 'create': return `${card(e.cardId).name} added to your hand`;
     case 'burn': return `${card(e.cardId).name} burned (hand full)`;
     case 'gameOver': return `Game over (${e.reason})`;
     default: return null;

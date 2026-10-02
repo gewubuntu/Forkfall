@@ -1,4 +1,4 @@
-import type { Faction } from '@forkfall/engine';
+import type { CardDef, Faction } from '@forkfall/engine';
 
 /** A 3-step shading ramp: [shadow, base, highlight] (style guide: 3 shading steps per color). */
 export type Ramp = readonly [string, string, string];
@@ -61,3 +61,22 @@ export const PALETTES: Record<Faction, RacePalette> = {
     backdrop: ['#1f2430', '#0b0d12'], accent: '#9aa3b5',
   },
 };
+
+/**
+ * Poncho collab set, styled after Poncho's official profile picture (@ponchobase): a ginger cat with a white
+ * muzzle and pink blush, a blue sombrero with a red zigzag band, a blue poncho with red and white triangles,
+ * a taco in paw, on warm orange.
+ */
+export const PONCHO_PALETTE: RacePalette = {
+  a: ['#b85e1c', '#e8913a', '#f7b66b'], // ginger fur
+  b: ['#b3202c', '#e63946', '#ff8d96'], // red: zigzags, triangles, blush, tongue
+  c: ['#1b3a9e', '#2d5be3', '#6c93ff'], // blue: sombrero and poncho
+  d: ['#b8741a', '#f5b935', '#ffe39a'], // taco shell
+  outline: '#1b1430', glow: '#7ed957', eye: '#fff8ee', pupil: '#141a3a',
+  backdrop: ['#ffc061', '#e0782a'], accent: '#fff0c2',
+};
+
+/** Palette a card is drawn with: its set's palette for collab sets, otherwise its race's. */
+export function paletteFor(c: CardDef): RacePalette {
+  return c.set === 'poncho' ? PONCHO_PALETTE : PALETTES[c.faction];
+}

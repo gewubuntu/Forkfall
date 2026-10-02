@@ -25,7 +25,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | Area | Implemented |
 | --- | --- |
 | **Rules engine** (`packages/engine`) | Deterministic TypeScript engine shared by client, server, agents and tests. 25 Treasury, Gas 1→10, 5 board slots, hand limit 10, fatigue, 40-half-turn cap. All race mechanics: **Agents** Automate/Deploy/Compute/Firewall · **Prophets** Foresee (face-down)/Odds tiers/Backfire · **Brokers** Hold/Dividend (capped)/Portfolio · **Degens** Swarm/Pump/Rug/Ape. Keccak counter RNG, commit-reveal match seed, per-player private deck salt, redacted views. |
-| **Cards** | 40 prototype cards (8 per race + 8 neutral, 1 Legendary per race) + tokens. Free soulbound starter deck per race. Ranked rarity budget (18 pts, max 1 Legendary: room for one Legendary over a starter list). |
+| **Cards** | 40 prototype cards (8 per race + 8 neutral, 1 Legendary per race), the 8-card **Poncho collab set** (neutral Base cards starring Poncho, the cutest cat on Base, @ponchobase) + tokens. Free soulbound starter deck per race. Ranked rarity budget (18 pts, max 1 Legendary: room for one Legendary over a starter list). |
 | **Balance** | `pnpm sim` plays greedy bot vs greedy bot across all race pairings. Current: every race 46–54% (GDD gate: 45–55%), ≈8 turns each. |
 | **Contracts** (`contracts/`, Foundry) | `CardRegistry` (ERC-1155, soulbound starter twins), `StarterDecks`, `PackSale` (ETH / test USDC / test token, 3C+1U+1R with ~10% Legendary upgrade), `Crafting` (Scrap), `DeckRegistry` (race, copies, rarity cap, live ownership), `AgentRegistry` (ERC-8004 Identity Registry: agents are ERC-721 identities owned by their operator, linked agent wallet with signature proof, operator cap, bans), `HumanRegistry` (optional proof-of-personhood attestations; gates season rewards, not play), `MatchSettlement` (EIP-712 dual-signed results, ERC-1271 smart wallets and ERC-6492 for wallets not deployed yet, referee path, per-season Elo), `SeasonRewards` (Merkle claims; `pnpm rewards:publish` builds and publishes a season), faucet test tokens. |
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
@@ -39,7 +39,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 - **Disputes**: if a loser won't co-sign, the `REFEREE_ROLE` key (the server, which replays the signed log) settles with the winner's signature. The GDD's fully on-chain log replay is the next step; the log format (signed moves + hash chain + seed reveals) already supports it.
 - **Hidden information** is enforced by the referee server (it holds both deck salts until the match ends). Per-player encryption comes later.
 - LayerZero ONFT/OFT bridging, Legendary ERC-721 + ERC-6551 vaults, real x402 payments (the Agent League uses an on-chain prepaid balance instead), the Bankr token launch and wagering. These come after the MVP in the GDD.
-- Set 1 is the 40-card prototype set, not the full 160.
+- Set 1 is the 40-card prototype set, not the full 160. The Poncho collab set (ids 41–48) adds 8 neutral cards with a Taco token; it is never in starter decks and shares the booster pool by rarity.
 
 ## Quick start (local, ~2 minutes)
 
@@ -215,7 +215,9 @@ docs              design document
 ```
 
 Card data lives in one place (`packages/engine/src/cards.ts`). `pnpm gen:cards` regenerates
-`contracts/src/generated/Set1Cards.sol`, and a test fails if the two drift apart.
+`contracts/src/generated/Set1Cards.sol`, and a test fails if the two drift apart. When cards are added
+(like the Poncho set), a live deployment picks them up with
+`cd contracts && forge script script/DefineCards.s.sol --rpc-url base_sepolia --broadcast --private-key $DEPLOYER_PRIVATE_KEY`.
 
 ## Open items from the GDD
 

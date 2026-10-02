@@ -1,4 +1,4 @@
-import { card, CARDS, type CardDef } from '@forkfall/engine';
+import { card, CARDS, RACES, SET_NAME, setOf, starterDeck, type CardDef } from '@forkfall/engine';
 import { cardDataUri } from './frame.ts';
 
 /** CardRegistry: token id `n` is card n; `STARTER_OFFSET + n` is its soulbound starter-deck copy. */
@@ -13,10 +13,11 @@ export function erc1155IdHex(tokenId: number | bigint): string {
   return BigInt(tokenId).toString(16).padStart(64, '0');
 }
 
-/** Token ids with metadata: every collectible card, plus starter copies of the non-Legendaries (starter decks hold no Legendary). */
+/** Token ids with metadata: every collectible card, plus soulbound copies of the cards that appear in a starter deck. */
 export function tokenIds(): number[] {
   const base = CARDS.filter((c) => c.collectible);
-  return [...base.map((c) => c.id), ...base.filter((c) => c.rarity !== 'legendary').map((c) => c.id + STARTER_OFFSET)];
+  const inStarters = new Set(RACES.flatMap((r) => starterDeck(r)));
+  return [...base.map((c) => c.id), ...base.filter((c) => inStarters.has(c.id)).map((c) => c.id + STARTER_OFFSET)];
 }
 
 export function parseTokenId(raw: string): number | null {
@@ -47,12 +48,14 @@ export function cardMetadata(tokenId: number, opts: MetadataOptions = {}) {
   ];
   if (c.type === 'unit') attrs.push({ trait_type: 'Attack', value: c.attack ?? 0, display_type: 'number' }, { trait_type: 'Health', value: c.health ?? 0, display_type: 'number' });
   for (const k of c.keywords) attrs.push({ trait_type: 'Keyword', value: cap(k) });
-  attrs.push({ trait_type: 'Edition', value: starter ? 'Starter (soulbound)' : 'Tradeable' }, { trait_type: 'Set', value: 'Set 1 (prototype)' });
+  attrs.push({ trait_type: 'Edition', value: starter ? 'Starter (soulbound)' : 'Tradeable' }, { trait_type: 'Set', value: setOf(c) === 'core' ? 'Set 1 (prototype)' : `${SET_NAME[setOf(c)]} (collab)` });
   const description = [
     c.text,
     starter
       ? `Soulbound starter-deck copy of ${c.name}: plays exactly like the tradeable card and can never be transferred.`
-      : `${cap(c.rarity)} ${c.type} from the ${RACE[c.faction]}.`,
+      : setOf(c) === 'poncho'
+        ? `${cap(c.rarity)} ${c.type} from the Poncho collab set, starring Poncho, the cutest cat on Base (@ponchobase). Neutral: playable in any race's deck.`
+        : `${cap(c.rarity)} ${c.type} from the ${RACE[c.faction]}.`,
     'Forkfall is a testnet-alpha trading card game where humans and AI agents share one ladder. Prototype art.',
   ].filter(Boolean).join('\n\n');
   return {
@@ -65,7 +68,7 @@ export function cardMetadata(tokenId: number, opts: MetadataOptions = {}) {
     attributes: attrs,
     properties: {
       cardId: c.id, slug: c.slug, faction: c.faction, chain: c.chain, type: c.type, rarity: c.rarity,
-      cost: c.cost, attack: c.attack ?? null, health: c.health ?? null, keywords: c.keywords, starter, soulbound: starter,
+      set: setOf(c), cost: c.cost, attack: c.attack ?? null, health: c.health ?? null, keywords: c.keywords, starter, soulbound: starter,
     },
   };
 }

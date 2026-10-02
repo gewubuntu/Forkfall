@@ -1,5 +1,5 @@
-import { card, type CardDef, type Rarity } from '@forkfall/engine';
-import { PALETTES } from './palette.ts';
+import { card, SET_NAME, setOf, type CardDef, type Rarity } from '@forkfall/engine';
+import { paletteFor } from './palette.ts';
 import { spritePixels, spriteRects, SPRITE_SIZE, toBase64 } from './sprite.ts';
 
 /**
@@ -57,7 +57,8 @@ export interface CardSvgOptions {
 
 export function cardSvg(cardId: number, opts: CardSvgOptions = {}): string {
   const c: CardDef = card(cardId);
-  const pal = PALETTES[c.faction];
+  const pal = paletteFor(c);
+  const collab = setOf(c) !== 'core';
   const m = `mat-${c.rarity}`;
   const frameFill = c.rarity === 'common' ? `url(#${m}-tex)` : `url(#${m})`;
   const scale = 10; // integer scaling only (style guide)
@@ -67,7 +68,7 @@ export function cardSvg(cardId: number, opts: CardSvgOptions = {}): string {
   const nameSize = Math.min(32, Math.floor(420 / Math.max(8, c.name.length * 0.56)));
   const rules = wrap(c.text || ' ', 34, 4);
   const chain = c.chain === 'base' ? { label: 'BASE', fill: '#1d4ed8', ink: '#dbeafe' } : c.chain === 'robinhood' ? { label: 'RH', fill: '#15803d', ink: '#dcfce7' } : null;
-  const typeLine = `${c.type[0].toUpperCase()}${c.type.slice(1)} · ${RACE_NAME[c.faction]} · ${RARITY_NAME[c.rarity]}`;
+  const typeLine = `${c.type[0].toUpperCase()}${c.type.slice(1)} · ${collab ? `${SET_NAME[setOf(c)]} set` : RACE_NAME[c.faction]} · ${RARITY_NAME[c.rarity]}`;
 
   const stat = (x: number, value: number, fill: string, label: string) =>
     `<g><circle cx="${x}" cy="636" r="38" fill="${fill}" stroke="#0b0d12" stroke-width="5"/><text x="${x}" y="651" font-family="${FONT}" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle" aria-label="${label}">${value}</text></g>`;
@@ -81,16 +82,25 @@ export function cardSvg(cardId: number, opts: CardSvgOptions = {}): string {
 <rect x="14" y="14" width="${CARD_W - 28}" height="${CARD_H - 28}" rx="20" fill="url(#bd)" stroke="${pal.accent}" stroke-opacity=".55" stroke-width="2"/>
 <rect x="${artX - 30}" y="${artY - 6}" width="${art + 60}" height="${art + 12}" rx="14" fill="url(#art)" stroke="#000" stroke-opacity=".35" stroke-width="2"/>
 <svg x="${artX}" y="${artY}" width="${art}" height="${art}" viewBox="0 0 ${SPRITE_SIZE} ${SPRITE_SIZE}" shape-rendering="crispEdges">${spriteRects(spritePixels(cardId))}</svg>
+${collab ? serape(artX - 30, artY - 6, art + 60, art + 12) : ''}
 ${opts.starter ? `<g><rect x="${artX - 30}" y="${artY + art - 12}" width="${art + 60}" height="26" fill="#0b0d12" fill-opacity=".85"/><text x="${CARD_W / 2}" y="${artY + art + 7}" font-family="${FONT}" font-size="16" font-weight="800" letter-spacing="3" fill="#e2e8f0" text-anchor="middle">STARTER · SOULBOUND</text></g>` : ''}
 <g><circle cx="62" cy="62" r="40" fill="#0b1a33" stroke="${pal.accent}" stroke-width="5"/><text x="62" y="78" font-family="${FONT}" font-size="46" font-weight="800" fill="#ffffff" text-anchor="middle">${c.cost}</text></g>
 ${chain ? `<g><rect x="${CARD_W - 132}" y="36" width="96" height="40" rx="20" fill="${chain.fill}" stroke="#0b0d12" stroke-width="3"/><text x="${CARD_W - 84}" y="64" font-family="${FONT}" font-size="20" font-weight="800" letter-spacing="2" fill="${chain.ink}" text-anchor="middle">${chain.label}</text></g>` : ''}
 <rect x="34" y="${artY + art + 16}" width="${CARD_W - 68}" height="54" rx="10" fill="#000" fill-opacity=".42"/>
 <text x="${CARD_W / 2}" y="${artY + art + 53}" font-family="${FONT}" font-size="${nameSize}" font-weight="800" fill="#ffffff" text-anchor="middle">${esc(c.name)}</text>
+${collab ? `<rect x="34" y="${artY + art + 72}" width="${CARD_W - 68}" height="${CARD_H - artY - art - 72 - 86}" rx="10" fill="#2a1206" fill-opacity=".72"/>` : ''}
 <text x="${CARD_W / 2}" y="${artY + art + 92}" font-family="${FONT}" font-size="17" font-weight="700" letter-spacing="1" fill="${pal.accent}" text-anchor="middle">${esc(typeLine.toUpperCase())}</text>
 <g font-family="${FONT}" font-size="21" fill="#e5e7eb" text-anchor="middle">${rules.map((l, i) => `<text x="${CARD_W / 2}" y="${artY + art + 124 + i * 26}">${esc(l)}</text>`).join('')}</g>
 ${c.type === 'unit' ? stat(76, c.attack ?? 0, '#d97706', 'attack') + stat(CARD_W - 76, c.health ?? 0, '#dc2626', 'health') : ''}
-<text x="${CARD_W / 2}" y="${CARD_H - 32}" font-family="${FONT}" font-size="14" fill="#9ca3af" fill-opacity=".8" text-anchor="middle">#${cardId}${opts.starter ? ' · starter' : ''} · Set 1 · prototype art</text>
+<text x="${CARD_W / 2}" y="${CARD_H - 32}" font-family="${FONT}" font-size="14" fill="#9ca3af" fill-opacity=".8" text-anchor="middle">#${cardId}${opts.starter ? ' · starter' : ''} · ${collab ? `${SET_NAME[setOf(c)]} collab set` : 'Set 1'} · prototype art</text>
 </svg>`;
+}
+
+/** Poncho set: red, white and blue poncho stripes along the top and bottom of the art window. */
+function serape(x: number, y: number, w: number, h: number): string {
+  const colors = ['#e63946', '#fff8ee', '#2d5be3', '#fff8ee', '#e63946', '#1b3a9e'];
+  const row = (yy: number) => colors.map((col, i) => `<rect x="${x}" y="${yy + i * 4}" width="${w}" height="4" fill="${col}"/>`).join('');
+  return `<g opacity=".95">${row(y)}${row(y + h - 24)}</g>`;
 }
 
 export function cardDataUri(cardId: number, opts: CardSvgOptions = {}): string {

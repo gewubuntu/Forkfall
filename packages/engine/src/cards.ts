@@ -1,12 +1,13 @@
-import type { CardDef, Faction, PredictionCondition, Race, Rarity } from './types.ts';
+import type { CardDef, CardSet, Faction, PredictionCondition, Race, Rarity } from './types.ts';
 
 /** Token ids live outside the collectible range and never exist on-chain. */
 export const TOKEN_DRONE = 1000;
 export const TOKEN_BOND = 1001;
+export const TOKEN_TACO = 1002;
 
 /**
- * Prototype set: 40 test cards (8 per race + 8 neutral) plus 2 tokens.
- * Ids 1–40 map 1:1 to ERC-1155 token ids in CardRegistry.
+ * Core prototype set: 40 test cards (8 per race + 8 neutral), the Poncho collab set (ids 41–48, neutral,
+ * from Base) and 3 tokens. Collectible ids map 1:1 to ERC-1155 token ids in CardRegistry.
  * All numbers are playtest starting values.
  */
 export const CARDS: CardDef[] = [
@@ -231,6 +232,51 @@ export const CARDS: CardDef[] = [
     text: 'Guard.',
   },
 
+  // ─── Poncho set (collab with Poncho, the cutest cat on Base) ───
+  // Neutral cards any race can play, themed on Poncho and tacos. Never in starter decks.
+  {
+    id: 41, slug: 'poncho-kitten', name: 'Poncho Kitten', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Add a Taco to your hand.', onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 1 }],
+  },
+  {
+    id: 42, slug: 'taco-tuesday', name: 'Taco Tuesday', faction: 'neutral', chain: 'base', set: 'poncho', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Add 2 Tacos to your hand.', onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 2 }],
+  },
+  {
+    id: 43, slug: 'salsa-slinger', name: 'Salsa Slinger', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
+    cost: 3, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }],
+  },
+  {
+    id: 44, slug: 'sombrero-sentry', name: 'Sombrero Sentry', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. When this dies, add a Taco to your hand.', onDeath: [{ k: 'addToHand', card: TOKEN_TACO, n: 1 }],
+  },
+  {
+    id: 45, slug: 'taco-truck', name: 'Taco Truck', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
+    cost: 4, attack: 2, health: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'At the start of your turn, add a Taco to your hand.', startOfTurn: [{ k: 'addToHand', card: TOKEN_TACO, n: 1 }],
+  },
+  {
+    id: 46, slug: 'poncho-posse', name: 'Poncho Posse', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Give all friendly units +1/+1.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+  {
+    id: 47, slug: 'mariachi-cat', name: 'Mariachi Cat', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
+    cost: 5, attack: 4, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true,
+    text: 'Rush. Add 2 Tacos to your hand.', onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 2 }],
+  },
+  {
+    id: 48, slug: 'poncho', name: 'Poncho, Cutest Cat on Base', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
+    cost: 7, attack: 5, health: 6, rarity: 'legendary', keywords: ['guard'], collectible: true,
+    text: 'Guard. Add 2 Tacos to your hand. At the start of your turn, give all friendly units +1/+1.',
+    onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 2 }], startOfTurn: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+
   // ─── Tokens (not collectible) ──────────────────────────────────
   {
     id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',
@@ -239,6 +285,11 @@ export const CARDS: CardDef[] = [
   {
     id: TOKEN_BOND, slug: 'bond-token', name: 'Bond', faction: 'brokers', chain: 'robinhood', type: 'unit',
     cost: 0, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: false, text: 'Portfolio token.',
+  },
+  {
+    id: TOKEN_TACO, slug: 'taco-token', name: 'Taco', faction: 'neutral', chain: 'base', set: 'poncho', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: false, target: 'friendlyUnit',
+    text: 'Give a friendly unit +1/+1.', onPlay: [{ k: 'buff', to: 'chosen', atk: 1, hp: 1 }],
   },
 ];
 
@@ -256,6 +307,9 @@ export function hasCard(id: number): boolean {
 
 export const COLLECTIBLE = CARDS.filter((c) => c.collectible);
 export const RACES: Race[] = ['agents', 'prophets', 'brokers', 'degens'];
+export const CARD_SETS: CardSet[] = ['core', 'poncho'];
+export const SET_NAME: Record<CardSet, string> = { core: 'Set 1', poncho: 'Poncho' };
+export const setOf = (c: CardDef | number): CardSet => (typeof c === 'number' ? card(c) : c).set ?? 'core';
 
 /** Home chain per race. */
 export const RACE_CHAIN: Record<Race, 'base' | 'robinhood'> = {
@@ -320,11 +374,11 @@ export function validateDeck(race: Race, deck: number[], ranked = false): DeckCh
   return { ok: errors.length === 0, errors, rarityPoints };
 }
 
-/** Free starter deck: 2x every non-legendary race card + 2x every neutral card. */
+/** Free starter deck: 2x every non-legendary core race card + 2x every core neutral card (collab sets are never in starters). */
 export function starterDeck(race: Race): number[] {
   const out: number[] = [];
   for (const c of COLLECTIBLE) {
-    if ((c.faction === race || c.faction === 'neutral') && c.rarity !== 'legendary') out.push(c.id, c.id);
+    if (setOf(c) === 'core' && (c.faction === race || c.faction === 'neutral') && c.rarity !== 'legendary') out.push(c.id, c.id);
   }
   return out;
 }

@@ -46,7 +46,7 @@ contract CheckDeployment is ForkfallScript {
         check(league.settlement() == address(ms), "AgentLeague accepts results from MatchSettlement");
         check(league.hasRole(league.REFEREE_ROLE(), referee), "referee can start league matches");
 
-        check(cards.allCards().length == Set1Cards.COUNT, "Set 1 cards defined (matches engine)");
+        check(cards.allCards().length == Set1Cards.COUNT, "all cards defined (core + Poncho, matches engine)");
         check(cards.hasRole(cards.MINTER_ROLE(), addr("StarterDecks")), "StarterDecks can mint");
         check(cards.hasRole(cards.MINTER_ROLE(), addr("PackSale")), "PackSale can mint");
         check(cards.hasRole(cards.MINTER_ROLE(), addr("Crafting")), "Crafting can mint");

@@ -3,7 +3,7 @@
  * Balance gate from the GDD: every race's overall win rate within 45–55%.
  *   pnpm sim [gamesPerPairing]
  */
-import { createMatch, greedyBot, keccakHex, playOut, RACES, starterDeck, type Race } from '../src/index.ts';
+import { card, COLLECTIBLE, createMatch, greedyBot, keccakHex, playOut, RACES, setOf, starterDeck, type Race } from '../src/index.ts';
 
 const N = Number(process.argv[2] ?? 200);
 const bot = greedyBot();
@@ -39,3 +39,39 @@ console.table(summary);
 console.log(`avg half-turns: ${(turns / total).toFixed(1)} (≈${(turns / total / 2).toFixed(1)} turns each), draws: ${draws}`);
 const ok = RACES.every((r) => { const w = wins[r] / games[r]; return w >= 0.45 && w <= 0.55; });
 console.log(ok ? '✅ balance gate passed (all races 45–55%)' : '⚠️  balance gate not met (target 45–55%)');
+
+// Collab-set check: `pnpm sim 200 poncho` swaps each race's neutral slots for the Poncho set and plays it
+// against every plain starter deck. The set should be a fun alternative, not a must-play (target ≤ 58%).
+if (process.argv[3] === 'poncho') {
+  const ponchoDeck = (race: Race) => {
+    const core = starterDeck(race).filter((id) => card(id).faction !== 'neutral');
+    const poncho = COLLECTIBLE.filter((c) => setOf(c) === 'poncho').flatMap((c) => (c.rarity === 'legendary' ? [c.id] : [c.id, c.id]));
+    return [...core, ...poncho, 33].slice(0, 30);
+  };
+  const res: Record<string, string> = {};
+  let pw = 0, pg = 0;
+  for (const a of RACES) {
+    let w = 0, n = 0;
+    for (const b of RACES) for (let i = 0; i < N / 2; i++) {
+      for (const seatP of [0, 1] as const) {
+        const decks = seatP === 0 ? [ponchoDeck(a), starterDeck(b)] : [starterDeck(b), ponchoDeck(a)];
+        const races = seatP === 0 ? [a, b] : [b, a];
+        const { state } = createMatch({
+          matchId: `poncho-${i}`, seed: keccakHex(`poncho-${a}-${b}-${i}-${seatP}`),
+          players: [
+            { address: '0x' + '1'.repeat(40), race: races[0], deck: decks[0], deckSalt: '0x01' },
+            { address: '0x' + '2'.repeat(40), race: races[1], deck: decks[1], deckSalt: '0x02' },
+          ],
+        });
+        const end = playOut(state, [bot, bot]);
+        n++; if (end.winner === seatP) w++;
+      }
+    }
+    res[`${a} + Poncho`] = `${((w / n) * 100).toFixed(1)}%`;
+    pw += w; pg += n;
+  }
+  console.log('\nPoncho set vs plain starter decks (same race pool, both seats):');
+  console.table(res);
+  const rate = pw / pg;
+  console.log(`overall ${(rate * 100).toFixed(1)}% ${rate <= 0.58 ? '✅ fun, not must-play (≤ 58%)' : '⚠️  too strong (> 58%)'}`);
+}

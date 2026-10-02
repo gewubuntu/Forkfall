@@ -1,7 +1,7 @@
 import { CARDS } from '@forkfall/engine';
 import { describe, expect, it } from 'vitest';
 import {
-  cardMetadata, cardSvg, collectionMetadata, erc1155IdHex, parseTokenId, PALETTES, SPRITE_SIZE, spritePixels, spriteSvg,
+  cardMetadata, cardSvg, collectionMetadata, erc1155IdHex, paletteFor, parseTokenId, PALETTES, PONCHO_PALETTE, SPRITE_SIZE, spritePixels, spriteSvg,
   STARTER_OFFSET, tokenIds, wrap,
 } from '../src/index.ts';
 
@@ -18,7 +18,7 @@ describe('sprites follow the pixel style guide', () => {
       expect(filled).toBeLessThan(N * N * 0.8);
       // Transparent background: corners empty, and the 1 px outline (race's darkest shade) is present.
       expect([px[0], px[N - 1], px[N * N - 1]]).toEqual([null, null, null]);
-      expect(colors.has(PALETTES[c.faction].outline)).toBe(true);
+      expect(colors.has(paletteFor(c).outline)).toBe(true);
       if (c.faction === 'degens') expect(colors.has('#ffffff')).toBe(true); // sticker outline
       expect(spriteSvg(c.id)).toBe(spriteSvg(c.id)); // deterministic
     });
@@ -50,17 +50,34 @@ describe('card frame', () => {
   });
 });
 
+describe('Poncho set art', () => {
+  it('uses the Poncho palette, serape frame and set label', () => {
+    expect(paletteFor(CARDS.find((c) => c.id === 48)!)).toBe(PONCHO_PALETTE);
+    expect(paletteFor(CARDS.find((c) => c.id === 34)!)).toBe(PALETTES.neutral);
+    const svg = cardSvg(48);
+    expect(svg).toContain('PONCHO SET');
+    expect(svg).toContain('Poncho collab set');
+    expect(cardSvg(34)).not.toContain('PONCHO');
+  });
+});
+
 describe('ERC-1155 metadata', () => {
   it('uses the {id} hex form and parses both forms', () => {
     expect(erc1155IdHex(10032)).toBe('0'.repeat(60) + '2730');
     expect(parseTokenId(erc1155IdHex(12) + '.json')).toBe(12);
     expect(parseTokenId('10012.json')).toBe(10012);
     expect(parseTokenId(String(STARTER_OFFSET + 8))).toBeNull(); // no Legendary starter copies
-    expect(parseTokenId('41')).toBeNull();
+    expect(parseTokenId('48')).toBe(48); // Poncho
+    expect(parseTokenId(String(STARTER_OFFSET + 41))).toBeNull(); // collab cards have no starter copies
+    expect(parseTokenId('49')).toBeNull();
     expect(parseTokenId('1000')).toBeNull(); // tokens (Drone) are never minted
   });
   it('describes every token with attributes, and starter copies as soulbound', () => {
-    expect(tokenIds()).toHaveLength(40 + 36);
+    expect(tokenIds()).toHaveLength(48 + 36);
+    const p = cardMetadata(48);
+    expect(p.name).toBe('Poncho, Cutest Cat on Base');
+    expect(p.attributes).toEqual(expect.arrayContaining([{ trait_type: 'Set', value: 'Poncho (collab)' }, { trait_type: 'Chain of origin', value: 'Base' }]));
+    expect(p.description).toContain('@ponchobase');
     const m = cardMetadata(24);
     expect(m.name).toBe('The Whale');
     expect(m.image.startsWith('data:image/svg+xml;base64,')).toBe(true);
