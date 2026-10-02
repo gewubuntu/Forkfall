@@ -2,6 +2,7 @@ import { card, type UnitState } from '@forkfall/engine';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import { KEYWORD_LABEL, RACE_COLOR } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
+import { backClass } from '../lib/cosmetics.ts';
 
 export interface GameCardProps {
   cardId: number;
@@ -86,6 +87,6 @@ export function GameCard(p: GameCardProps) {
 }
 
 /** Face-down card back for hidden hands and decks. */
-export function CardBack({ small }: { small?: boolean }) {
-  return <div className={`gcard-back ${small ? 'small' : ''}`} aria-hidden />;
+export function CardBack({ small, back }: { small?: boolean; back?: string | null }) {
+  return <div className={`gcard-back ${small ? 'small' : ''} ${backClass(back)}`} aria-hidden />;
 }

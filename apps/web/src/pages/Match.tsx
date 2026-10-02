@@ -1,4 +1,5 @@
 import {
+  cosmetic,
   card, PREDICTION_LABELS, PREDICTION_TIERS,
   type Action, type GameEvent, type PredictionCondition, type Race, type UnitState,
 } from '@forkfall/engine';
@@ -18,6 +19,7 @@ import { summarize, useCountUp } from '../game/summary.ts';
 import { useMatch } from '../game/useMatch.ts';
 import { isMuted, setMuted } from '../lib/sfx.ts';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
+import { emblem } from '../lib/cosmetics.ts';
 import { inTime, shortAddr } from '../lib/format.ts';
 
 type PlayAction = Extract<Action, { type: 'play' }>;
@@ -283,8 +285,12 @@ export function Side({ s, side, isMe, hits, children, onTreasury, treasuryTarget
             <div className="who-name">
               {isMe ? 'You · ' : s.seat !== null ? 'Opponent · ' : ''}<span style={{ color: 'var(--rc)' }}>{raceName(p.race)}</span>
               {info.agent && <span className="badge agent">Agent</span>}
+              {info.cosmetics?.badge && <span className={`cos-badge b-${info.cosmetics.badge.slice(6)}`} title={cosmetic(info.cosmetics.badge)?.name}>{emblem(info.cosmetics.badge)}</span>}
             </div>
-            <div className="mono muted small">{shortAddr(info.address)}</div>
+            <div className="mono muted small">
+              {info.cosmetics?.title && <span className="cos-title">{emblem(info.cosmetics.title)} {cosmetic(info.cosmetics.title)?.name}</span>}
+              {shortAddr(info.address)}
+            </div>
           </div>
         </div>
         <button
@@ -301,7 +307,7 @@ export function Side({ s, side, isMe, hits, children, onTreasury, treasuryTarget
         </div>
         <div className="side-stats">
           <span title="Cards left in deck">Deck {p.deckCount}</span>
-          {!isMe && <span className="opp-hand" title="Cards in hand">{Array.from({ length: Math.min(p.handCount, 10) }, (_, i) => <CardBack key={i} small />)}<b>{p.handCount}</b></span>}
+          {!isMe && <span className="opp-hand" title="Cards in hand">{Array.from({ length: Math.min(p.handCount, 10) }, (_, i) => <CardBack key={i} small back={info.cosmetics?.cardBack} />)}<b>{p.handCount}</b></span>}
         </div>
         <div className="side-tags">
           {p.assets.map((a) => <span key={a.uid} className="tag" title={card(a.cardId).text}>⬢ {card(a.cardId).name}</span>)}

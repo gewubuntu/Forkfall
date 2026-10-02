@@ -132,9 +132,34 @@ Packs must stay fun and fair, never stronger: the ranked rarity cap is the guard
 | Shareable pulls | After a reveal: a 1200×630 pull image (native share sheet or download) and ready-made posts for X and Farcaster. | Pack reveal |
 | Pull feed | "Recent big pulls": Legendaries and foils from on-chain PackOpened events, live in the shop. | Collection shop |
 
-Milestone rewards are shown as goals today; the cosmetics themselves come with the cosmetics pass. Still to come, after the legal review: pack sales feeding the season pot.
+Milestone rewards are real cosmetics (see Onboarding and cosmetics below). Still to come, after the legal review: pack sales feeding the season pot.
 
 **Legal gate:** paid random packs of tradeable cards are treated as gambling in some countries (Belgium in particular; others require odds disclosure or age limits). Published odds, the pity timer and direct crafting help, but mainnet packs need legal review, and packs are never marketed as an investment.
+
+### Onboarding and cosmetics
+
+**Guided first match (`/learn`).** A new player's first game is a tutorial against a gentle scripted Degens bot, played entirely in the browser with the real rules engine and match effects; no wallet, server or chain is needed. Decks are stacked (`createScriptedMatch`: no shuffle, fixed first player) and the bot's Treasury starts at 12, so a full lesson takes about five turns. The player's Agents deck opens with Compute Node, Launch Bot and Bridge Runner; the bot plays its hand in order, so Cold Wallet (Guard) lands on its second turn. A coach in the sidebar (pinned to the bottom on phones) walks through 11 lessons, glowing on the thing to click; each lesson completes when the player actually does it, in any order:
+
+1. Welcome, the Treasury (Next).
+2. Gas: play Compute Node. End your turn.
+3. Compute and Deploy: Launch Bot costs 1 and summons a Drone.
+4. Attack with a READY unit. End your turn.
+5. Guard: Liquidator plus an attack clear Cold Wallet, then go for the Treasury.
+6. Rush (Bridge Runner) and Automate (Cron Job).
+7. Finish it.
+
+Winning unlocks the Graduate title. Landing ("Try the tutorial, no wallet needed"), Home and Play link to it until it is done. Completion is kept in the browser and synced to the profile once the player signs in.
+
+**Milestone cosmetics.** Purely visual, never power. Defined once in the engine (`COSMETICS`, `milestoneMet`) and shared by the server and the web app:
+
+| Milestone | Reward | Per set |
+| --- | --- | --- |
+| Finish the tutorial | Graduate title | (once) |
+| Own every Common | Card back | Agents, Prophets, Brokers, Degens, Neutral, Poncho |
+| Own every card | Title: Bot Wrangler, Oracle, Market Maker, Degen Royalty, Validator, Taco Connoisseur | each set |
+| Own the full playset (2 of each, 1 Legendary) | Animated badge | each set |
+
+Ownership counts tradeable, soulbound starter and foil copies. Players equip one title, card back and badge on the Profile page; the referee checks the unlock against on-chain balances before saving (`POST /v1/profile/cosmetics`). Match snapshots carry each player's equipped cosmetics, so opponents see the title under the name, the badge next to it and the card back on the hidden hand; the player's own back also shows when opening packs. Later seasons can move cosmetics into Legendary vaults.
 - **Crafting:** burn duplicates for Scrap, then spend Scrap to craft any card. This is the main sink.
 - **Legendary vaults:** each Legendary owns a wallet. It holds cosmetics and match trophies, and it can hold other assets in later seasons.
 

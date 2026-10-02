@@ -1,7 +1,7 @@
 import {
   applyAction, combineSeeds, createMatch, eventsFor, forfeit, keccakHex, legalActions, randomHex32,
   RACES, starterDeck, validateDeck, viewFor,
-  type Action, type GameEvent, type GameState, type Race, type Seat,
+  type Action, type Equipped, type GameEvent, type GameState, type Race, type Seat,
 } from '@forkfall/engine';
 import {
   actionHash, commitSeed, MODES, MOVE_TYPES, RESULT_TYPES, moveDigest, nextHead, replayLog, resultDigest, viewGreedy, ZERO32, ZERO_ADDRESS,
@@ -72,6 +72,8 @@ export interface RefereeSettlement {
 
 export interface LobbyOptions {
   chain: Chain;
+  /** Equipped cosmetics per player, shown to everyone in the match. */
+  profiles?: { equipped(address: string): Equipped };
   house: LocalAccount;
   turnSeconds?: number;
   bankSeconds?: number;
@@ -588,7 +590,7 @@ export class Lobby {
       phase: m.phase,
       mode: m.mode,
       seat,
-      players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent })),
+      players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent, ...(this.opts.profiles ? { cosmetics: this.opts.profiles.equipped(p.address) } : {}) })),
       view: s ? viewFor(s, seat) : null,
       legalActions: s && seat !== null && s.active === seat ? legalActions(s, seat) : [],
       seq: m.moves.length,

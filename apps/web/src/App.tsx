@@ -4,6 +4,7 @@ import { Logo } from './components/Logo.tsx';
 import { WalletButton } from './components/WalletButton.tsx';
 import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
+import { Learn } from './pages/Learn.tsx';
 import { Collection } from './pages/Collection.tsx';
 import { DeckBuilder } from './pages/DeckBuilder.tsx';
 import { Decks } from './pages/Decks.tsx';
@@ -24,7 +25,8 @@ const NAV = [
 export function App() {
   const auth = useAuth();
   const signedIn = auth.status === 'signedIn';
-  const inMatch = useLocation().pathname.startsWith('/match/');
+  const path = useLocation().pathname;
+  const inMatch = path.startsWith('/match/') || path === '/learn';
 
   return (
     <>
@@ -50,6 +52,8 @@ export function App() {
   );
 
   function body() {
+    // The tutorial runs entirely in the browser: no wallet, no sign-in, not even the server.
+    if (path === '/learn' && auth.status !== 'loading') return <Learn />;
     switch (auth.status) {
       case 'loading':
         return <div className="gate"><span className="spinner" aria-label="Loading" /></div>;

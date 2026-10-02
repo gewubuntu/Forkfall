@@ -356,3 +356,47 @@
 @media (prefers-reduced-motion: reduce) {
   .result-sprite, .result-title, .result-stats, .rs-mvp, .rs-mvp .gcard, .rs-rating { animation: none !important; }
 }
+
+/* ─── Tutorial (/learn) ────────────────────────────── */
+.coach { background: color-mix(in srgb, var(--agents) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--agents) 45%, var(--line));
+  border-radius: var(--r); padding: 14px 16px; box-shadow: 0 0 24px color-mix(in srgb, var(--agents) 18%, transparent); }
+.coach h2 { font-size: 17px; margin: 4px 0 6px; }
+.coach p { font-size: 14px; line-height: 1.5; margin: 0 0 10px; }
+.coach-step { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--agents); font-weight: 600; }
+.tut-glow { outline: 2px solid var(--agents); outline-offset: 4px; border-radius: 10px; animation: tut-pulse 1.4s ease-in-out infinite; }
+@keyframes tut-pulse { 0%, 100% { outline-color: color-mix(in srgb, var(--agents) 90%, transparent); box-shadow: 0 0 0 0 color-mix(in srgb, var(--agents) 35%, transparent); }
+  50% { outline-color: color-mix(in srgb, var(--agents) 40%, transparent); box-shadow: 0 0 22px 4px color-mix(in srgb, var(--agents) 30%, transparent); } }
+.unlock { background: #2a2210; border: 1px solid #6b5420; color: #ffe7a8; border-radius: var(--r-sm); padding: 10px 12px; }
+.learn-banner { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin: 0 0 18px; border-radius: var(--r); text-decoration: none; color: var(--text);
+  background: color-mix(in srgb, var(--agents) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--agents) 40%, var(--line)); }
+.learn-banner:hover { border-color: var(--agents); }
+.learn-banner .lb-ico { font-size: 22px; }
+.learn-banner .lb-go { margin-left: auto; color: var(--agents); font-weight: 700; }
+@media (max-width: 1100px) {
+  /* The sidebar drops below the board on small screens, so the coach rides along at the bottom of the viewport. */
+  .learn { padding-bottom: 42vh; }
+  .learn .coach { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 40; max-height: 38vh; overflow: auto; background: color-mix(in srgb, var(--agents) 10%, var(--bg-2, #10131c)); }
+  .learn .coach h2 { font-size: 15px; }
+  .learn .coach p { font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .tut-glow { animation: none; } }
+
+/* ─── Cosmetics: titles, badges, card backs ─────────── */
+.cos-title { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 5px; font-family: var(--font-ui); font-size: 11px; font-weight: 600;
+  color: #ffe7a8; background: #2a2210; border: 1px solid #6b5420; }
+.cos-badge { --bc: var(--neutral); display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: 6px; border-radius: 50%; font-size: 12px; vertical-align: middle;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--bc) 55%, #fff), var(--bc) 60%, color-mix(in srgb, var(--bc) 55%, #000));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--bc) 70%, transparent); animation: badge-glow 2.4s ease-in-out infinite; }
+@keyframes badge-glow { 0%, 100% { box-shadow: 0 0 6px color-mix(in srgb, var(--bc) 50%, transparent); transform: rotate(0); }
+  50% { box-shadow: 0 0 16px color-mix(in srgb, var(--bc) 95%, transparent); transform: rotate(-8deg) scale(1.08); } }
+.b-agents { --bc: var(--agents); } .b-prophets { --bc: var(--prophets); } .b-brokers { --bc: var(--brokers); }
+.b-degens { --bc: var(--degens); } .b-neutral { --bc: var(--neutral); } .b-poncho { --bc: var(--poncho); }
+
+/* Card backs: one design per set. Used on opponent hand backs, pack reveals and the Profile preview. */
+.gcard-back.cb-agents, .flip-back.cb-agents { background: repeating-linear-gradient(0deg, #0b3a44 0 2px, transparent 2px 6px), repeating-linear-gradient(90deg, #0b3a44 0 2px, #072029 2px 6px); border-color: var(--agents); }
+.gcard-back.cb-prophets, .flip-back.cb-prophets { background: radial-gradient(circle at 50% 40%, #b8afff 0 8%, transparent 9%), radial-gradient(circle, #2c2466, #120e30 70%); border-color: var(--prophets); }
+.gcard-back.cb-brokers, .flip-back.cb-brokers { background: linear-gradient(135deg, transparent 0 45%, #22c55e66 45% 55%, transparent 55%), linear-gradient(180deg, #0d2e1b, #06170d); border-color: var(--brokers); }
+.gcard-back.cb-degens, .flip-back.cb-degens { background: repeating-conic-gradient(from 0deg, #ff4fa8 0 15deg, #3a0f2a 15deg 30deg); border-color: #ffb3d9; }
+.gcard-back.cb-neutral, .flip-back.cb-neutral { background: repeating-linear-gradient(45deg, #3a4052 0 3px, #262a36 3px 6px), #262a36; border-color: #cfd6e4; }
+.gcard-back.cb-poncho, .flip-back.cb-poncho { background: repeating-linear-gradient(90deg, #ff9f2e 0 4px, #e5484d 4px 8px, #ffd56b 8px 12px, #3ecf8e 12px 16px, #22d3ee 16px 20px); border-color: #ffd56b; }
+@media (prefers-reduced-motion: reduce) { .cos-badge { animation: none; } }

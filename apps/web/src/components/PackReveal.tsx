@@ -6,6 +6,7 @@ import { GameCard } from './GameCard.tsx';
 const FOIL_OFFSET = 20_000;
 const baseOf = (id: number) => (id >= FOIL_OFFSET ? id - FOIL_OFFSET : id);
 import { LOGO_MARK, spriteSvg } from '../lib/art.ts';
+import { backClass } from '../lib/cosmetics.ts';
 import { pullHeadline, pullImage, shareLinks, shareOrDownload } from '../lib/sharePull.ts';
 import { useParticles } from '../lib/particles.ts';
 import { isMuted, setMuted, sfx } from '../lib/sfx.ts';
@@ -28,11 +29,13 @@ type Phase = 'sealed' | 'ready' | 'tearing' | 'dealt';
  * a Legendary flashes the screen, shakes the stage and sweeps a banner. Chiptune sounds, mutable.
  * With reduced motion the cards simply appear face-up.
  */
-export function PackReveal({ ids, fresh, packId, kind = 0, onClose, next }: {
+export function PackReveal({ ids, fresh, packId, kind = 0, back, onClose, next }: {
   /** null while the open transaction is confirming. */
   ids: number[] | null; fresh: boolean[]; packId?: bigint;
   /** 0 = Set 1 booster, 1 = Poncho booster. */
   kind?: 0 | 1; player?: string; onClose: () => void; next?: () => void;
+  /** The opener's equipped card back cosmetic. */
+  back?: string | null;
 }) {
   const [shareMsg, setShareMsg] = useState<string | null>(null);
   const packName = kind === 1 ? 'Poncho booster' : 'Set 1 booster';
@@ -154,7 +157,7 @@ export function PackReveal({ ids, fresh, packId, kind = 0, onClose, next }: {
                     onClick={() => flip(i)}
                     aria-label={flipped[i] ? `${foil ? 'Foil ' : ''}${c.name}, ${c.rarity}${fresh[i] ? ', new' : ''}` : 'Face-down card, reveal'}>
                     <span className="flip-inner">
-                      <span className="flip-back" aria-hidden><img src={LOGO_MARK} alt="" /></span>
+                      <span className={`flip-back ${backClass(back)}`} aria-hidden><img src={LOGO_MARK} alt="" /></span>
                       <span className="flip-front">
                         <GameCard cardId={c.id} size="hand" foil={foil} />
                         {fresh[i] && <span className="new-badge">NEW</span>}

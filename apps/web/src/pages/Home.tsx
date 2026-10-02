@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
+import { LearnBanner } from '../components/LearnBanner.tsx';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
 import { shortAddr, timeLeft } from '../lib/format.ts';
 import { CHAIN_NAMES } from '../wagmi.ts';
@@ -17,6 +18,7 @@ export function Home() {
   if (!me) return null;
   return (
     <div className="page">
+      <LearnBanner />
       <div className="panel profile" style={{ marginBottom: 24 }}>
         <img className="avatar" src={avatarSvg(me.address)} alt="" />
         <div style={{ flex: 1, minWidth: 220 }}>

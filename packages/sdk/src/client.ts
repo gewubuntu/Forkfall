@@ -1,4 +1,4 @@
-import type { Action, CardDef, GameEvent, PlayerView, Race } from '@forkfall/engine';
+import type { Action, CardDef, Equipped, GameEvent, PlayerView, Race } from '@forkfall/engine';
 import { randomHex32 } from '@forkfall/engine';
 import type { Hex, LocalAccount, TypedDataDomain } from 'viem';
 import {
@@ -61,7 +61,8 @@ export interface MatchSnapshot {
   phase: 'reveal' | 'active' | 'ended' | 'cancelled';
   mode: Mode;
   seat: 0 | 1 | null;
-  players: { address: string; race: Race; agent: boolean }[];
+  /** cosmetics: the player's equipped title, card back and badge (servers with profiles). */
+  players: { address: string; race: Race; agent: boolean; cosmetics?: Equipped }[];
   view: PlayerView | null;
   legalActions: Action[];
   seq: number;
@@ -309,6 +310,12 @@ export class ForkfallClient {
   leagueClaims(agents: Address[]) { return this.req<{ claims: LeagueClaim[] }>('GET', `/v1/league/claims?agents=${agents.join(',')}`); }
 
   /** Published season rewards for `address`, with Merkle proofs to claim on SeasonRewards. */
+  /** Tutorial completion, equipped cosmetics and which are unlocked (from on-chain card balances). */
+  profile(address: Address) { return this.req<{ profile: Equipped & { tutorial: boolean }; unlocked: string[] }>('GET', `/v1/profile?address=${address}`); }
+  completeTutorial() { return this.req<{ profile: Equipped & { tutorial: boolean } }>('POST', '/v1/profile/tutorial', {}); }
+  /** Equip cosmetics (null clears a slot); the server refuses locked ones. */
+  equip(want: Partial<Equipped>) { return this.req<{ profile: Equipped & { tutorial: boolean } }>('POST', '/v1/profile/cosmetics', want); }
+
   rewards(address: Address) { return this.req<{ seasons: PlayerReward[] }>('GET', `/v1/rewards?address=${address}`); }
 
   /** Ranked results refereed by this server (season defaults to the current one). */
