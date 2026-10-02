@@ -114,6 +114,7 @@ contract Deploy is ForkfallScript {
         d.humans.grantRole(d.humans.ATTESTOR_ROLE(), referee);
         d.packs.setTokenPrice(address(d.usdc), 2e6);
         d.packs.setTokenPrice(address(d.fall), 100 ether);
+        d.packs.setKind(1, "Poncho booster", Set1Cards.poncho());
     }
 
     function writeBook(Deployed memory d, address deployer, address referee, uint256 startBlock) internal {

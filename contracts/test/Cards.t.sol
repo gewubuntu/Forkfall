@@ -255,8 +255,9 @@ contract CardsTest is Fixture {
         uint256 opened;
         while (opened < n) {
             uint256 batch = n - opened > 10 ? 10 : n - opened;
+            uint256 cost = d.packs.quoteEth(batch);
             vm.prank(who);
-            uint256 first = d.packs.buyWithEth{value: 0.0001 ether * batch}(batch);
+            uint256 first = d.packs.buyWithEth{value: cost}(batch);
             vm.roll(block.number + 3);
             for (uint256 i; i < batch; ++i) {
                 vm.prank(who);
@@ -332,5 +333,49 @@ contract CardsTest is Fixture {
         vm.expectRevert(abi.encodeWithSelector(Crafting.FoilNotCraftable.selector, foilId));
         vm.prank(bob);
         d.crafting.craft(foilId);
+    }
+
+    function test_bundleDiscounts() public {
+        assertEq(d.packs.quoteEth(1), 0.0001 ether);
+        assertEq(d.packs.quoteEth(4), 0.0004 ether);
+        assertEq(d.packs.quoteEth(5), 0.00045 ether); // 10% off
+        assertEq(d.packs.quoteEth(10), 0.00085 ether); // 15% off
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(PackSale.WrongPayment.selector);
+        d.packs.buyWithEth{value: 0.0005 ether}(5); // full price is wrong now
+        vm.prank(alice);
+        d.packs.buyWithEth{value: 0.00045 ether}(5);
+        assertEq(d.packs.packIdsOf(alice).length, 5);
+        // Tokens too: 10 tUSDC packs for 17 instead of 20.
+        vm.prank(bob);
+        d.usdc.drip();
+        vm.startPrank(bob);
+        d.usdc.approve(address(d.packs), 17e6);
+        d.packs.buyWithToken(address(d.usdc), 10);
+        vm.stopPrank();
+        assertEq(d.usdc.balanceOf(bob), 83e6);
+    }
+
+    function test_ponchoBoosterOnlyHoldsPonchoCards() public {
+        assertEq(d.packs.kindName(1), "Poncho booster");
+        vm.expectRevert(abi.encodeWithSelector(PackSale.UnknownKind.selector, uint8(7)));
+        d.packs.buyWithEthOf{value: 0.0001 ether}(7, 1);
+        vm.deal(alice, 1 ether);
+        uint256 cost = d.packs.quoteEth(10);
+        vm.prank(alice);
+        uint256 first = d.packs.buyWithEthOf{value: cost}(1, 10);
+        vm.roll(block.number + 3);
+        for (uint256 i; i < 10; ++i) {
+            vm.prank(alice);
+            uint256[5] memory ids = d.packs.open(first + i);
+            for (uint256 j; j < 5; ++j) {
+                uint256 base = d.cards.baseId(ids[j]);
+                assertTrue(base >= 41 && base <= 48, "Poncho cards only");
+            }
+            assertEq(d.cards.cardInfo(ids[3]).rarity, 1);
+        }
+        // Forced pity roll in a Poncho booster gives Poncho himself.
+        assertEq(d.cards.baseId(d.packs.roll(keccak256("p"), bob, true, 1)[4]), 48);
     }
 }

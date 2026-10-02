@@ -127,8 +127,12 @@ Packs must stay fun and fair, never stronger: the ranked rarity cap is the guard
 | Foils | About 1 card in 15 is a foil: token `20000 + n`, same card in play, animated holo, tradeable, scraps for 4×, can't be crafted. | `CardRegistry.FOIL_OFFSET`, `Crafting` |
 | Published odds | Odds table next to the Buy buttons, enforced by the contract. | Collection shop |
 | Set progress | Per set (four races, Neutral, Poncho): cards owned, playset bar, milestones (all Commons → card back, every card → title, full playset → animated badge). | Collection |
+| Bundles | 5 packs 10% off, 10 packs 15% off, for ETH and tokens. | `PackSale.bundlePrice`, `quoteEth`, `quoteToken` |
+| Themed boosters | Pack kinds: kind 0 is the Set 1 booster (every card); kind 1 is the Poncho booster (Poncho cards only, Poncho himself as the Legendary). Same price, pity, duplicate protection and foils. | `PackSale.setKind`, `buyWithEthOf`, `buyWithTokenOf` |
+| Shareable pulls | After a reveal: a 1200×630 pull image (native share sheet or download) and ready-made posts for X and Farcaster. | Pack reveal |
+| Pull feed | "Recent big pulls": Legendaries and foils from on-chain PackOpened events, live in the shop. | Collection shop |
 
-Milestone rewards are shown as goals today; the cosmetics themselves come with the cosmetics pass. Next levers: bundles, themed packs (a Poncho booster), shareable pulls, and pack sales feeding the season pot.
+Milestone rewards are shown as goals today; the cosmetics themselves come with the cosmetics pass. Still to come, after the legal review: pack sales feeding the season pot.
 
 **Legal gate:** paid random packs of tradeable cards are treated as gambling in some countries (Belgium in particular; others require odds disclosure or age limits). Published odds, the pity timer and direct crafting help, but mainnet packs need legal review, and packs are never marketed as an investment.
 - **Crafting:** burn duplicates for Scrap, then spend Scrap to craft any card. This is the main sink.

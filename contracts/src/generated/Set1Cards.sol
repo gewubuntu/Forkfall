@@ -66,6 +66,19 @@ library Set1Cards {
         ids[47] = 48; races[47] = 0; rarities[47] = 3; chains[47] = 1; // Poncho, Cutest Cat on Base
     }
 
+    /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).
+    function poncho() internal pure returns (uint256[] memory ids) {
+        ids = new uint256[](8);
+        ids[0] = 41;
+        ids[1] = 42;
+        ids[2] = 43;
+        ids[3] = 44;
+        ids[4] = 45;
+        ids[5] = 46;
+        ids[6] = 47;
+        ids[7] = 48;
+    }
+
     /// @notice Free starter deck (30 cards) for race 1..4.
     function starter(uint8 race) internal pure returns (uint16[30] memory) {
         if (race == 1) return [uint16(1), uint16(1), uint16(2), uint16(2), uint16(3), uint16(3), uint16(4), uint16(4), uint16(5), uint16(5), uint16(6), uint16(6), uint16(7), uint16(7), uint16(33), uint16(33), uint16(34), uint16(34), uint16(35), uint16(35), uint16(36), uint16(36), uint16(37), uint16(37), uint16(38), uint16(38), uint16(39), uint16(39), uint16(40), uint16(40)];

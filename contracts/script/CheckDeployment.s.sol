@@ -53,6 +53,7 @@ contract CheckDeployment is ForkfallScript {
         check(cards.hasRole(cards.BURNER_ROLE(), addr("Crafting")), "Crafting can burn");
         check(ms.hasRole(ms.REFEREE_ROLE(), referee), "referee holds REFEREE_ROLE");
         check(packs.ethPrice() > 0, "pack ETH price set");
+        check(packs.kindExists(1), "Poncho booster (pack kind 1) defined");
         check(packs.tokenPrice(addr("TestUSDC")) > 0, "pack tUSDC price set");
         check(StarterDecks(addr("StarterDecks")).starterList(1)[0] != 0, "starter lists readable");
 

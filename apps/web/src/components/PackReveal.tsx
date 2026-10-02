@@ -5,7 +5,8 @@ import { GameCard } from './GameCard.tsx';
 /** Foils come back from PackSale as FOIL_OFFSET + id. */
 const FOIL_OFFSET = 20_000;
 const baseOf = (id: number) => (id >= FOIL_OFFSET ? id - FOIL_OFFSET : id);
-import { LOGO_MARK } from '../lib/art.ts';
+import { LOGO_MARK, spriteSvg } from '../lib/art.ts';
+import { pullHeadline, pullImage, shareLinks, shareOrDownload } from '../lib/sharePull.ts';
 import { useParticles } from '../lib/particles.ts';
 import { isMuted, setMuted, sfx } from '../lib/sfx.ts';
 
@@ -27,10 +28,14 @@ type Phase = 'sealed' | 'ready' | 'tearing' | 'dealt';
  * a Legendary flashes the screen, shakes the stage and sweeps a banner. Chiptune sounds, mutable.
  * With reduced motion the cards simply appear face-up.
  */
-export function PackReveal({ ids, fresh, packId, onClose, next }: {
+export function PackReveal({ ids, fresh, packId, kind = 0, onClose, next }: {
   /** null while the open transaction is confirming. */
-  ids: number[] | null; fresh: boolean[]; packId?: bigint; onClose: () => void; next?: () => void;
+  ids: number[] | null; fresh: boolean[]; packId?: bigint;
+  /** 0 = Set 1 booster, 1 = Poncho booster. */
+  kind?: 0 | 1; player?: string; onClose: () => void; next?: () => void;
 }) {
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const packName = kind === 1 ? 'Poncho booster' : 'Set 1 booster';
   const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const [phase, setPhase] = useState<Phase>(ids ? (reduced ? 'dealt' : 'ready') : 'sealed');
   const [flipped, setFlipped] = useState<boolean[]>(() => (ids ?? []).map(() => reduced));
@@ -130,11 +135,11 @@ export function PackReveal({ ids, fresh, packId, onClose, next }: {
 
         <div className="reveal-stage">
           {(phase === 'sealed' || phase === 'ready' || phase === 'tearing') && (
-            <button ref={packRef} className={`pack3d tier-${phase === 'sealed' ? 'none' : tier} ${phase}`} onClick={tear} disabled={phase !== 'ready'}
+            <button ref={packRef} className={`pack3d kind-${kind} tier-${phase === 'sealed' ? 'none' : tier} ${phase}`} onClick={tear} disabled={phase !== 'ready'}
               aria-label={phase === 'ready' ? 'Tear the pack open' : 'Sealed pack, waiting for confirmation'}>
               {phase !== 'sealed' && <span className="pack-rays" aria-hidden />}
               <span className="pk-top" aria-hidden />
-              <span className="pk-body" aria-hidden><img src={LOGO_MARK} alt="" /><b>SET 1</b><small>5 cards</small></span>
+              <span className="pk-body" aria-hidden><img src={kind === 1 ? spriteSvg(48) : LOGO_MARK} alt="" /><b>{kind === 1 ? 'PONCHO' : 'SET 1'}</b><small>5 cards</small></span>
             </button>
           )}
           {phase === 'dealt' && ids && (
@@ -164,8 +169,21 @@ export function PackReveal({ ids, fresh, packId, onClose, next }: {
           )}
         </div>
 
+        {done && ids && shareMsg && (() => {
+          const l = shareLinks(pullHeadline(ids, packName), location.origin);
+          return (
+            <p className="share-row small">{shareMsg}{' '}
+              <a href={l.x} target="_blank" rel="noreferrer">Post on X ↗</a> · <a href={l.farcaster} target="_blank" rel="noreferrer">Cast on Farcaster ↗</a>
+            </p>
+          );
+        })()}
         <div className="reveal-actions">
           {phase === 'dealt' && !done && <button className="btn" onClick={revealAll}>Reveal all</button>}
+          {done && ids && <button className="btn" onClick={async () => {
+            const text = pullHeadline(ids, packName);
+            const r = await shareOrDownload(await pullImage(ids, packName), text);
+            setShareMsg(r === 'shared' ? 'Shared!' : 'Image saved. Post it with:');
+          }}>Share pull</button>}
           {done && next && <button className="btn" onClick={next}>Open next pack</button>}
           {done && <button className="btn btn-primary" onClick={onClose}>Add to collection</button>}
         </div>
