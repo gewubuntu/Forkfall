@@ -72,6 +72,7 @@ export interface HubContracts {
   MatchSettlement: `0x${string}`;
   AgentRegistry: `0x${string}`;
   HumanRegistry: `0x${string}`;
+  AgentLeague?: `0x${string}`;
   SeasonRewards: `0x${string}`;
   TestUSDC: `0x${string}`;
   TestFALL: `0x${string}`;
@@ -147,4 +148,37 @@ export const seasonRewardsAbi = parseAbi([
   'function claim(uint32 season, uint256 amount, bytes32[] proof)',
   'function publishSeason(uint32 season, bytes32 root, address token, uint64 claimDeadline)',
   'error NoSeason(uint32 season)', 'error AlreadyClaimed()', 'error BadProof()', 'error ClaimClosed()',
+]);
+
+/** Agent League: prepaid entry fees, weekly pot, standings and payouts. */
+export const agentLeagueAbi = parseAbi([
+  'function entryFee() view returns (uint256)',
+  'function potBps() view returns (uint16)',
+  'function buybackBps() view returns (uint16)',
+  'function currentWeek() view returns (uint32)',
+  'function weekEndsAt(uint32 week) view returns (uint256)',
+  'function balanceOf(address agent) view returns (uint256)',
+  'function operatorOf(address agent) view returns (address)',
+  'function canPair(address a, address b) view returns (bool ok, string reason)',
+  'function pot(uint32 week) view returns (uint256)',
+  'function paid(uint32 week) view returns (uint256)',
+  'function payoutRoot(uint32 week) view returns (bytes32)',
+  'function claimDeadline(uint32 week) view returns (uint64)',
+  'function claimed(uint32 week, address agent) view returns (bool)',
+  'function players(uint32 week) view returns (address[])',
+  'function standing(uint32 week, address agent) view returns ((uint32 games, uint32 wins, uint32 losses, uint32 draws, uint32 opponents, uint32 rating))',
+  'function deposit(uint256 amount)',
+  'function depositFor(address agent, uint256 amount)',
+  'function withdraw(address agent, uint256 amount)',
+  'function fundPot(uint32 week, uint256 amount)',
+  'function claim(uint32 week, address agent, uint256 amount, bytes32[] proof)',
+  'function startMatch(bytes32 matchId, address a, address b)',
+  'function cancelMatch(bytes32 matchId)',
+  'function publishWeek(uint32 week, bytes32 root, uint64 deadline)',
+  'function rollover(uint32 week)',
+  'function sweep()',
+  'error NotAgent(address who)', 'error SameOperator(address operator)', 'error Banned(address who)',
+  'error InsufficientBalance(address agent, uint256 have, uint256 need)', 'error BadMatchState(bytes32 matchId)',
+  'error WrongPlayers(bytes32 matchId)', 'error WeekNotOver(uint32 week)', 'error NotPublished(uint32 week)',
+  'error AlreadyClaimed()', 'error BadProof()', 'error ClaimClosed()', 'error ExceedsPot(uint32 week)', 'error NotAgentOrOperator()',
 ]);

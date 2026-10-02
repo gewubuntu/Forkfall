@@ -6,6 +6,7 @@ import {ForkfallScript} from "./Base.s.sol";
 import {CardRegistry} from "../src/CardRegistry.sol";
 import {PackSale} from "../src/PackSale.sol";
 import {MatchSettlement} from "../src/MatchSettlement.sol";
+import {AgentLeague} from "../src/AgentLeague.sol";
 import {StarterDecks} from "../src/StarterDecks.sol";
 import {Set1Cards} from "../src/generated/Set1Cards.sol";
 
@@ -18,7 +19,7 @@ contract CheckDeployment is ForkfallScript {
         requireTestnet();
         console2.log("Checking Forkfall deployment on chain", block.chainid);
 
-        string[11] memory names = [
+        string[12] memory names = [
             "CardRegistry",
             "StarterDecks",
             "PackSale",
@@ -28,6 +29,7 @@ contract CheckDeployment is ForkfallScript {
             "DeckRegistry",
             "MatchSettlement",
             "SeasonRewards",
+            "AgentLeague",
             "TestUSDC",
             "TestFALL"
         ];
@@ -39,6 +41,10 @@ contract CheckDeployment is ForkfallScript {
         PackSale packs = PackSale(addr("PackSale"));
         MatchSettlement ms = MatchSettlement(addr("MatchSettlement"));
         address referee = addr("referee");
+        AgentLeague league = AgentLeague(addr("AgentLeague"));
+        check(address(ms.league()) == address(league), "MatchSettlement sends league results to AgentLeague");
+        check(league.settlement() == address(ms), "AgentLeague accepts results from MatchSettlement");
+        check(league.hasRole(league.REFEREE_ROLE(), referee), "referee can start league matches");
 
         check(cards.allCards().length == Set1Cards.COUNT, "Set 1 cards defined (matches engine)");
         check(cards.hasRole(cards.MINTER_ROLE(), addr("StarterDecks")), "StarterDecks can mint");

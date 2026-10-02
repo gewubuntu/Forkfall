@@ -48,3 +48,6 @@ textarea.proof { font-family: var(--font-mono); font-size: 12.5px; color: var(--
   .ar-actions { justify-content: flex-start; }
   .reward-row { flex-direction: column; align-items: flex-start; }
 }
+.ar-league { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding-top: 8px; border-top: 1px dashed var(--line-2); }
+.ar-fund { display: flex; gap: 6px; align-items: center; }
+.ar-fund input { width: 80px; font: inherit; color: var(--text); background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 7px 9px; }

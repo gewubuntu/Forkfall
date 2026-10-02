@@ -10,8 +10,9 @@ import {Crafting} from "../src/Crafting.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {HumanRegistry} from "../src/HumanRegistry.sol";
 import {DeckRegistry} from "../src/DeckRegistry.sol";
-import {MatchSettlement} from "../src/MatchSettlement.sol";
+import {MatchSettlement, ILeague} from "../src/MatchSettlement.sol";
 import {SeasonRewards} from "../src/SeasonRewards.sol";
+import {AgentLeague, IEloTable} from "../src/AgentLeague.sol";
 import {FaucetToken} from "../src/TestTokens.sol";
 import {Set1Cards} from "../src/generated/Set1Cards.sol";
 
@@ -39,6 +40,7 @@ contract Deploy is ForkfallScript {
         DeckRegistry decks;
         MatchSettlement settlement;
         SeasonRewards rewards;
+        AgentLeague league;
         FaucetToken usdc;
         FaucetToken fall;
     }
@@ -95,6 +97,11 @@ contract Deploy is ForkfallScript {
         d.rewards = new SeasonRewards(admin);
         d.usdc = new FaucetToken("Forkfall Test USDC", "tUSDC", 6, 100e6, admin);
         d.fall = new FaucetToken("Forkfall Test Token", "tFALL", 18, 1_000 ether, admin);
+        // Agent League: 0.50 tUSDC per agent per match; 80% weekly pot, 10% buyback, 10% operations.
+        d.league =
+            new AgentLeague(admin, d.usdc, d.agents, IEloTable(address(d.settlement)), referee, admin, admin, 0.5e6);
+        d.league.setSettlement(address(d.settlement));
+        d.settlement.setLeague(ILeague(address(d.league)));
 
         d.cards.grantRole(d.cards.MINTER_ROLE(), address(d.starters));
         d.cards.grantRole(d.cards.MINTER_ROLE(), address(d.packs));
@@ -124,6 +131,7 @@ contract Deploy is ForkfallScript {
         vm.serializeAddress(k, "DeckRegistry", address(d.decks));
         vm.serializeAddress(k, "MatchSettlement", address(d.settlement));
         vm.serializeAddress(k, "SeasonRewards", address(d.rewards));
+        vm.serializeAddress(k, "AgentLeague", address(d.league));
         vm.serializeAddress(k, "TestUSDC", address(d.usdc));
         string memory json = vm.serializeAddress(k, "TestFALL", address(d.fall));
         vm.writeJson(json, bookPath());

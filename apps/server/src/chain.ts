@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { humanRegistryAbi, matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
+import { agentLeagueAbi, humanRegistryAbi, matchSettlementAbi, type MatchResult } from '@forkfall/sdk';
 import {
   BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, parseAbi,
   type Address, type Hex, type LocalAccount, type PublicClient,
@@ -151,29 +151,99 @@ export interface RefereeSettler {
   isSettled(matchId: Hex): Promise<boolean>;
   /** Submits `settleByReferee` and resolves with the tx hash once it is mined successfully. */
   settleByReferee(result: MatchResult, winnerSig: Hex): Promise<Hex>;
+  /** Submits a fully signed result (`settle`); used for league matches, where agents don't settle themselves. */
+  settle(result: MatchResult, sigA: Hex, sigB: Hex, refereeSig: Hex): Promise<Hex>;
 }
+
+/** Simulate (so reverts surface with their reason and cost no gas), send, wait for success. */
+function writer(chain: Chain, account: LocalAccount) {
+  const client = chain.client!;
+  const wallet = createWalletClient({ account, transport: http(chain.rpcUrl!) });
+  return async (address: Address, abi: readonly unknown[], functionName: string, args: readonly unknown[]): Promise<Hex> => {
+    try {
+      const { request } = await client.simulateContract({ account, address, abi, functionName, args } as never);
+      const hash = await wallet.writeContract({ ...(request as object), chain: null } as never);
+      const receipt = await client.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`${functionName} reverted (${hash})`);
+      return hash;
+    } catch (e) {
+      throw new Error(revertReason(e));
+    }
+  };
+}
+
+const forContract = (r: MatchResult) => ({ ...r, mode: Number(r.mode), season: Number(r.season), turns: Number(r.turns) });
 
 export function refereeSettler(chain: Chain, referee: LocalAccount): RefereeSettler | null {
   if (!chain.client || !chain.book || !chain.rpcUrl) return null;
   const client = chain.client;
   const address = chain.book.MatchSettlement;
-  const wallet = createWalletClient({ account: referee, transport: http(chain.rpcUrl) });
+  const send = writer(chain, referee);
   return {
     isSettled: (matchId) => client.readContract({ address, abi: matchSettlementAbi, functionName: 'settled', args: [matchId] }),
-    async settleByReferee(result, winnerSig) {
-      const r = { ...result, mode: Number(result.mode), season: Number(result.season), turns: Number(result.turns) };
-      try {
-        // Simulate first so a revert (deck no longer owned, wrong season…) surfaces with its reason, without spending gas.
-        const { request } = await client.simulateContract({
-          account: referee, address, abi: matchSettlementAbi, functionName: 'settleByReferee', args: [r, winnerSig],
-        });
-        const hash = await wallet.writeContract({ ...request, chain: null });
-        const receipt = await client.waitForTransactionReceipt({ hash });
-        if (receipt.status !== 'success') throw new Error(`settleByReferee reverted (${hash})`);
-        return hash;
-      } catch (e) {
-        throw new Error(revertReason(e));
-      }
+    settleByReferee: (result, winnerSig) => send(address, matchSettlementAbi, 'settleByReferee', [forContract(result), winnerSig]),
+    settle: (result, sigA, sigB, refereeSig) => send(address, matchSettlementAbi, 'settle', [forContract(result), sigA, sigB, refereeSig]),
+  };
+}
+
+/** Agent League operations: reads for matchmaking and the referee's start/cancel (fees are charged at start). */
+export interface LeagueOps {
+  entryFee(): Promise<bigint>;
+  currentWeek(): Promise<number>;
+  balanceOf(agent: Address): Promise<bigint>;
+  operatorOf(agent: Address): Promise<Address>;
+  start(matchId: Hex, a: Address, b: Address): Promise<Hex>;
+  cancel(matchId: Hex): Promise<Hex>;
+  info(address?: Address | null): Promise<LeagueInfo>;
+}
+
+export interface LeagueInfo {
+  enabled: true;
+  address: Address;
+  token: { symbol: string; decimals: number };
+  week: number;
+  weekEndsAt: number;
+  entryFee: string;
+  potBps: number;
+  buybackBps: number;
+  pot: string;
+  standings: { agent: Address; operator: Address; games: number; wins: number; losses: number; draws: number; opponents: number; rating: number }[];
+  balance?: string;
+}
+
+export function leagueOps(chain: Chain, referee: LocalAccount): LeagueOps | null {
+  if (!chain.client || !chain.book?.AgentLeague || !chain.rpcUrl) return null;
+  const client = chain.client;
+  const address = chain.book.AgentLeague as Address;
+  const send = writer(chain, referee);
+  const read = <T,>(functionName: string, args: readonly unknown[] = []) =>
+    client.readContract({ address, abi: agentLeagueAbi, functionName, args } as never) as Promise<T>;
+  return {
+    entryFee: () => read<bigint>('entryFee'),
+    currentWeek: async () => Number(await read<number>('currentWeek')),
+    balanceOf: (agent) => read<bigint>('balanceOf', [agent]),
+    operatorOf: (agent) => read<Address>('operatorOf', [agent]),
+    start: (matchId, a, b) => send(address, agentLeagueAbi, 'startMatch', [matchId, a, b]),
+    cancel: (matchId) => send(address, agentLeagueAbi, 'cancelMatch', [matchId]),
+    async info(me) {
+      const week = Number(await read<number>('currentWeek'));
+      const [fee, potBps, buybackBps, pot, endsAt, players] = await Promise.all([
+        read<bigint>('entryFee'), read<number>('potBps'), read<number>('buybackBps'), read<bigint>('pot', [week]),
+        read<bigint>('weekEndsAt', [week]), read<Address[]>('players', [week]),
+      ]);
+      const standings = await Promise.all(players.map(async (agent) => {
+        const [s, operator] = await Promise.all([
+          read<{ games: number; wins: number; losses: number; draws: number; opponents: number; rating: number }>('standing', [week, agent]),
+          read<Address>('operatorOf', [agent]),
+        ]);
+        return { agent, operator, games: s.games, wins: s.wins, losses: s.losses, draws: s.draws, opponents: s.opponents, rating: s.rating };
+      }));
+      standings.sort((x, y) => y.rating - x.rating || y.wins - x.wins);
+      return {
+        enabled: true, address, token: { symbol: 'tUSDC', decimals: 6 }, week, weekEndsAt: Number(endsAt),
+        entryFee: fee.toString(), potBps: Number(potBps), buybackBps: Number(buybackBps), pot: pot.toString(), standings,
+        ...(me ? { balance: (await read<bigint>('balanceOf', [me])).toString() } : {}),
+      };
     },
   };
 }

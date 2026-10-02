@@ -3,7 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
-import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, refereeSettler } from './chain.ts';
+import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, leagueOps, refereeSettler } from './chain.ts';
+import { LeaguePayouts, leagueDir } from './league.ts';
 import { HumanVerification } from './humans.ts';
 import { Rewards, rewardsDir } from './rewards.ts';
 import { createApi } from './http.ts';
@@ -60,10 +61,14 @@ if (chain.online) {
 // The referee settles results the loser never signed (AUTO_SETTLE=0 turns it off; it needs testnet ETH).
 const settler = chain.online && env.AUTO_SETTLE !== '0' ? refereeSettler(chain, house) : null;
 
+// Agent League (paid agents-only queue): the referee charges entry fees on-chain when a match starts.
+const league = chain.online ? leagueOps(chain, house) : null;
+
 const lobby = new Lobby({
   chain,
   house,
   settler,
+  league,
   turnSeconds: Number(env.TURN_SECONDS ?? 45),
   bankSeconds: Number(env.BANK_SECONDS ?? 60),
   resultGraceSeconds: Number(env.RESULT_GRACE_SECONDS ?? 600),
@@ -103,7 +108,7 @@ botLoop();
 const settleLoop = async () => {
   try {
     const r = await lobby.settleDue();
-    for (const id of r.settled) console.log(`referee settled ${id} (loser never signed)`);
+    for (const id of r.settled) console.log(`referee settled ${id}`);
     for (const f of r.failed) console.warn(`referee could not settle ${f.matchId}: ${f.error}`);
   } catch (e) { console.error('settle loop error', e); }
   setTimeout(settleLoop, Number(env.SETTLE_INTERVAL_MS ?? 5000));
@@ -114,7 +119,7 @@ const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
-const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, publicUrl: env.PUBLIC_URL });
+const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)) });
 const port = Number(env.PORT ?? 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);
@@ -126,6 +131,7 @@ server.listen(port, () => {
   }
   console.log(`  house bot / referee address ${house.address}${env.HOUSE_PRIVATE_KEY ? '' : ' (ephemeral key)'}`);
   console.log(`  human verification: ${humans.verifiers.filter((v) => v.available).map((v) => v.id).join(', ') || 'none'}${chain.online ? '' : ' (off-chain: status only)'}`);
+  console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);
   console.log(`  match archive → ${archiveDir} (${restored} restored)`);

@@ -18,6 +18,8 @@
     "bot": "tsx packages/sdk/scripts/agent-bot.ts",
     "agent:link": "tsx packages/sdk/scripts/agent-link.ts",
     "art:export": "tsx packages/art/scripts/export.ts",
+    "league:deposit": "tsx packages/sdk/scripts/league-deposit.ts",
+    "league:publish": "tsx apps/server/scripts/publish-league.ts",
     "rewards:publish": "tsx apps/server/scripts/publish-rewards.ts",
     "contracts:build": "cd contracts && forge build",
     "contracts:test": "cd contracts && forge test",

@@ -83,3 +83,10 @@
 .verify li.bad { color: #ffb3bf; }
 .verify li.pending > span { color: var(--muted); }
 .verify a { color: #9cc7ff; }
+
+/* Agent League */
+.league .stat-row { margin-bottom: 12px; }
+.league-rules { margin: 0 0 16px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; max-width: 900px; }
+.league-claims { margin-top: 18px; }
+.league-claims h3 { margin: 0 0 4px; font-size: 16px; }
+.ok-text { color: var(--ok); font-weight: 600; }

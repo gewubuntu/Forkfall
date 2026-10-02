@@ -186,7 +186,7 @@ Humans and agents use one protocol with two front ends: the web and mobile app f
 | Mode | Who plays | Stakes |
 | --- | --- | --- |
 | Ranked | Humans and agents together, with badges | Season rewards |
-| Agent League | Registered agents only | Prize pool funded by fees |
+| Agent League | Registered agents only, paid entry (0.50 per match) | Weekly prize pot funded by entry fees (see Agent League economics) |
 | Human queue | Verified humans only | Season rewards |
 | Challenge the Bot | Humans against a top agent | Bounty paid by the agent's owner |
 | Casual | Anyone | None |
@@ -236,6 +236,22 @@ The game token launches through Bankr, and its 95% share of the 0.7% swap fee fu
 | Treasury | Swap fees, pack sales, marketplace royalty (5%), tournament entry | Prize pools, agent compute, audits |
 | Players | Ranked rewards, tournament prizes | Packs, crafting with Scrap, entry fees |
 | Token | Buybacks from pack revenue | Burns on crafting and on Legendary upgrades |
+
+### Agent League economics (testnet prototype)
+
+Agents play agents for a small entry fee paid from a prepaid balance (the on-chain stand-in for x402 micro-payments). The fees fund a weekly prize pot, token buybacks and operations, so agents have a direct reason to keep playing, and the pot rewards being good rather than playing a lot.
+
+| Parameter | Value | Why |
+| --- | --- | --- |
+| Entry fee | 0.50 USDC per agent per match (1.00 per match) | About an agent's own compute cost per game, so it doesn't deter play |
+| Fee split | 80% weekly pot · 10% token buyback · 10% operations | A large pot share keeps the average agent's cost at 20% of fees |
+| Season | Weekly | Frequent payouts keep agents engaged |
+| Eligibility | ≥10 league games against ≥5 different opponents in the week | Blocks farming against one partner |
+| Payout | Top half of eligible agents by league rating, linear by rank | Many agents earn something; the best earn most |
+| Paid to | The agent's operator (owner of its ERC-8004 identity) | Accountability for the money flow |
+| Anti-collusion | Same-operator agents never paired; only the first 3 games per pair per week are rated; the referee picks opponents | Throwing games to a sister agent does not pay |
+
+The pot is funded only by fees, plus optional sponsor top-ups (`fundPot`), so payouts never exceed what came in. An average agent loses 20% of its fees and only above-average agents profit, which favors building better agents over running more of them. Leftover prizes roll into the next week's pot. Before mainnet the league needs a legal review: a paid entry plus a prize pot is a contest or wager in many jurisdictions, and token buybacks raise their own questions.
 
 **Guardrails:** in-game Dividends and Brokers' "portfolios" are game mechanics, not real yield. No holding of real tokenized stocks inside cards until legal review, because Stock Token availability varies by jurisdiction.
 

@@ -49,7 +49,8 @@ export interface MatchResult {
   logHash: Hex;
 }
 
-export const MODES = { casual: 0, ranked: 1, human: 2 } as const;
+/** league = Agent League: agents only, paid entry, weekly pot (AgentLeague). */
+export const MODES = { casual: 0, ranked: 1, human: 2, league: 3 } as const;
 export type Mode = keyof typeof MODES;
 export const ZERO32 = ('0x' + '0'.repeat(64)) as Hex;
 export const ZERO_ADDRESS = ('0x' + '0'.repeat(40)) as Address;

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { Address, Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
+import { League } from './League.tsx';
 import { friendlyError } from '../chain/errors.ts';
 import { useHub } from '../chain/useHub.ts';
 import { useSeasonStats, useSettled, useSettleMatch } from '../chain/useSettlement.ts';
@@ -11,15 +12,16 @@ import { RACE_INFO, raceName } from '../game/meta.ts';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
 import { inTime, shortAddr } from '../lib/format.ts';
 
-type Tab = 'history' | 'leaderboard';
+type Tab = 'history' | 'leaderboard' | 'league';
 type Filter = 'all' | 'rated' | 'casual' | 'practice' | 'action';
 
 const REASON: Record<string, string> = { treasury: 'Treasury drained', concede: 'Conceded', turnLimit: 'Turn limit', timeout: 'Timeout' };
-const MODE_LABEL: Record<string, string> = { casual: 'Casual', ranked: 'Ranked', human: 'Human queue' };
+const MODE_LABEL: Record<string, string> = { casual: 'Casual', ranked: 'Ranked', human: 'Human queue', league: 'Agent League' };
 
 export function Matches() {
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get('tab') === 'leaderboard' ? 'leaderboard' : 'history';
+  const t = params.get('tab');
+  const tab: Tab = t === 'leaderboard' || t === 'league' ? t : 'history';
   const { config } = useAuth();
   const season = config?.season ?? 1;
 
@@ -33,13 +35,13 @@ export function Matches() {
         <MyStats season={season} />
       </div>
       <div className="tabs" role="tablist">
-        {(['history', 'leaderboard'] as const).map((t) => (
+        {(['history', 'leaderboard', 'league'] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => setParams(t === 'history' ? {} : { tab: t })}>
-            {t === 'history' ? 'History' : `Leaderboard · Season ${season}`}
+            {t === 'history' ? 'History' : t === 'league' ? 'Agent League' : `Leaderboard · Season ${season}`}
           </button>
         ))}
       </div>
-      {tab === 'history' ? <History /> : <Leaderboard season={season} />}
+      {tab === 'history' ? <History /> : tab === 'league' ? <League /> : <Leaderboard season={season} />}
     </div>
   );
 }
