@@ -144,12 +144,70 @@ contract VrfTest is Fixture {
         uint256 id = buy(alice, 1);
         uint256[] memory words = new uint256[](1);
         words[0] = 42;
-        vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(PackSale.OnlyCoordinator.selector, alice, address(vrf)));
+        vm.prank(alice); // the right request id, the wrong caller: nothing happens
         d.packs.rawFulfillRandomWords(1, words);
         vm.prank(alice);
-        d.packs.rawFulfillRandomWords(999, words); // unknown: ignored
+        d.packs.rawFulfillRandomWords(999, words);
         assertEq(d.packs.vrfWordOf(id), 0);
+        fulfillAll();
+        assertGt(d.packs.vrfWordOf(id), 0);
+    }
+
+    function test_twoCoordinatorsReusingARequestIdDontCollide() public {
+        uint256 p1 = buy(alice, 1); // mock 1, request id 1
+        VRFCoordinatorMock second = new VRFCoordinatorMock();
+        PackSale.VrfConfig memory c = config(address(second));
+        vm.prank(admin);
+        d.packs.setVrf(c);
+        uint256 p2 = buy(alice, 1); // mock 2, also request id 1
+        vrf.fulfillPending();
+        second.fulfillPending();
+        assertGt(d.packs.vrfWordOf(p1), 0);
+        assertGt(d.packs.vrfWordOf(p2), 0);
+        openAs(alice, p1);
+        openAs(alice, p2);
+    }
+
+    function test_blockhashPacksCantSteerAVrfPack() public {
+        // Alice holds a blockhash pack from before VRF, and a VRF pack whose word is public.
+        PackSale.VrfConfig memory off;
+        vm.prank(admin);
+        d.packs.setVrf(off);
+        uint256 old = buy(alice, 1);
+        PackSale.VrfConfig memory on = config(address(vrf));
+        vm.prank(admin);
+        d.packs.setVrf(on);
+        uint256 id = buy(alice, 1);
+        fulfillAll();
+        (, uint256[5] memory before) = d.packs.previewVrfOpen(alice);
+        uint256 vrfPity = d.packs.vrfPacksSinceLegendary(alice);
+        // Opening the blockhash pack first touches neither the VRF pity counter nor `pulled`.
+        vm.roll(block.number + 3);
+        openAs(alice, old);
+        assertEq(d.packs.vrfPacksSinceLegendary(alice), vrfPity);
+        (, uint256[5] memory afterOld) = d.packs.previewVrfOpen(alice);
+        uint256[5] memory got = openAs(alice, id);
+        for (uint256 i; i < 5; ++i) {
+            assertEq(afterOld[i], before[i]);
+            assertEq(got[i], before[i]);
+        }
+    }
+
+    function test_openingWithALongPullHistoryStaysAffordable() public {
+        // 100 packs pulled: duplicate protection walks most pools; opening must stay well under a block's budget.
+        for (uint256 b; b < 10; ++b) {
+            uint256 first = buy(alice, 10);
+            fulfillAll();
+            for (uint256 i; i < 10; ++i) {
+                openAs(alice, first + i);
+            }
+        }
+        uint256 last = buy(alice, 1);
+        fulfillAll();
+        vm.prank(alice);
+        uint256 g = gasleft();
+        d.packs.open(last);
+        assertLt(g - gasleft(), 800_000);
     }
 
     function test_retryNeverSwapsAWordTheFirstAnswerWins() public {

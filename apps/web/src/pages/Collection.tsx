@@ -102,6 +102,9 @@ function CollectionLive({ chainId }: { chainId: number }) {
     contracts: packIds.map((id) => ({ address: c.PackSale, abi: packSaleAbi, functionName: 'vrfWordOf', args: [id], chainId: cid } as const)),
   });
   const nextVrf = nextVrfRead.data as bigint | undefined;
+  /** VRF switched on now? (Retrying needs it; with it off, a waiting pack re-seals when it's next in line.) */
+  const vrfConfig = useReadContract({ address: c.PackSale, abi: packSaleAbi, functionName: 'vrf', chainId: cid });
+  const vrfOn = !!vrfConfig.data && !/^0x0{40}$/i.test((vrfConfig.data as readonly [string, ...unknown[]])[0]);
   const { data: block } = useBlockNumber({ chainId: cid, watch: true });
   const unopened = packIds
     .map((id, i) => ({
@@ -336,12 +339,12 @@ function CollectionLive({ chainId }: { chainId: number }) {
             {unopened.length === 0 ? <p className="muted">No sealed packs. Buy one to get started.</p> : (
               <ul className="pack-list">
                 {unopened.map(({ id, revealBlock, kind: k, ready, vrf, retryAt, queued }) => {
-                  const canRetry = retryAt > 0n && !ready && block !== undefined && block >= retryAt;
+                  const canRetry = vrfOn && retryAt > 0n && !ready && block !== undefined && block >= retryAt;
                   const wait = block !== undefined ? Number(revealBlock - block + 1n) : null;
                   return (
                     <li key={String(id)} className="pack-row">
                       <div className={`pack-art kind-${k}`} aria-hidden><img src={k === 1 ? spriteSvg(48) : LOGO_MARK} alt="" /></div>
-                      <div className="pr-text"><b>{KINDS[k]?.short ?? 'Set 1'} pack #{String(id)}</b><small className="muted">{ready ? 'Ready to open' : queued ? 'Randomness in: open your older packs first' : vrf ? 'Waiting for verifiable randomness (Chainlink VRF)…' : wait !== null && wait > 0 ? `Sealing… ${wait} block${wait === 1 ? '' : 's'}` : '…'}</small></div>
+                      <div className="pr-text"><b>{KINDS[k]?.short ?? 'Set 1'} pack #{String(id)}</b><small className="muted">{ready ? 'Ready to open' : queued || (vrf && !vrfOn) ? 'Open your older packs first' : vrf ? 'Waiting for verifiable randomness (Chainlink VRF)…' : wait !== null && wait > 0 ? `Sealing… ${wait} block${wait === 1 ? '' : 's'}` : '…'}</small></div>
                       {canRetry
                         ? <button className="btn" disabled={tx.busy} onClick={() => retry(id)} title="Chainlink hasn't answered for a while: ask again (the first answer to arrive counts)">Request again</button>
                         : <button className="btn btn-primary" disabled={!ready || tx.busy} onClick={() => open(id)}>Open</button>}

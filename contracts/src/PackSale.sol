@@ -104,6 +104,9 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     mapping(address => uint256[]) private _packsOf;
     /// @notice Packs opened since this wallet's last Legendary (the pity counter).
     mapping(address => uint256) public packsSinceLegendary;
+    /// @notice The pity counter for VRF packs, kept apart from blockhash packs: those can be opened at any time, so
+    ///         sharing a counter (or `pulled`) would let a wallet steer a VRF pack whose word is already public.
+    mapping(address => uint256) public vrfPacksSinceLegendary;
 
     error BadCount();
     error WrongPayment();
@@ -113,7 +116,6 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     error TooEarly(uint256 revealBlock);
     error UnknownKind(uint8 kind);
     error RandomnessPending(uint256 packId);
-    error OnlyCoordinator(address have, address want);
     error NotRetryable(uint256 packId);
     error OpenInOrder(uint256 nextPackId);
 
@@ -273,9 +275,11 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
                     )
                 })
             );
-        vrfRequests[requestId] = VrfRequest(firstId, uint64(count), uint64(block.number), c.coordinator);
+        // Keyed by coordinator and id: two coordinators may hand out the same ids.
+        uint256 key = _requestKey(c.coordinator, requestId);
+        vrfRequests[key] = VrfRequest(firstId, uint64(count), uint64(block.number), c.coordinator);
         for (uint256 i; i < count; ++i) {
-            vrfRequestOf[firstId + i] = requestId;
+            vrfRequestOf[firstId + i] = key;
         }
         emit RandomnessRequested(requestId, firstId, count);
     }
@@ -285,11 +289,12 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     ///         swap a known word. Unknown or already-answered requests are ignored; never reverts for a known
     ///         request from its coordinator.
     function rawFulfillRandomWords(uint256 requestId, uint256[] calldata words) external {
-        VrfRequest memory r = vrfRequests[requestId];
-        if (r.coordinator == address(0)) return;
-        if (msg.sender != r.coordinator) revert OnlyCoordinator(msg.sender, r.coordinator);
-        if (words.length < r.count) return;
-        delete vrfRequests[requestId];
+        // Only the coordinator a request went to can answer it: the key includes the caller, so anyone else's
+        // call finds nothing and does nothing.
+        uint256 key = _requestKey(msg.sender, requestId);
+        VrfRequest memory r = vrfRequests[key];
+        if (r.coordinator == address(0) || words.length < r.count) return;
+        delete vrfRequests[key];
         for (uint256 i; i < r.count; ++i) {
             uint256 packId = r.firstPackId + i;
             if (vrfRequestOf[packId] == 0 || vrfWordOf[packId] != 0) continue;
@@ -298,6 +303,10 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
             emit PackSeeded(packId, w);
         }
         emit PacksSeeded(requestId, r.firstPackId, r.count);
+    }
+
+    function _requestKey(address coordinator, uint256 requestId) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(coordinator, requestId)));
     }
 
     /// @notice If a pack's VRF request went unanswered for `VRF_RETRY_BLOCKS`, its owner can request again. The old
@@ -375,16 +384,18 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
             rand = keccak256(abi.encode(bh, packId, p.owner, address(this)));
         }
         p.opened = true;
-        bool pity = packsSinceLegendary[msg.sender] + 1 >= PITY_PACKS;
+        // VRF and blockhash packs keep separate pity counters, and only VRF opens feed `pulled`.
+        mapping(address => uint256) storage counter = fromPulls ? vrfPacksSinceLegendary : packsSinceLegendary;
+        bool pity = counter[msg.sender] + 1 >= PITY_PACKS;
         ids = _roll(rand, msg.sender, pity, p.kind, fromPulls);
         bool gotLegendary;
         uint256 foil = cards.FOIL_OFFSET();
         for (uint256 i; i < CARDS_PER_PACK; ++i) {
             uint256 base = ids[i] >= foil ? ids[i] - foil : ids[i];
-            pulled[msg.sender][base]++;
+            if (fromPulls) pulled[msg.sender][base]++;
             if (cards.cardInfo(base).rarity == 3) gotLegendary = true;
         }
-        packsSinceLegendary[msg.sender] = gotLegendary ? 0 : packsSinceLegendary[msg.sender] + 1;
+        counter[msg.sender] = gotLegendary ? 0 : counter[msg.sender] + 1;
         _mint(ids);
         emit PackOpened(packId, msg.sender, ids);
     }
@@ -399,9 +410,10 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
         cards.mintBatch(msg.sender, mintIds, amounts);
     }
 
-    /// @notice Packs left until the pity timer guarantees a Legendary for `who` (1 = the next pack).
+    /// @notice Packs left until the pity timer guarantees a Legendary for `who` (1 = the next pack), for the
+    ///         randomness source packs are sold with now (VRF and blockhash packs count separately).
     function packsUntilPity(address who) external view returns (uint256) {
-        return PITY_PACKS - packsSinceLegendary[who];
+        return PITY_PACKS - (vrf.coordinator != address(0) ? vrfPacksSinceLegendary[who] : packsSinceLegendary[who]);
     }
 
     /// @notice Deterministic pack contents for a random word, opener and pity flag. Foils come back as
@@ -424,7 +436,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     function previewVrfOpen(address owner) external view returns (uint256 packId, uint256[5] memory ids) {
         packId = nextVrfPack(owner);
         if (packId == type(uint256).max || vrfWordOf[packId] == 0) return (packId, ids);
-        bool pity = packsSinceLegendary[owner] + 1 >= PITY_PACKS;
+        bool pity = vrfPacksSinceLegendary[owner] + 1 >= PITY_PACKS;
         ids = _roll(
             keccak256(abi.encode(vrfWordOf[packId], packId, owner, address(this))),
             owner,
