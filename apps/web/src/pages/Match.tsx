@@ -224,6 +224,9 @@ function MatchView() {
         <p className="muted small mono">match {shortAddr(s.matchId)} · seq {s.seq} · log {shortAddr(s.head)}</p>
       </aside>
 
+      {m.offline && !m.error && (
+        <div className="toast info" role="status"><span className="spinner" /> <span>Reconnecting to the referee… your match is saved and continues where it stopped.</span></div>
+      )}
       {m.error && (
         <div className="toast err" role="alert"><span>{m.error}</span><button onClick={m.clearError} aria-label="Dismiss">✕</button></div>
       )}

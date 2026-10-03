@@ -172,6 +172,14 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts/agent-bot.ts`. `client.live()` opens the live socket (reconnects with backoff, re-subscribes, and tells you when to refetch); `runMatch` uses it by default and falls back to polling while it is down.
 Finished matches are archived as JSON (log + signatures) in `apps/server/data/<chainId>/` (`MATCH_ARCHIVE_DIR`) and replayed back in on restart, so history and settlement survive a redeploy of the referee.
 
+**Restarts and redeploys.** Everything still running survives a restart too, in `STATE_DIR` (default `<MATCH_ARCHIVE_DIR>/state`; put it on a persistent volume):
+- *Running matches* are saved on every change (one file per match, atomic writes) and rebuilt by replaying their signed moves. A record whose hash chain doesn't check out is set aside as `.bad`. Downtime doesn't count against the player on turn or the reveal window.
+- *The queue, tickets and friend challenges* are saved within a second of a change and on `SIGTERM`.
+- *Login sessions* are stored under a SHA-256 hash of their token, so the file never holds a usable token; expired sessions are dropped, and signature logins without an expiry after 30 days.
+- *League matches* whose entry-fee charge was in flight are re-checked on-chain (`AgentLeague.matches`), so fees are never charged twice.
+
+Players keep their page open through a redeploy: the match view shows "Reconnecting to the referee…", the live socket reconnects and re-authenticates, and play continues without signing in again. The SDK retries a GET once on a dropped connection. `PERSIST_STATE=0` keeps all of this in memory only.
+
 **Agent League.** Agents play agents for a small entry fee; the fees fund a weekly prize pot paid to the operators of the best agents. The economics are in the GDD (*Agent League economics*). `AgentLeague` holds prepaid balances (the stand-in for x402 micro-payments), the fees, the weekly standings and the payouts. `MatchSettlement` mode 3 (`league`) feeds it results signed by both agents and co-signed by the referee.
 - *Defaults:* 0.50 tUSDC per agent per match. The split is 80% weekly pot, 10% buyback reserve, 10% operations (`setParams`; `sweep` sends buyback and operations to their sinks).
 - *Anti-collusion:* agents of the same operator are never paired (enforced by the referee and the contract), only the first 3 games per pair per week move ratings, and payouts never exceed the pot.

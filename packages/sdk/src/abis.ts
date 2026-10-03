@@ -205,6 +205,7 @@ export const seasonRewardsAbi = parseAbi([
 
 /** Agent League: prepaid entry fees, weekly pot, standings and payouts. */
 export const agentLeagueAbi = parseAbi([
+  'function matches(bytes32 matchId) view returns (address a, address b, uint32 week, uint8 state, uint256 fee)',
   'function entryFee() view returns (uint256)',
   'function potBps() view returns (uint16)',
   'function buybackBps() view returns (uint16)',

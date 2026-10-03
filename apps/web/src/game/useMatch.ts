@@ -11,6 +11,8 @@ export interface MatchHook {
   events: GameEvent[];
   error: string | null;
   notFound: boolean;
+  /** The referee can't be reached (e.g. restarting): retrying on its own; the match is saved server-side. */
+  offline: boolean;
   sending: boolean;
   /** Unit uids (and 'treasury-0'/'treasury-1') that took damage in the latest update. */
   hits: Set<string>;
@@ -19,6 +21,9 @@ export interface MatchHook {
 }
 
 const POLL_MS = 700;
+
+/** fetch() failed to reach the server at all (browsers: TypeError "Failed to fetch" / "NetworkError…"). */
+const isNetworkError = (e: unknown) => e instanceof TypeError || /failed to fetch|networkerror|fetch failed|load failed/i.test(String((e as Error)?.message));
 /** While the live socket is up, moves arrive as pushes; this slow poll is only a safety net. */
 const SAFETY_POLL_MS = 10_000;
 
@@ -32,6 +37,7 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [sending, setSending] = useState(false);
   const [hits, setHits] = useState<Set<string>>(new Set());
   const cursor = useRef(0);
@@ -80,10 +86,12 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
       if (matchId !== matchRef.current) return;
       // Never step back: a slow response must not overwrite a newer snapshot.
       setSnap((old) => (old && old.matchId === s.matchId && old.seq > s.seq ? old : s));
+      setOffline(false);
       await pullEvents();
     } catch (e) {
       const msg = String((e as Error).message);
-      if (msg.includes('404')) setNotFound(true);
+      if (isNetworkError(e)) setOffline(true); // not the player's problem: show "reconnecting", keep polling
+      else if (msg.includes('404')) setNotFound(true);
       else if (!msg.includes('429')) setError(msg.replace(/^.*?→ \d+: /, ''));
     }
   }, [client, matchId, pullEvents]);
@@ -130,7 +138,8 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
       await pullEvents();
       return true;
     } catch (e) {
-      setError(String((e as Error).message).replace(/^.*?→ \d+: /, ''));
+      if (isNetworkError(e)) { setOffline(true); setError('Couldn’t reach the referee, so that move wasn’t sent. Try again in a moment.'); }
+      else setError(String((e as Error).message).replace(/^.*?→ \d+: /, ''));
       // Stale view (e.g. a timeout ended the turn): resync.
       sendingRef.current = false;
       await refresh();
@@ -141,5 +150,5 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
     }
   }, [client, snap, matchId, pullEvents, refresh]);
 
-  return { snap, events, error, notFound, sending, hits, send, clearError: () => setError(null) };
+  return { snap, events, error, notFound, offline, sending, hits, send, clearError: () => setError(null) };
 }

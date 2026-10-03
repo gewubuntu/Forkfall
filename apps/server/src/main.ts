@@ -10,7 +10,8 @@ import { Rewards, rewardsDir } from './rewards.ts';
 import { Profiles, profilesFile } from './profiles.ts';
 import { finishedMatch, Quests, questsFile } from './quests.ts';
 import { createApi } from './http.ts';
-import { Lobby, type ArchivedMatch } from './lobby.ts';
+import { Lobby, type ArchivedMatch, type SavedLobby, type SavedMatch } from './lobby.ts';
+import { StateStore } from './state.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const env = process.env;
@@ -55,6 +56,9 @@ const houseKey = (env.HOUSE_PRIVATE_KEY as Hex | undefined) ?? generatePrivateKe
 const house = privateKeyToAccount(houseKey, { nonceManager });
 const settlementDir = env.SETTLEMENT_DIR ?? join(root, 'contracts/settlements');
 const archiveDir = env.MATCH_ARCHIVE_DIR ?? join(root, 'apps/server/data', String(chainId));
+// Running matches, the queue, challenges and login sessions, so a restart or redeploy doesn't drop live games.
+const stateDir = env.STATE_DIR ?? join(archiveDir, 'state');
+const store = env.PERSIST_STATE === '0' ? null : new StateStore(stateDir);
 
 if (chain.online) {
   const pf = await chain.preflight(house.address);
@@ -97,6 +101,7 @@ const lobby = new Lobby({
   turnSeconds: Number(env.TURN_SECONDS ?? 45),
   bankSeconds: Number(env.BANK_SECONDS ?? 60),
   resultGraceSeconds: Number(env.RESULT_GRACE_SECONDS ?? 600),
+  store,
 });
 
 // Finished matches (log + signatures) are archived so history, replays and settlement survive a restart.
@@ -108,6 +113,29 @@ if (existsSync(archiveDir)) {
     }
   }
 }
+
+// Then everything that was still running: matches (replayed move by move), the queue and challenges.
+let resumed = 0;
+if (store) {
+  const saved = store.read<SavedLobby>('lobby.json');
+  const downSince = saved?.aliveAt ?? 0;
+  if (saved) lobby.restoreLobby(saved);
+  for (const f of store.list('matches')) {
+    const rec = store.read<SavedMatch>(f);
+    if (rec && lobby.restoreRunning(rec, downSince)) resumed++;
+    else { console.warn(`  could not resume ${f}; moved aside`); try { store.write(`${f}.bad`, rec); store.remove(f); } catch { /* keep going */ } }
+  }
+}
+let lastLobby = '';
+let lastAlive = 0;
+/** Write the queue and challenges when they changed, and a heartbeat every few seconds (to measure downtime). */
+const flushLobby = (force = false) => {
+  if (!store) return;
+  const s = lobby.saveLobby();
+  const body = JSON.stringify({ ...s, aliveAt: 0 });
+  if (!force && body === lastLobby && Date.now() - lastAlive < 5000) return;
+  try { store.write('lobby.json', s); lastLobby = body; lastAlive = Date.now(); } catch (e) { console.error('could not save lobby state', e); }
+};
 
 // Export a Foundry-ready settlement file as soon as a match has enough signatures.
 lobby.onChange = (m) => {
@@ -132,7 +160,7 @@ lobby.onChange = (m) => {
   } catch { /* not settleable yet */ }
 };
 
-setInterval(() => lobby.tick(), 1000);
+setInterval(() => { lobby.tick(); flushLobby(); }, 1000);
 const botLoop = async () => {
   try { await lobby.stepBots(); } catch (e) { console.error('bot error', e); }
   setTimeout(botLoop, Number(env.BOT_DELAY_MS ?? 600));
@@ -172,7 +200,22 @@ const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
-const { server } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)) });
+const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)), store });
+
+// Stop cleanly on a redeploy: save the queue and challenges (matches and sessions are saved as they change).
+let stopping = false;
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, () => {
+    if (stopping) process.exit(1);
+    stopping = true;
+    flushLobby(true);
+    console.log(`${sig}: state saved, shutting down`);
+    live.close(); // clients reconnect to the next instance on their own
+    server.close(() => process.exit(0));
+    server.closeAllConnections();
+    setTimeout(() => process.exit(0), 3000).unref();
+  });
+}
 const port = Number(env.PORT ?? 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);
@@ -191,4 +234,5 @@ server.listen(port, () => {
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);
   console.log(`  match archive → ${archiveDir} (${restored} restored)`);
+  console.log(store ? `  running state → ${stateDir} (${resumed} running match${resumed === 1 ? '' : 'es'} resumed)` : '  running state: memory only (PERSIST_STATE=0)');
 });

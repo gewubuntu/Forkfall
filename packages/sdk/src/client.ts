@@ -268,7 +268,7 @@ export class ForkfallClient {
   }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(this.baseUrl + path, {
+    const send = () => fetch(this.baseUrl + path, {
       method,
       headers: {
         'content-type': 'application/json',
@@ -277,6 +277,13 @@ export class ForkfallClient {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(this.opts.timeoutMs ?? 20_000),
     });
+    let res: Response;
+    try { res = await send(); } catch (e) {
+      // A connection dropped under us (e.g. the referee restarting): reads are safe to try once more.
+      if (method !== 'GET' || (e as Error).name === 'TimeoutError') throw e;
+      await new Promise((r) => setTimeout(r, 250));
+      res = await send();
+    }
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};
     if (!res.ok) throw new Error(`${method} ${path} → ${res.status}: ${data.error ?? text}`);

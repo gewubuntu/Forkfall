@@ -10,6 +10,7 @@ import {
 import { recoverAddress, type Address, type Hex, type LocalAccount, type TypedDataDomain } from 'viem';
 import type { Chain, LeagueOps, RefereeSettler } from './chain.ts';
 import type { LiveBus } from './live.ts';
+import type { StateStore } from './state.ts';
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -62,6 +63,25 @@ export interface Match {
   league?: { state: 'charging' | 'charged' | 'failed'; tx?: Hex; error?: string };
   /** Friend challenge this match came from (casual). */
   challenge?: string;
+  /** Time the referee was down while this match waited for its reveals (doesn't count against the reveal window). */
+  pausedMs?: number;
+}
+
+/** A running (not yet finished) match on disk: everything but the game state, which is rebuilt by replaying the moves. */
+export interface SavedMatch {
+  v: 1;
+  savedAt: number;
+  match: Omit<Match, 'state' | 'events'>;
+}
+
+/** Queue, tickets and challenges on disk. `aliveAt` is refreshed while the referee runs, to measure downtime. */
+export interface SavedLobby {
+  v: 1;
+  aliveAt: number;
+  queue: QueueEntry[];
+  matchedTickets: [string, Hex][];
+  byAddressTicket: [Address, string][];
+  challenges: Challenge[];
 }
 
 export interface RefereeSettlement {
@@ -94,6 +114,8 @@ export interface LobbyOptions {
   settleAttempts?: number;
   /** Agent League (paid agents-only queue); null/absent = league disabled. */
   league?: LeagueOps | null;
+  /** Where running matches, the queue and challenges survive a restart (absent = memory only). */
+  store?: StateStore | null;
 }
 
 /** What the server keeps on disk for a finished match: the public log plus the collected signatures. */
@@ -170,7 +192,6 @@ export class Lobby {
   private queue: QueueEntry[] = [];
   private matchedTickets = new Map<string, Hex>();
   private byAddressTicket = new Map<Address, string>();
-  private houseSecrets = new Map<string, { seedShare: Hex; deckSalt: Hex }>();
   private challenges = new Map<string, Challenge>();
   readonly turnMs: number;
   readonly bankMs: number;
@@ -432,6 +453,7 @@ export class Lobby {
       events: [], moves: [], head: ZERO32, clock: { turnStartedAt: 0, bank: [this.bankMs, this.bankMs], timeouts: [0, 0] },
     };
     this.matches.set(id, m);
+    this.save(m);
     this.maybeStart(m);
     // Both players hear about their new match at once (queue pairing, an accepted challenge, practice).
     for (const p of players) if (!p.bot) this.bus?.user(p.address, 'match', { matchId: id });
@@ -450,6 +472,7 @@ export class Lobby {
     if (!/^0x[0-9a-fA-F]{2,64}$/.test(deckSalt ?? '')) throw new ApiError(400, 'deckSalt must be hex');
     p.seedShare = seedShare;
     p.deckSalt = deckSalt;
+    this.save(m);
     this.maybeStart(m);
     return { ok: true, phase: m.phase };
   }
@@ -460,26 +483,43 @@ export class Lobby {
     if (m.mode === 'league' && m.league?.state !== 'charged') {
       if (m.league) return; // charging in flight, or failed
       m.league = { state: 'charging' };
-      this.opts.league!.start(m.id, m.players[0].address, m.players[1].address).then(
-        (tx) => { m.league = { state: 'charged', tx }; this.maybeStart(m); },
-        (e) => { m.league = { state: 'failed', error: (e as Error).message }; m.phase = 'cancelled'; this.changed(m); },
-      );
+      this.save(m);
+      this.chargeLeague(m);
       return;
     }
-    const [a, b] = m.players;
-    const seed = combineSeeds(m.id, a.seedShare!, b.seedShare!);
-    const r = createMatch({
-      matchId: m.id, seed,
-      players: [
-        { address: a.address, race: a.race, deck: a.deck, deckSalt: a.deckSalt! },
-        { address: b.address, race: b.race, deck: b.deck, deckSalt: b.deckSalt! },
-      ],
-    });
+    const r = this.initialState(m);
     m.state = r.state;
     m.events.push(...r.events);
     m.phase = 'active';
     m.clock.turnStartedAt = this.now();
     this.changed(m);
+  }
+
+  private initialState(m: Match) {
+    const [a, b] = m.players;
+    return createMatch({
+      matchId: m.id, seed: combineSeeds(m.id, a.seedShare!, b.seedShare!),
+      players: [
+        { address: a.address, race: a.race, deck: a.deck, deckSalt: a.deckSalt! },
+        { address: b.address, race: b.race, deck: b.deck, deckSalt: b.deckSalt! },
+      ],
+    });
+  }
+
+  /**
+   * Charge both league entry fees. If the call fails because the match is already started on-chain (a retry after
+   * a restart, while the first transaction landed), it counts as charged: the fees were taken once, so play.
+   */
+  private chargeLeague(m: Match) {
+    const ops = this.opts.league!;
+    ops.start(m.id, m.players[0].address, m.players[1].address).then(
+      (tx) => { m.league = { state: 'charged', tx }; this.maybeStart(m); },
+      async (e) => {
+        const started = await ops.started(m.id).catch(() => false);
+        if (started) { m.league = { state: 'charged' }; this.maybeStart(m); return; }
+        m.league = { state: 'failed', error: (e as Error).message }; m.phase = 'cancelled'; this.changed(m);
+      },
+    );
   }
 
   // ─── Moves ────────────────────────────────────────────────────
@@ -545,7 +585,7 @@ export class Lobby {
     this.pruneChallenges();
     for (const m of this.matches.values()) {
       const revealWindow = m.challenge ? CHALLENGE_REVEAL_MS : this.revealMs;
-      if (m.phase === 'reveal' && now - m.createdAt > revealWindow && m.league?.state !== 'charging') {
+      if (m.phase === 'reveal' && now - m.createdAt - (m.pausedMs ?? 0) > revealWindow && m.league?.state !== 'charging') {
         m.phase = 'cancelled'; this.reopenChallenge(m); this.changed(m); continue;
       }
       if (m.phase !== 'active') continue;
@@ -833,8 +873,88 @@ export class Lobby {
     return { season: s, rows: [...rows.values()].sort((a, b) => b.wins - a.wins || a.losses - b.losses) };
   }
 
+  // ─── Surviving restarts ───────────────────────────────────────
+  /** Write a running match to disk (finished ones go to the archive instead, via onChange). */
+  private save(m: Match) {
+    const store = this.opts.store;
+    if (!store) return;
+    const file = `matches/${m.id}.json`;
+    try {
+      if (m.phase === 'ended' || m.phase === 'cancelled') { store.remove(file); return; }
+      const { state: _state, events: _events, ...match } = m;
+      store.write(file, { v: 1, savedAt: this.now(), match } satisfies SavedMatch);
+    } catch (e) { console.error(`could not save match ${m.id}`, e); } // keep playing; it just won't survive a restart
+  }
+
+  /** The queue, tickets and challenges, for `restoreLobby`. Tickets of matches no longer starting are dropped. */
+  saveLobby(): SavedLobby {
+    this.pruneTickets();
+    return {
+      v: 1, aliveAt: this.now(), queue: this.queue,
+      matchedTickets: [...this.matchedTickets], byAddressTicket: [...this.byAddressTicket], challenges: [...this.challenges.values()],
+    };
+  }
+
+  /** Tickets only matter until the client has seen its match start: forget them once it's under way or gone. */
+  private pruneTickets() {
+    for (const [t, id] of this.matchedTickets) if (this.matches.get(id)?.phase !== 'reveal') this.matchedTickets.delete(t);
+    const live = new Set([...this.queue.map((q) => q.ticket), ...this.matchedTickets.keys()]);
+    for (const [a, t] of this.byAddressTicket) if (!live.has(t)) this.byAddressTicket.delete(a);
+  }
+
+  restoreLobby(rec: SavedLobby) {
+    if (rec?.v !== 1) return;
+    this.queue = rec.queue ?? [];
+    this.matchedTickets = new Map(rec.matchedTickets ?? []);
+    this.byAddressTicket = new Map(rec.byAddressTicket ?? []);
+    this.challenges = new Map((rec.challenges ?? []).map((c) => [c.code, c]));
+    // Queued clients keep polling through a restart; give them the TTL again rather than dropping them at once.
+    for (const q of this.queue) q.seen = this.now();
+  }
+
+  /**
+   * Bring back a running match after a restart: rebuild its game state by replaying the logged moves (checking
+   * the hash chain), and don't count the downtime against the player on turn or the reveal window.
+   * `downSince` is when the referee was last known alive. Returns false if the record doesn't replay.
+   */
+  restoreRunning(rec: SavedMatch, downSince: number): boolean {
+    if (rec?.v !== 1 || this.matches.has(rec.match.id)) return false;
+    const m = { ...rec.match, events: [] } as Match;
+    const downtime = Math.max(0, this.now() - Math.max(downSince, rec.savedAt));
+    if (m.phase === 'reveal') {
+      m.pausedMs = (m.pausedMs ?? 0) + downtime;
+      if (m.league?.state === 'charging') {
+        // We don't know whether the charge landed: ask again; an "already started" answer counts as charged.
+        this.chargeLeague(m);
+      }
+    } else if (m.phase === 'active') {
+      try {
+        const r = this.initialState(m);
+        let state = r.state;
+        const events = [...r.events];
+        let head: Hex = ZERO32;
+        for (const mv of m.moves) {
+          const out = applyAction(state, mv.seat, mv.action);
+          state = out.state;
+          events.push(...out.events);
+          head = nextHead(head, mv.seat, actionHash(mv.action)) as Hex;
+          if (head !== mv.head) return false;
+        }
+        if (head !== m.head || state.status === 'ended') return false;
+        m.state = state;
+        m.events = events;
+      } catch { return false; }
+      m.clock.turnStartedAt += downtime;
+    } else return false;
+    this.matches.set(m.id, m);
+    if (m.phase === 'reveal' && m.league?.state !== 'charging') this.maybeStart(m); // both revealed just before going down
+    return true;
+  }
+
   private changed(m: Match) {
+    // onChange archives a finished match first; only then does save() drop its running-match file.
     this.onChange?.(m);
+    this.save(m);
     this.bus?.match(m.id, { seq: m.moves.length, phase: m.phase });
     if (m.phase === 'ended' || m.phase === 'cancelled') this.bus?.lobby();
   }

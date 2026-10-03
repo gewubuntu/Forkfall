@@ -368,6 +368,7 @@ describe('Agent League queue', () => {
     balanceOf: async (a: Address) => balances.get(a.toLowerCase()) ?? 0n,
     operatorOf: async (a: Address) => operators.get(a.toLowerCase()) ?? ('0x' + '0'.repeat(40)) as Address,
     start: async (id: Hex) => { await new Promise((r) => setTimeout(r, 5)); if (failStart) throw new Error('InsufficientBalance'); started.push(id); return ('0x' + 'ee'.repeat(32)) as Hex; },
+    started: async (id: Hex) => started.includes(id),
     cancel: async () => ('0x' + '00'.repeat(32)) as Hex,
     info: async () => ({ enabled: true }) as never,
   };
