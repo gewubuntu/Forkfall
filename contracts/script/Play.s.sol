@@ -81,8 +81,13 @@ contract Play is ForkfallScript {
 
     function openPack(uint256 packId) external returns (uint256[5] memory ids) {
         requireTestnet();
+        PackSale sale = PackSale(addr("PackSale"));
+        require(
+            sale.packReady(packId),
+            "pack not ready: its randomness isn't in yet (Chainlink VRF answers within a minute, or the reveal block is still ahead); try again shortly"
+        );
         vm.startBroadcast();
-        ids = PackSale(addr("PackSale")).open(packId);
+        ids = sale.open(packId);
         vm.stopBroadcast();
         for (uint256 i; i < 5; ++i) {
             console2.log("card", ids[i]);

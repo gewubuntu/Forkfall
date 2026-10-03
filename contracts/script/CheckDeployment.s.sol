@@ -65,6 +65,13 @@ contract CheckDeployment is ForkfallScript {
         check(packs.tokenPrice(addr("TestUSDC")) > 0, "pack tUSDC price set");
         check(StarterDecks(addr("StarterDecks")).starterList(1)[0] != 0, "starter lists readable");
 
+        (address coordinator,, uint256 subId,,,) = packs.vrf();
+        if (coordinator == address(0)) {
+            console2.log("  [note] pack randomness: commit/blockhash (Chainlink VRF required before mainnet)");
+        } else {
+            console2.log("  [ok]   pack randomness: Chainlink VRF, coordinator", coordinator);
+            if (block.chainid != 31337) check(subId != 0, "VRF subscription id set");
+        }
         console2.log("season", ms.currentSeason());
         console2.log("pack price (wei)", packs.ethPrice());
         console2.log("referee", referee);

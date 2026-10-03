@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { COLLECTIBLE } from '@forkfall/engine';
-import { agentLeagueAbi, cardRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, type MatchResult } from '@forkfall/sdk';
+import { agentLeagueAbi, cardRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, vrfCoordinatorMockAbi, type MatchResult } from '@forkfall/sdk';
 import {
   BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, parseAbi,
   type Address, type Hex, type LocalAccount, type PublicClient,
@@ -186,6 +186,21 @@ function writer(chain: Chain, account: LocalAccount) {
 }
 
 const forContract = (r: MatchResult) => ({ ...r, mode: Number(r.mode), season: Number(r.season), turns: Number(r.turns) });
+
+/**
+ * Local Anvil only: answers the mock VRF coordinator's queued requests, as Chainlink's nodes do on real networks.
+ * Returns null anywhere else (no VRFCoordinatorMock in the address book).
+ */
+export function devVrfFulfiller(chain: Chain, account: LocalAccount): (() => Promise<Hex | null>) | null {
+  const mock = chain.book?.VRFCoordinatorMock as Address | undefined;
+  if (!chain.client || !mock || !chain.rpcUrl || chain.chainId !== ANVIL) return null;
+  const client = chain.client;
+  const send = writer(chain, account);
+  return async () => {
+    const pending = await client.readContract({ address: mock, abi: vrfCoordinatorMockAbi, functionName: 'pending' });
+    return pending > 0n ? send(mock, vrfCoordinatorMockAbi, 'fulfillPending', []) : null;
+  };
+}
 
 /** Daily quest payouts through QuestRewards (the referee holds REWARDER_ROLE). */
 export interface QuestRewarder {

@@ -30,6 +30,16 @@ export const packSaleAbi = parseAbi([
   'function FOIL_BPS() view returns (uint256)',
   'function roll(bytes32 rand, address opener, bool forceLegendary) view returns (uint256[5] ids)',
   'function packs(uint256 id) view returns (address owner, uint64 revealBlock, bool opened, uint8 kind)',
+  'function packReady(uint256 packId) view returns (bool)',
+  'function vrfRequestOf(uint256 packId) view returns (uint256)',
+  'function vrfWordOf(uint256 packId) view returns (uint256)',
+  'function retryRandomness(uint256 packId)',
+  'function VRF_RETRY_BLOCKS() view returns (uint256)',
+  'function vrf() view returns (address coordinator, bytes32 keyHash, uint256 subId, uint16 confirmations, uint32 callbackGasPerPack, bool nativePayment)',
+  'event RandomnessRequested(uint256 indexed requestId, uint256 firstPackId, uint256 count)',
+  'event PacksSeeded(uint256 indexed requestId, uint256 firstPackId, uint256 count)',
+  'error RandomnessPending(uint256 packId)',
+  'error NotRetryable(uint256 packId)',
   'function buyWithEthOf(uint8 kind, uint256 count) payable returns (uint256 firstId)',
   'function buyWithTokenOf(address token, uint8 kind, uint256 count) returns (uint256 firstId)',
   'function quoteEth(uint256 count) view returns (uint256)',
@@ -64,6 +74,12 @@ export const craftingAbi = parseAbi([
   'error FoilNotCraftable(uint256 id)',
   'error NotEnoughScrap(uint256 have, uint256 need)',
   'error ERC1155InsufficientBalance(address sender, uint256 balance, uint256 needed, uint256 tokenId)',
+]);
+
+/** Local-only stand-in for the Chainlink VRF coordinator (Anvil); the referee's dev loop fulfills it. */
+export const vrfCoordinatorMockAbi = parseAbi([
+  'function pending() view returns (uint256)',
+  'function fulfillPending()',
 ]);
 
 /** Daily quest payouts (Scrap and free packs), paid by the referee. */

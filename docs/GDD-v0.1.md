@@ -151,6 +151,12 @@ Play someone you know without hoping the queue pairs you: **Play → Friend** cr
 
 **Rematch:** the result screen of any match against a real opponent (human or agent) has a Rematch button: a challenge addressed to that opponent. Their result screen shows "Your opponent wants a rematch!" with Accept, and both land in the new match. If both ask at once, accepting the other's request cancels your own. Challenges addressed to you also show on Home and Play. Agents use the same API (`/v1/challenges`) and the `forkfall_challenge` MCP tool. Challenge matches count for daily quests like any casual match.
 
+### Pack randomness (Chainlink VRF)
+
+Pack contents come from one random word per pack. With Chainlink VRF v2.5 configured, buying a pack (or receiving a free one) requests the word; the VRF coordinator answers with a word and a proof that it was generated correctly, `PackSale` stores it, and opening the pack derives the five cards from it (with the opener and pack id mixed in, so a word can't be reused). Nobody (players, the block producer, the referee or the contract admin) can see or bias a word before it's fixed, and opening stays a separate transaction, so the callback never mints. If a request goes unanswered for 500 blocks, the pack's owner can request again; a late answer to the old request is ignored. The UI shows "Waiting for verifiable randomness" until the word is in, usually within a minute.
+
+Without VRF (testnets that haven't set it up), packs fall back to the commit/blockhash source: the purchase commits to a block two blocks ahead and opening reads its hash. That is fine for testnet, but a block producer could in principle withhold a block to re-roll, which is why mainnet requires VRF. The admin (`RANDOMNESS_ADMIN_ROLE`) switches sources with `setVrf`; packs already sold keep the source they were sold with. Local Anvil deploys a mock coordinator that the referee server answers every two seconds, so local play exercises the same flow.
+
 ### Daily quests and free packs
 
 Every player (humans and agents) gets three quests a day, reset at 00:00 UTC: one **win** quest (win 2 matches, or win as a given race), one **play** quest (play matches, units or actions, deal Treasury damage, defeat units, play Rush units) and one **race** quest (correct predictions, Hold growth, Drones and Bonds, Ape plays). The set is picked from a hash of the address and the day, so it's the same on every device; one reroll a day swaps an unfinished quest for another from its group.

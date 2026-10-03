@@ -6,6 +6,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CardRegistry} from "./CardRegistry.sol";
+import {IVRFConsumer, IVRFCoordinatorV2Plus, VRFV2PlusClient} from "./vrf/VRFV2Plus.sol";
 import {TestnetOnly} from "./TestnetOnly.sol";
 
 /// @title PackSale
@@ -14,12 +15,18 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 ///         Fairness: a pity timer guarantees a Legendary within `PITY_PACKS` packs per wallet, and duplicate
 ///         protection skips cards the opener already holds at the deck limit (2, or 1 for a Legendary) until
 ///         every card of that rarity is at the limit. Each card is a cosmetic foil ~1 in 15 (same card in play).
-/// @dev Testnet randomness is two-step commit/blockhash: buying commits to a future block, opening
-///      reads that block's hash. Good enough for testnet; the GDD requires VRF before mainnet beta.
-contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
+/// @dev Randomness, per pack, from one of two sources:
+///      - Chainlink VRF v2.5 (once `setVrf` configures a coordinator): buying requests one verifiable random word
+///        per pack; the coordinator's callback stores it, and `open` reads it. No one, including the block
+///        producer or this contract's admin, can see or bias the word before it's fixed. Required for mainnet.
+///      - Otherwise a two-step commit/blockhash: buying commits to a future block, opening reads that block's
+///        hash. Fine for testnets; a block producer could in principle withhold a block to re-roll.
+contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     using SafeERC20 for IERC20;
 
     bytes32 public constant PRICE_ADMIN_ROLE = keccak256("PRICE_ADMIN_ROLE");
+    /// @notice Configures the randomness source (Chainlink VRF coordinator, key hash, subscription).
+    bytes32 public constant RANDOMNESS_ADMIN_ROLE = keccak256("RANDOMNESS_ADMIN_ROLE");
     /// @notice May hand out free packs (quest rewards): the QuestRewards contract.
     bytes32 public constant PACK_GRANTER_ROLE = keccak256("PACK_GRANTER_ROLE");
 
@@ -34,6 +41,32 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
     uint256 public constant BUNDLE10_BPS = 8_500;
     /// @notice Pack kinds: 0 = Set 1 booster (every card); others are themed boosters with their own pool.
     uint8 public constant KIND_SET1 = 0;
+    /// @notice A VRF request unanswered for this many blocks may be re-requested by the pack's owner.
+    uint256 public constant VRF_RETRY_BLOCKS = 500;
+
+    /// @notice Chainlink VRF v2.5 settings; `vrfCoordinator == 0` means the commit/blockhash source.
+    struct VrfConfig {
+        address coordinator;
+        bytes32 keyHash;
+        uint256 subId;
+        uint16 confirmations;
+        uint32 callbackGasPerPack;
+        bool nativePayment;
+    }
+
+    VrfConfig public vrf;
+
+    /// @notice VRF request → the packs it seeds (`count` packs from `firstPackId`), and when it was made.
+    struct VrfRequest {
+        uint256 firstPackId;
+        uint64 count;
+        uint64 requestedAt;
+    }
+
+    mapping(uint256 => VrfRequest) public vrfRequests;
+    /// @notice Per pack: its VRF request (0 = blockhash pack) and its random word once fulfilled (0 = waiting).
+    mapping(uint256 => uint256) public vrfRequestOf;
+    mapping(uint256 => uint256) public vrfWordOf;
 
     CardRegistry public immutable cards;
     address payable public treasury;
@@ -63,6 +96,9 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
     error AlreadyOpened();
     error TooEarly(uint256 revealBlock);
     error UnknownKind(uint8 kind);
+    error RandomnessPending(uint256 packId);
+    error OnlyCoordinator(address have, address want);
+    error NotRetryable(uint256 packId);
 
     event PacksBought(address indexed buyer, uint256 firstPackId, uint256 count, address payToken, uint256 paid);
     event PacksBoughtOfKind(address indexed buyer, uint256 firstPackId, uint256 count, uint8 kind);
@@ -70,6 +106,9 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
     event PackOpened(uint256 indexed packId, address indexed owner, uint256[5] cardIds);
     event PackRecommitted(uint256 indexed packId, uint64 revealBlock);
     event PacksGranted(address indexed to, uint256 firstPackId, uint256 count, uint8 kind);
+    event VrfSet(address coordinator, bytes32 keyHash, uint256 subId);
+    event RandomnessRequested(uint256 indexed requestId, uint256 firstPackId, uint256 count);
+    event PacksSeeded(uint256 indexed requestId, uint256 firstPackId, uint256 count);
 
     constructor(CardRegistry cards_, address admin, address payable treasury_, uint256 ethPrice_) {
         cards = cards_;
@@ -77,6 +116,14 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
         ethPrice = ethPrice_;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(PRICE_ADMIN_ROLE, admin);
+        _grantRole(RANDOMNESS_ADMIN_ROLE, admin);
+    }
+
+    /// @notice Switch packs bought from now on to Chainlink VRF (or back to blockhash with coordinator 0).
+    ///         The subscription must list this contract as a consumer and hold LINK (or native, if chosen).
+    function setVrf(VrfConfig calldata c) external onlyRole(RANDOMNESS_ADMIN_ROLE) {
+        vrf = c;
+        emit VrfSet(c.coordinator, c.keyHash, c.subId);
     }
 
     // ─── Admin ──────────────────────────────────────────────────
@@ -185,21 +232,86 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly {
             _packsOf[buyer].push(packs.length);
             packs.push(Pack(buyer, reveal, false, kind));
         }
+        if (vrf.coordinator != address(0)) _requestRandomness(firstId, count);
+    }
+
+    function _requestRandomness(uint256 firstId, uint256 count) internal {
+        VrfConfig memory c = vrf;
+        uint256 requestId = IVRFCoordinatorV2Plus(c.coordinator)
+            .requestRandomWords(
+                VRFV2PlusClient.RandomWordsRequest({
+                    keyHash: c.keyHash,
+                    subId: c.subId,
+                    requestConfirmations: c.confirmations,
+                    callbackGasLimit: uint32(40_000 + uint256(c.callbackGasPerPack) * count),
+                    numWords: uint32(count),
+                    extraArgs: VRFV2PlusClient._argsToBytes(
+                        VRFV2PlusClient.ExtraArgsV1({nativePayment: c.nativePayment})
+                    )
+                })
+            );
+        vrfRequests[requestId] = VrfRequest(firstId, uint64(count), uint64(block.number));
+        for (uint256 i; i < count; ++i) {
+            vrfRequestOf[firstId + i] = requestId;
+        }
+        emit RandomnessRequested(requestId, firstId, count);
+    }
+
+    /// @notice Chainlink VRF callback: stores one word per pack. Opening happens later, in `open`.
+    ///         Only the coordinator that served the request; a stale request (re-requested) is ignored.
+    function rawFulfillRandomWords(uint256 requestId, uint256[] calldata words) external {
+        if (msg.sender != vrf.coordinator) revert OnlyCoordinator(msg.sender, vrf.coordinator);
+        VrfRequest memory r = vrfRequests[requestId];
+        if (r.count == 0 || words.length < r.count) return;
+        for (uint256 i; i < r.count; ++i) {
+            uint256 packId = r.firstPackId + i;
+            if (vrfRequestOf[packId] != requestId || vrfWordOf[packId] != 0) continue;
+            vrfWordOf[packId] = words[i] == 0 ? 1 : words[i];
+        }
+        delete vrfRequests[requestId];
+        emit PacksSeeded(requestId, r.firstPackId, r.count);
+    }
+
+    /// @notice If a pack's VRF request went unanswered for `VRF_RETRY_BLOCKS`, its owner can request again.
+    function retryRandomness(uint256 packId) external nonReentrant {
+        Pack storage p = packs[packId];
+        if (p.owner != msg.sender) revert NotOwner();
+        uint256 req = vrfRequestOf[packId];
+        if (req == 0 || vrfWordOf[packId] != 0 || p.opened || vrf.coordinator == address(0)) {
+            revert NotRetryable(packId);
+        }
+        if (block.number < vrfRequests[req].requestedAt + VRF_RETRY_BLOCKS) revert NotRetryable(packId);
+        _requestRandomness(packId, 1);
+    }
+
+    /// @notice Whether `open` would succeed now (randomness available).
+    function packReady(uint256 packId) public view returns (bool) {
+        Pack storage p = packs[packId];
+        if (p.opened) return false;
+        if (vrfRequestOf[packId] != 0) return vrfWordOf[packId] != 0;
+        return block.number > p.revealBlock;
     }
 
     // ─── Open ───────────────────────────────────────────────────
-    /// @notice Open a pack once its reveal block is mined. If the blockhash aged out (>256 blocks),
-    ///         the pack is re-committed to a new future block instead of opening.
+    /// @notice Open a pack once its randomness is in: its VRF word, or its reveal block's hash. If a blockhash aged
+    ///         out (>256 blocks), the pack is re-committed to a new future block instead of opening.
     function open(uint256 packId) external nonReentrant returns (uint256[5] memory ids) {
         Pack storage p = packs[packId];
         if (p.owner != msg.sender) revert NotOwner();
         if (p.opened) revert AlreadyOpened();
-        if (block.number <= p.revealBlock) revert TooEarly(p.revealBlock);
-        bytes32 bh = blockhash(p.revealBlock);
-        if (bh == bytes32(0)) {
-            p.revealBlock = uint64(block.number + REVEAL_DELAY);
-            emit PackRecommitted(packId, p.revealBlock);
-            return ids;
+        bytes32 bh;
+        if (vrfRequestOf[packId] != 0) {
+            uint256 w = vrfWordOf[packId];
+            if (w == 0) revert RandomnessPending(packId);
+            bh = bytes32(w);
+        } else {
+            if (block.number <= p.revealBlock) revert TooEarly(p.revealBlock);
+            bh = blockhash(p.revealBlock);
+            if (bh == bytes32(0)) {
+                p.revealBlock = uint64(block.number + REVEAL_DELAY);
+                emit PackRecommitted(packId, p.revealBlock);
+                return ids;
+            }
         }
         p.opened = true;
         bool pity = packsSinceLegendary[msg.sender] + 1 >= PITY_PACKS;
