@@ -1,4 +1,4 @@
-import type { Server } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 
 /**
@@ -11,7 +11,9 @@ import { WebSocketServer, type WebSocket } from 'ws';
  *   { type: 'sub', topic } / 'unsub'   topics: `match:<id>` and `lobby` (anyone), `me` (your own notices)
  *   { type: 'ping' }
  * Server → client:
- *   { type: 'hello' } · { type: 'authed', address } · { type: 'subbed', topic } · { type: 'error', message }
+ *   { type: 'hello' } · { type: 'authed', address } · { type: 'subbed', topic }
+ *   { type: 'error', message, auth?: true, topic? }   a failed auth (you're signed out of `me`) or a refused sub
+ *   { type: 'unauthed' }                     your session ended (logout or expiry): `me` notices stop
  *   { type: 'event', topic, kind, ...data }   e.g. topic 'match:0x…' kind 'update' {seq, phase};
  *                                             topic 'me' kind 'match' | 'challenge' | 'quests' | 'queue'
  */
@@ -26,9 +28,14 @@ export interface LiveBus {
 
 interface Client {
   ws: WebSocket;
+  ip: string;
+  token: string | null;
   address: string | null;
   topics: Set<string>;
   alive: boolean;
+  /** Token bucket for incoming messages. */
+  bucket: number;
+  refilledAt: number;
 }
 
 export interface LiveOptions {
@@ -38,7 +45,17 @@ export interface LiveOptions {
   maxTopics?: number;
   maxSocketsPerAddress?: number;
   heartbeatMs?: number;
+  /** Open sockets per IP (authenticated or not) and in total. */
+  maxSocketsPerIp?: number;
+  maxSockets?: number;
+  /** Incoming messages per second per socket (burst 3x); a socket that keeps flooding is closed. */
+  messagesPerSec?: number;
+  /** Take the client IP from X-Forwarded-For (only behind a proxy you control). */
+  trustProxy?: boolean;
 }
+
+/** A socket whose unsent backlog grows past this isn't reading: drop it rather than buffer for it. */
+const MAX_BUFFERED = 256 * 1024;
 
 const MATCH_TOPIC = /^match:0x[0-9a-fA-F]{64}$/;
 
@@ -50,17 +67,20 @@ export class Live implements LiveBus {
   private lobbyTimer: ReturnType<typeof setTimeout> | null = null;
   private maxTopics: number;
   private maxPerAddress: number;
+  private perAddress = new Map<string, number>();
+  private perIp = new Map<string, number>();
 
   constructor(server: Server, private opts: LiveOptions) {
     this.maxTopics = opts.maxTopics ?? 32;
     this.maxPerAddress = opts.maxSocketsPerAddress ?? 8;
     this.wss = new WebSocketServer({ server, path: opts.path ?? '/v1/live', maxPayload: 4096 });
-    this.wss.on('connection', (ws) => this.accept(ws));
+    this.wss.on('connection', (ws, req) => this.accept(ws, req));
     this.heartbeat = setInterval(() => {
       for (const c of this.clients) {
         if (!c.alive) { c.ws.terminate(); continue; }
         c.alive = false;
         c.ws.ping();
+        this.stillAuthed(c); // a session that expired drops its `me` topic even if nothing was sent
       }
     }, opts.heartbeatMs ?? 25_000);
     this.heartbeat.unref?.();
@@ -83,6 +103,11 @@ export class Live implements LiveBus {
     this.lobbyTimer.unref?.();
   }
 
+  /** A session token was revoked (logout): its sockets stop receiving `me` notices right away. */
+  revoke(token: string) {
+    for (const c of this.clients) if (c.token === token) this.deauth(c, true);
+  }
+
   close() {
     clearInterval(this.heartbeat);
     if (this.lobbyTimer) clearTimeout(this.lobbyTimer);
@@ -94,41 +119,97 @@ export class Live implements LiveBus {
     const set = this.subs.get(topic);
     if (!set?.size) return;
     const msg = JSON.stringify({ type: 'event', topic: shownAs, ...data });
-    for (const c of set) if (c.ws.readyState === c.ws.OPEN) c.ws.send(msg);
+    const personal = topic.startsWith('me:');
+    for (const c of [...set]) {
+      if (personal && !this.stillAuthed(c)) continue; // logged out or expired since it subscribed
+      this.send(c, msg);
+    }
   }
 
-  private accept(ws: WebSocket) {
-    const c: Client = { ws, address: null, topics: new Set(), alive: true };
+  private accept(ws: WebSocket, req: IncomingMessage) {
+    const fwd = this.opts.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() : '';
+    const ip = fwd || req.socket.remoteAddress || '?';
+    if (this.clients.size >= (this.opts.maxSockets ?? 10_000) || (this.perIp.get(ip) ?? 0) >= (this.opts.maxSocketsPerIp ?? 64)) {
+      ws.close(1013, 'too many live connections');
+      return;
+    }
+    const c: Client = { ws, ip, token: null, address: null, topics: new Set(), alive: true, bucket: 0, refilledAt: Date.now() };
+    c.bucket = this.rate() * 3;
     this.clients.add(c);
+    this.perIp.set(ip, (this.perIp.get(ip) ?? 0) + 1);
     ws.on('pong', () => { c.alive = true; });
     ws.on('close', () => this.drop(c));
     ws.on('error', () => this.drop(c));
     ws.on('message', (raw) => {
-      c.alive = true;
-      let m: { type?: string; token?: string; topic?: string };
-      try { m = JSON.parse(String(raw)); } catch { return this.send(c, { type: 'error', message: 'bad JSON' }); }
-      switch (m.type) {
-        case 'auth': return this.auth(c, m.token);
-        case 'sub': return this.sub(c, m.topic);
-        case 'unsub': return this.unsub(c, m.topic);
-        case 'ping': return this.send(c, { type: 'pong' });
-        default: return this.send(c, { type: 'error', message: 'unknown message type' });
+      try { this.handle(c, raw); } catch (e) {
+        // Never let one client's message take the referee down.
+        console.error('live message failed', e);
+        this.send(c, { type: 'error', message: 'bad message' });
       }
     });
     this.send(c, { type: 'hello' });
   }
 
+  private rate() { return this.opts.messagesPerSec ?? 10; }
+
+  private handle(c: Client, raw: unknown) {
+    c.alive = true;
+    const now = Date.now();
+    c.bucket = Math.min(this.rate() * 3, c.bucket + ((now - c.refilledAt) / 1000) * this.rate());
+    c.refilledAt = now;
+    if (c.bucket < 1) { c.ws.close(1008, 'too many messages'); return; }
+    c.bucket -= 1;
+    let m: unknown;
+    try { m = JSON.parse(String(raw)); } catch { return this.send(c, { type: 'error', message: 'bad JSON' }); }
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return this.send(c, { type: 'error', message: 'expected a JSON object' });
+    const { type, token, topic } = m as { type?: unknown; token?: unknown; topic?: unknown };
+    switch (type) {
+      case 'auth': return this.auth(c, token);
+      case 'sub': return this.sub(c, topic);
+      case 'unsub': return this.unsub(c, topic);
+      case 'ping': return this.send(c, { type: 'pong' });
+      default: return this.send(c, { type: 'error', message: 'unknown message type' });
+    }
+  }
+
   private auth(c: Client, token: unknown) {
     const s = typeof token === 'string' ? this.opts.authenticate(token) : null;
-    if (!s) return this.send(c, { type: 'error', message: 'unknown or expired session' });
+    if (!s) {
+      // A failed (re-)auth signs the socket out: never keep serving an old identity.
+      this.deauth(c, false);
+      return this.send(c, { type: 'error', auth: true, message: 'unknown or expired session' });
+    }
     const address = s.address.toLowerCase();
     if (c.address !== address) {
-      const mine = [...this.clients].filter((x) => x.address === address).length;
-      if (mine >= this.maxPerAddress) return this.send(c, { type: 'error', message: 'too many live connections for this wallet' });
-      if (c.address) this.unsub(c, 'me'); // re-auth as someone else: drop the old personal topic
+      if ((this.perAddress.get(address) ?? 0) >= this.maxPerAddress) {
+        this.deauth(c, false);
+        return this.send(c, { type: 'error', auth: true, message: 'too many live connections for this wallet' });
+      }
+      this.deauth(c, false); // re-auth as someone else: drop the old personal topic
       c.address = address;
+      this.perAddress.set(address, (this.perAddress.get(address) ?? 0) + 1);
     }
+    c.token = token as string;
     this.send(c, { type: 'authed', address });
+  }
+
+  /** Whether the socket's session is still valid; signs it out (and tells it) when not. */
+  private stillAuthed(c: Client): boolean {
+    if (!c.address) return false;
+    const s = c.token ? this.opts.authenticate(c.token) : null;
+    if (s && s.address.toLowerCase() === c.address) return true;
+    this.deauth(c, true);
+    return false;
+  }
+
+  private deauth(c: Client, notify: boolean) {
+    if (!c.address) return;
+    this.unsub(c, 'me');
+    const n = (this.perAddress.get(c.address) ?? 1) - 1;
+    if (n > 0) this.perAddress.set(c.address, n); else this.perAddress.delete(c.address);
+    c.address = null;
+    c.token = null;
+    if (notify) this.send(c, { type: 'unauthed' });
   }
 
   private topicKey(c: Client, topic: unknown): string | null {
@@ -140,8 +221,9 @@ export class Live implements LiveBus {
 
   private sub(c: Client, topic: unknown) {
     const key = this.topicKey(c, topic);
-    if (!key) return this.send(c, { type: 'error', message: topic === 'me' ? 'authenticate first' : 'unknown topic' });
-    if (!c.topics.has(key) && c.topics.size >= this.maxTopics) return this.send(c, { type: 'error', message: 'too many subscriptions' });
+    const t = typeof topic === 'string' ? topic.slice(0, 80) : undefined;
+    if (!key) return this.send(c, { type: 'error', topic: t, message: topic === 'me' ? 'authenticate first' : 'unknown topic' });
+    if (!c.topics.has(key) && c.topics.size >= this.maxTopics) return this.send(c, { type: 'error', topic: t, message: 'too many subscriptions' });
     c.topics.add(key);
     (this.subs.get(key) ?? this.subs.set(key, new Set()).get(key)!).add(c);
     this.send(c, { type: 'subbed', topic });
@@ -158,6 +240,9 @@ export class Live implements LiveBus {
 
   private drop(c: Client) {
     if (!this.clients.delete(c)) return;
+    this.deauth(c, false);
+    const n = (this.perIp.get(c.ip) ?? 1) - 1;
+    if (n > 0) this.perIp.set(c.ip, n); else this.perIp.delete(c.ip);
     for (const key of c.topics) {
       const set = this.subs.get(key);
       set?.delete(c);
@@ -165,7 +250,9 @@ export class Live implements LiveBus {
     }
   }
 
-  private send(c: Client, msg: Record<string, unknown>) {
-    if (c.ws.readyState === c.ws.OPEN) c.ws.send(JSON.stringify(msg));
+  private send(c: Client, msg: Record<string, unknown> | string) {
+    if (c.ws.readyState !== c.ws.OPEN) return;
+    if (c.ws.bufferedAmount > MAX_BUFFERED) { c.ws.terminate(); return; } // not reading: don't buffer for it
+    c.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
 }

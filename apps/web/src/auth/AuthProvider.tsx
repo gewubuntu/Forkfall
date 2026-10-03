@@ -81,7 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signResult: (td) => signTypedRef.current(td as never),
   }), []);
 
-  const reset = useCallback(() => { setClient(null); setMe(null); setExpiresAt(null); }, []);
+  // Dropping a client (wallet/chain switch, expiry) closes its live socket, so it can't linger signed in as the old wallet.
+  const reset = useCallback(() => {
+    setClient((old) => { old?.closeLive(); return null; });
+    setMe(null); setExpiresAt(null);
+  }, []);
 
   // Resume a stored session silently (no wallet popup) whenever the wallet/chain changes.
   useEffect(() => {

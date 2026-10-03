@@ -72,7 +72,7 @@ export function ChallengeWaiting({ code, onDone, rematch = false }: { code: stri
       setC(x);
       if (x.matchId && (x.matchPhase === 'reveal' || x.matchPhase === 'active')) { clearWaiting(code); navigate(`/match/${x.matchId}`); return; }
       if (x.state !== 'open') clearWaiting(code);
-    } catch (e) { setErr(friendlyError(e)); }
+    } catch (e) { if (mounted.current) setErr(friendlyError(e)); }
   }, [client, code, navigate]);
   const up = useLiveTopic(client ? 'me' : null, (e) => {
     if ((e.kind === 'challenge' && e.code === code) || e.kind === 'match' || e.kind === 'reconnect') poll();

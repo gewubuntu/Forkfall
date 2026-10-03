@@ -504,10 +504,14 @@ function Rematch({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
   const [theirs, setTheirs] = useState<string | null>(null);
   const race = s.players[seat].race;
 
+  // The match this result screen shows right now: a slow answer for a previous one must not land here.
+  const current = useRef(s.matchId);
+  current.current = s.matchId;
   const poll = useCallback(async () => {
     if (!client) return;
     try {
       const r = await client.challenges();
+      if (current.current !== s.matchId) return;
       setTheirs(r.incoming.find((c) => c.rematchOf === s.matchId)?.code ?? null);
       // A rematch still open, or accepted and waiting for you to join. Once that match is under way (or if you
       // come Back here later) there's nothing to wait for.

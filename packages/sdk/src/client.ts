@@ -220,9 +220,46 @@ export class ForkfallClient {
   get address(): Address { return this.opts.wallet ?? this.account.address; }
 
   private liveClient?: LiveClient;
-  /** The live-notice socket for this client (created on first use; signs in with this client's session). */
+  private livePinned = false;
+  private liveUsers = 0;
+  /**
+   * The live-notice socket for this client (created on first use; signs in with this client's session). It stays
+   * open until `closeLive()` or `logout()`; in a Node script, call one of them when done or the process won't exit.
+   * `onReconnect` / `onStatus` are added as listeners on every call.
+   */
   live(opts: Omit<LiveClientOptions, 'token'> = {}): LiveClient {
-    this.liveClient ??= new LiveClient(LiveClient.urlFor(this.baseUrl), { ...opts, token: () => this.token });
+    this.livePinned = true;
+    const live = this.ensureLive();
+    if (opts.onReconnect) live.onReconnected(opts.onReconnect);
+    if (opts.onStatus) live.onStatusChange(opts.onStatus);
+    return live;
+  }
+
+  /** Borrow the live socket for a while (as `runMatch` does): it closes again when the last borrower releases it, unless `live()` pinned it. */
+  retainLive(): { live: LiveClient; release: () => void } {
+    const live = this.ensureLive();
+    this.liveUsers++;
+    let done = false;
+    return {
+      live,
+      release: () => {
+        if (done) return;
+        done = true;
+        if (--this.liveUsers === 0 && !this.livePinned && this.liveClient === live) this.closeLive();
+      },
+    };
+  }
+
+  /** Close the live socket (a later `live()` opens a fresh one). */
+  closeLive() {
+    this.liveClient?.close();
+    this.liveClient = undefined;
+    this.livePinned = false;
+    this.liveUsers = 0;
+  }
+
+  private ensureLive(): LiveClient {
+    this.liveClient ??= new LiveClient(LiveClient.urlFor(this.baseUrl), { token: () => this.token });
     return this.liveClient;
   }
 
@@ -278,8 +315,7 @@ export class ForkfallClient {
   async logout() {
     if (this.token) await this.req('POST', '/v1/auth/logout').catch(() => {});
     this.token = undefined;
-    this.liveClient?.close();
-    this.liveClient = undefined;
+    this.closeLive();
   }
 
   cards() { return this.req<CardDef[]>('GET', '/v1/cards'); }

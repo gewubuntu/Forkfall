@@ -158,7 +158,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       }
       case 'POST /auth/logout': {
         const h = req.headers.authorization;
-        if (h?.startsWith('Bearer ')) sessions.delete(h.slice(7));
+        if (h?.startsWith('Bearer ')) { sessions.delete(h.slice(7)); live.revoke(h.slice(7)); }
         return { ok: true };
       }
       case 'POST /queue': { const s = need(session); return lobby.enqueue(s.address, body, s.agent); }
@@ -263,7 +263,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
 
   const server = createServer(handler);
   // Live notices (WebSocket on /v1/live): the lobby pushes "something changed" so clients don't poll.
-  const live = new Live(server, { authenticate: (token) => sessionFor(token) });
+  const live = new Live(server, { authenticate: (token) => sessionFor(token), trustProxy: process.env.TRUST_PROXY === '1' });
   lobby.bus = live;
   server.on('close', () => live.close());
   return { handler, server, live };

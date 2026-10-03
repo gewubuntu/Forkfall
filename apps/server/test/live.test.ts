@@ -1,4 +1,4 @@
-import { ForkfallClient, runMatch } from '@forkfall/sdk';
+import { ForkfallClient, LiveClient, runMatch } from '@forkfall/sdk';
 import type { AddressInfo } from 'node:net';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -109,4 +109,82 @@ describe('live notices', () => {
     await ninth.waitFor((m) => m.type === 'error' && /too many live connections/.test(String(m.message)));
     for (const s of [...socks, ninth]) s.ws.close();
   });
+
+  it('survives malformed messages (one bad frame must never take the referee down)', async () => {
+    const s = await socket();
+    for (const raw of ['null', '1', '"x"', '[]', '{"type":null}', '{"type":"sub","topic":{}}', '{"type":"auth","token":5}', 'not json']) s.ws.send(raw);
+    s.send({ type: 'ping' });
+    await s.waitFor((m) => m.type === 'pong');
+    expect(s.msgs.filter((m) => m.type === 'error').length).toBeGreaterThanOrEqual(7);
+    const res = await fetch(`${url}/v1/config`);
+    expect(res.ok).toBe(true);
+    s.ws.close();
+  });
+
+  it('logout stops personal notices right away', async () => {
+    const a = await player(); const b = await player();
+    const s = await socket();
+    s.send({ type: 'auth', token: tokenOf(a) });
+    await s.waitFor((m) => m.type === 'authed');
+    s.send({ type: 'sub', topic: 'me' });
+    await s.waitFor((m) => m.type === 'subbed');
+    // The socket's holder is not the client that logs out (e.g. a leaked token): the server must still cut it off.
+    const holder = new ForkfallClient(url, a.account);
+    (holder as unknown as { token: string }).token = tokenOf(a);
+    await holder.logout();
+    await s.waitFor((m) => m.type === 'unauthed');
+    await b.createChallenge({ race: 'agents', to: a.address });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(s.msgs.filter((m) => m.type === 'event')).toEqual([]);
+    // Re-auth with the dead token fails and leaves the socket signed out.
+    s.send({ type: 'auth', token: tokenOf(a) });
+    await s.waitFor((m) => m.type === 'error' && m.auth === true);
+    s.send({ type: 'sub', topic: 'me' });
+    await s.waitFor((m) => m.type === 'error' && m.message === 'authenticate first');
+    s.ws.close();
+  });
+
+  it('closes a socket that floods messages', async () => {
+    const s = await socket();
+    const closed = new Promise<number>((r) => s.ws.addEventListener('close', (e) => r(e.code)));
+    for (let i = 0; i < 200; i++) s.send({ type: 'ping' });
+    expect(await closed).toBe(1008);
+  });
+
+  it('LiveClient reports `me` as up only while the session is accepted', async () => {
+    const a = await player();
+    let token: string | undefined = 'bogus';
+    const live = new LiveClient(wsUrl, { token: () => token });
+    const seen: string[] = [];
+    live.on('me', (e) => seen.push(e.kind));
+    live.on('lobby', () => {});
+    const until = async (f: () => boolean) => { const end = Date.now() + 3000; while (!f()) { if (Date.now() > end) throw new Error('timeout'); await new Promise((r) => setTimeout(r, 10)); } };
+    await until(() => live.connected && live.lastError !== null);
+    expect(live.isUp('lobby')).toBe(true);
+    expect(live.isUp('me')).toBe(false); // bad token: callers keep polling fast
+    token = tokenOf(a);
+    live.reauth();
+    await until(() => live.isUp('me'));
+    const b = await player();
+    await b.createChallenge({ race: 'agents', to: a.address });
+    await until(() => seen.includes('challenge'));
+    live.close();
+    expect(live.connected).toBe(false);
+    expect(live.isUp('lobby')).toBe(false);
+  });
+
+  it('runMatch closes the socket it opened, so scripts can exit', async () => {
+    const settle = async (f: () => boolean) => { const end = Date.now() + 3000; while (!f() && Date.now() < end) await new Promise((r) => setTimeout(r, 10)); };
+    await settle(() => api.live.size === 0); // sockets from earlier tests finish closing
+    expect(api.live.size).toBe(0);
+    // Two players (no bot loop runs in this test server); whoever moves first concedes.
+    const a = await player(); const b = await player();
+    const id = await b.acceptChallenge((await a.createChallenge({ race: 'agents' })).code, { race: 'degens' });
+    let during = -1;
+    const decide = () => { during = api.live.size; return { type: 'concede' as const }; };
+    await Promise.all([runMatch(a, id, { pollMs: 2, decide }), runMatch(b, id, { pollMs: 2, decide })]);
+    expect(during).toBe(2);
+    await settle(() => api.live.size === 0);
+    expect(api.live.size).toBe(0);
+  }, 15_000);
 });

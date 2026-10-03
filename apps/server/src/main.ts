@@ -115,8 +115,10 @@ lobby.onChange = (m) => {
   try {
     const f = finishedMatch(m);
     if (f) {
+      const fresh = !quests.hasSeen(f.id);
       quests.record(f);
-      for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
+      // Notify once, when the match first counts (onChange also fires for every later signature/settlement step).
+      if (fresh && quests.hasSeen(f.id)) for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
     }
   } catch (e) { console.error('quest tracking failed', e); }
   try {
