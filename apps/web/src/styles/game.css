@@ -196,6 +196,7 @@
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 40; display: flex; gap: 12px; align-items: center;
   padding: 10px 14px; border-radius: var(--r); max-width: calc(100% - 32px); box-shadow: var(--shadow); }
 .toast.err { background: #2e1118; border: 1px solid #5a1d2a; color: #ffb3bf; }
+.toast.info { background: #10203a; border: 1px solid #24406b; color: #cfe2ff; }
 .toast button { background: none; border: 0; color: inherit; cursor: pointer; }
 
 .choice-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }

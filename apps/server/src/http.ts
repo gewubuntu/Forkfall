@@ -2,7 +2,7 @@ import { CARDS, type Action } from '@forkfall/engine';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { getAddress, isAddress, verifyMessage, type Address, type Hex } from 'viem';
 import { ApiError, type Lobby } from './lobby.ts';
 import { verifySessionLogin } from './auth.ts';
@@ -13,6 +13,7 @@ import type { Profiles } from './profiles.ts';
 import type { Quests } from './quests.ts';
 import { Live } from './live.ts';
 import { serveMetadata } from './metadata.ts';
+import type { StateStore } from './state.ts';
 import type { LeaguePayouts } from './league.ts';
 import type { Delegation } from '@forkfall/sdk';
 
@@ -25,18 +26,60 @@ interface Session {
   sessionKey?: Address;
   delegation?: Delegation;
   expiresAt?: number;
+  createdAt?: number;
 }
 
 const NONCE_TTL_MS = 5 * 60 * 1000;
+/** Sessions without an expiry (signature login, used by agents) are forgotten at a restart after this long. */
+const SIGNATURE_SESSION_KEEP_MS = 30 * 24 * 3600_000;
+/** Sessions are stored under a hash of their token: the file never holds a usable bearer token. */
+const tokenKey = (token: string) => createHash('sha256').update(token).digest('hex');
+
+interface SavedSessions {
+  v: 1;
+  sessions: [string, Omit<Session, 'bucket' | 'refilledAt'>][];
+}
 
 /** Same rate limit for every player, human or agent. */
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests; store?: StateStore | null } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
+  /** token hash → session. Persisted (when a store is given) so a restart doesn't sign everyone out. */
   const sessions = new Map<string, Session>();
+  const store = opts.store ?? null;
+  {
+    const saved = store?.read<SavedSessions>('sessions.json');
+    const now = Date.now();
+    for (const [k, v] of saved?.v === 1 ? saved.sessions : []) {
+      if (v.expiresAt ? v.expiresAt < now : (v.createdAt ?? 0) < now - SIGNATURE_SESSION_KEEP_MS) continue;
+      sessions.set(k, { ...v, bucket: burst, refilledAt: now });
+    }
+  }
+  const pruneSessions = () => {
+    const now = Date.now();
+    for (const [k, v] of sessions) {
+      if (v.expiresAt ? v.expiresAt < now : (v.createdAt ?? now) < now - SIGNATURE_SESSION_KEEP_MS) sessions.delete(k);
+    }
+  };
+  setInterval(pruneSessions, 3600_000).unref();
+  const saveSessions = () => {
+    pruneSessions();
+    if (!store) return;
+    try {
+      store.write('sessions.json', {
+        v: 1,
+        sessions: [...sessions].map(([k, { bucket: _b, refilledAt: _r, ...rest }]) => [k, rest]),
+      } satisfies SavedSessions);
+    } catch (e) { console.error('could not save sessions', e); }
+  };
+  const addSession = (token: string, s: Omit<Session, 'bucket' | 'refilledAt' | 'createdAt'>) => {
+    sessions.set(tokenKey(token), { ...s, bucket: burst, refilledAt: Date.now(), createdAt: Date.now() });
+    saveSessions();
+  };
+  const dropSession = (token: string) => { if (sessions.delete(tokenKey(token))) saveSessions(); };
   const nonces = new Map<string, string>();
   /** Server-issued nonces for wallet/session login: nonce → expiry. Single use. */
   const issued = new Map<string, number>();
@@ -68,8 +111,8 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
   }
 
   function sessionFor(token: string): Session | null {
-    const s = sessions.get(token);
-    if (s?.expiresAt && s.expiresAt < Date.now()) { sessions.delete(token); return null; }
+    const s = sessions.get(tokenKey(token));
+    if (s?.expiresAt && s.expiresAt < Date.now()) { dropSession(token); return null; }
     return s ?? null;
   }
 
@@ -124,7 +167,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         if (!ok) throw new ApiError(401, 'bad signature');
         nonces.delete(address);
         const token = randomBytes(24).toString('hex');
-        sessions.set(token, { address, agent: !!body.agent, bucket: burst, refilledAt: Date.now() });
+        addSession(token, { address, agent: !!body.agent });
         return { token, address };
       }
       case 'POST /auth/session': {
@@ -136,10 +179,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
         const v = await verifySessionLogin({ delegation: body.delegation, nonce, proof: body.proof, chain: lobby.opts.chain, origin });
         const token = randomBytes(24).toString('hex');
-        sessions.set(token, {
-          address: v.wallet, agent: false, bucket: burst, refilledAt: Date.now(),
-          sessionKey: v.sessionKey, delegation: v.delegation, expiresAt: v.expiresAt,
-        });
+        addSession(token, { address: v.wallet, agent: false, sessionKey: v.sessionKey, delegation: v.delegation, expiresAt: v.expiresAt });
         return { token, address: v.wallet, sessionKey: v.sessionKey, expiresAt: v.expiresAt };
       }
       case 'GET /auth/me': {
@@ -158,7 +198,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       }
       case 'POST /auth/logout': {
         const h = req.headers.authorization;
-        if (h?.startsWith('Bearer ')) { sessions.delete(h.slice(7)); live.revoke(h.slice(7)); }
+        if (h?.startsWith('Bearer ')) { dropSession(h.slice(7)); live.revoke(h.slice(7)); }
         return { ok: true };
       }
       case 'POST /queue': { const s = need(session); return lobby.enqueue(s.address, body, s.agent); }

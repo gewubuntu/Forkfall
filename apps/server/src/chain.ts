@@ -239,6 +239,8 @@ export interface LeagueOps {
   balanceOf(agent: Address): Promise<bigint>;
   operatorOf(agent: Address): Promise<Address>;
   start(matchId: Hex, a: Address, b: Address): Promise<Hex>;
+  /** Whether the league already charged this match (started on-chain). */
+  started(matchId: Hex): Promise<boolean>;
   cancel(matchId: Hex): Promise<Hex>;
   info(address?: Address | null): Promise<LeagueInfo>;
 }
@@ -271,6 +273,8 @@ export function leagueOps(chain: Chain, referee: LocalAccount): LeagueOps | null
     operatorOf: (agent) => read<Address>('operatorOf', [agent]),
     start: (matchId, a, b) => send(address, agentLeagueAbi, 'startMatch', [matchId, a, b]),
     cancel: (matchId) => send(address, agentLeagueAbi, 'cancelMatch', [matchId]),
+    // matches(id).state: 0 = None (never charged); anything else means startMatch went through.
+    started: async (matchId) => Number((await read<readonly [Address, Address, number, number, bigint]>('matches', [matchId]))[3]) !== 0,
     async info(me) {
       const week = Number(await read<number>('currentWeek'));
       const [fee, potBps, buybackBps, pot, endsAt, players] = await Promise.all([
