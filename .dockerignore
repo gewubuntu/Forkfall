@@ -1,0 +1,15 @@
+# Keep the build context small and secrets out of the image.
+.git
+**/node_modules
+**/dist
+apps/server/data
+contracts/out
+contracts/cache
+contracts/lib
+contracts/broadcast
+contracts/settlements
+**/*.log
+.env
+.env.*
+!.env.example
+deploy/.env

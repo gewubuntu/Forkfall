@@ -124,7 +124,7 @@ pnpm web:build
 pnpm server                  # reads .env: CHAIN_ID=84532, RPC, referee key
 ```
 
-On startup the server checks that the RPC is on chain 84532, that MatchSettlement is deployed, and that the referee key holds `REFEREE_ROLE`. It refuses to start otherwise. For UI work before a deployment exists, `pnpm server:offchain` runs with no on-chain checks; results from that mode cannot settle.
+On startup the server checks that the RPC is on chain 84532, that MatchSettlement is deployed, and that the referee key holds `REFEREE_ROLE`. It refuses to start otherwise. To run it on a server (Docker, automatic HTTPS, backups), follow [`deploy/README.md`](deploy/README.md). For UI work before a deployment exists, `pnpm server:offchain` runs with no on-chain checks; results from that mode cannot settle.
 
 **Robinhood Chain testnet** (chain 46630, the Brokers & Degens side) can host its own card and pack contracts with the same script:
 `forge script script/Deploy.s.sol --rpc-url robinhood_testnet --broadcast --account forkfall-deployer`.
