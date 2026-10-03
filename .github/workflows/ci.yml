@@ -38,9 +38,11 @@ jobs:
       - run: docker build -f deploy/Dockerfile -t forkfall-referee .
       - name: Smoke test (off-chain mode)
         run: |
-          docker run -d --name ff -e OFFCHAIN=1 -e CHAIN_ID=84532 -p 8787:8787 forkfall-referee
+          # Empty values, as an unfilled deploy/.env passes them: must fall back to defaults, not crash.
+          docker run -d --name ff -e OFFCHAIN=1 -e CHAIN_ID=84532 -e HOUSE_PRIVATE_KEY= -e RPC_URL= -e TURN_SECONDS= -p 8787:8787 forkfall-referee
           for i in $(seq 60); do curl -fs localhost:8787/v1/config >/dev/null && break; sleep 1; done
           curl -fs localhost:8787/v1/config | grep -q '"chainId":84532'
           curl -fs localhost:8787/ | grep -qi '<html'
           docker stop -t 15 ff
           docker logs ff 2>&1 | tee /dev/stderr | grep -q 'SIGTERM: finishing requests in flight'
+          test "$(docker inspect -f '{{.State.ExitCode}}' ff)" = 0   # exited by itself, not killed

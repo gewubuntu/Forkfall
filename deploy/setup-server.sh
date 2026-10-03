@@ -3,7 +3,10 @@
 #   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/main/deploy/setup-server.sh | bash -s -- <user>
 # or copy it over and run:  bash setup-server.sh forkfall
 # It installs Docker, a firewall, automatic security updates and swap, and creates a deploy user that logs in with
-# the same SSH keys as root. Safe to run twice.
+# the same SSH keys as root. Running it again is safe: it never overwrites keys or SSH settings it already wrote.
+#
+# Note: the deploy user is in the `docker` group, which is root-equivalent. It also gets passwordless sudo, so you can
+# turn off root login and still administer the server. Protect its SSH key like a root key.
 set -euo pipefail
 USER_NAME="${1:-forkfall}"
 [ "$(id -u)" -eq 0 ] || { echo "run as root"; exit 1; }
@@ -31,19 +34,25 @@ echo "==> Deploy user: $USER_NAME"
 if ! id "$USER_NAME" >/dev/null 2>&1; then
   adduser --disabled-password --gecos "" "$USER_NAME"
 fi
-usermod -aG docker "$USER_NAME"
-if [ -f /root/.ssh/authorized_keys ]; then
+usermod -aG docker,sudo "$USER_NAME"
+echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/90-$USER_NAME"
+chmod 440 "/etc/sudoers.d/90-$USER_NAME"
+visudo -cf "/etc/sudoers.d/90-$USER_NAME" >/dev/null
+# Copy root's keys only the first time: never overwrite keys added for the deploy user since.
+if [ -f /root/.ssh/authorized_keys ] && [ ! -s "/home/$USER_NAME/.ssh/authorized_keys" ]; then
   install -d -m 700 -o "$USER_NAME" -g "$USER_NAME" "/home/$USER_NAME/.ssh"
   install -m 600 -o "$USER_NAME" -g "$USER_NAME" /root/.ssh/authorized_keys "/home/$USER_NAME/.ssh/authorized_keys"
 fi
 
 echo "==> SSH: keys only"
+# Root login lives in its own file (11-forkfall-root.conf) so a re-run never undoes turning it off.
 if [ -s /root/.ssh/authorized_keys ]; then
   cat > /etc/ssh/sshd_config.d/10-forkfall.conf <<'CONF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
-PermitRootLogin prohibit-password
 CONF
+  [ -f /etc/ssh/sshd_config.d/11-forkfall-root.conf ] || echo 'PermitRootLogin prohibit-password' > /etc/ssh/sshd_config.d/11-forkfall-root.conf
+  sshd -t
   systemctl reload ssh || systemctl reload sshd
 else
   echo "   no SSH key for root found: leaving password login on. Add a key, then run this again."
@@ -67,4 +76,5 @@ fi
 
 echo
 echo "Done. Next, log in as the deploy user:  ssh $USER_NAME@<server>"
-echo "When that works, you can turn off root login: set 'PermitRootLogin no' in /etc/ssh/sshd_config.d/10-forkfall.conf"
+echo "When that works (and 'sudo -v' does too), turn off root login:"
+echo "  echo 'PermitRootLogin no' | sudo tee /etc/ssh/sshd_config.d/11-forkfall-root.conf && sudo systemctl reload ssh"

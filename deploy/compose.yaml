@@ -13,8 +13,8 @@ services:
     image: forkfall-referee
     env_file: .env
     environment:
-      PUBLIC_URL: https://${DOMAIN}
-      TRUST_PROXY: "1"          # Caddy appends the client IP to X-Forwarded-For
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
+      TRUST_PROXY: "1"          # Caddy sets X-Forwarded-For to the real client IP
     volumes:
       - forkfall-data:/data      # matches, running state, sessions, quests, profiles, settlements
     expose: ["8787"]             # only Caddy talks to it
@@ -33,8 +33,8 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      DOMAIN: ${DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL:-}
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data         # certificates: keep this volume

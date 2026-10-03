@@ -9,7 +9,7 @@ contracts/lib
 contracts/broadcast
 contracts/settlements
 **/*.log
-.env
-.env.*
-!.env.example
-deploy/.env
+**/.env
+**/.env.*
+!**/.env.example
+**/*.local

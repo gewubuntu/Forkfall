@@ -22,10 +22,10 @@ const env = process.env;
  *   OFFCHAIN=1           no deployment needed; signs for CHAIN_ID but skips every on-chain check (UI dev, casual play)
  * Local: CHAIN_ID=31337 (anvil), see `pnpm server:local`.
  */
-const chainId = Number(env.CHAIN_ID ?? BASE_SEPOLIA);
+const chainId = Number(env.CHAIN_ID || BASE_SEPOLIA);
 const offchain = env.OFFCHAIN === '1';
-const bookFile = env.DEPLOYMENTS_FILE ?? join(root, 'contracts/deployments', `${chainId}.json`);
-const rpcUrl = env.RPC_URL ?? DEFAULT_RPC[chainId];
+const bookFile = env.DEPLOYMENTS_FILE || join(root, 'contracts/deployments', `${chainId}.json`);
+const rpcUrl = env.RPC_URL || DEFAULT_RPC[chainId];
 
 function fail(lines: string[]): never {
   console.error(['', 'Forkfall referee cannot start:', ...lines.map((l) => `  ${l}`), ''].join('\n'));
@@ -50,14 +50,14 @@ if (!offchain && !env.HOUSE_PRIVATE_KEY && chainId !== ANVIL) {
 }
 
 const chain = offchain ? new Chain(null, undefined, chainId) : Chain.load(bookFile, rpcUrl, chainId);
-const houseKey = (env.HOUSE_PRIVATE_KEY as Hex | undefined) ?? generatePrivateKey();
+const houseKey = (env.HOUSE_PRIVATE_KEY as Hex | undefined) || generatePrivateKey(); // an empty line in .env counts as unset
 // One nonce manager for every referee write (settlement, league starts, attestations, quest payouts), so
 // concurrent transactions from the same key never collide on a nonce.
 const house = privateKeyToAccount(houseKey, { nonceManager });
-const settlementDir = env.SETTLEMENT_DIR ?? join(root, 'contracts/settlements');
-const archiveDir = env.MATCH_ARCHIVE_DIR ?? join(root, 'apps/server/data', String(chainId));
+const settlementDir = env.SETTLEMENT_DIR || join(root, 'contracts/settlements');
+const archiveDir = env.MATCH_ARCHIVE_DIR || join(root, 'apps/server/data', String(chainId));
 // Running matches, the queue, challenges and login sessions, so a restart or redeploy doesn't drop live games.
-const stateDir = env.STATE_DIR ?? join(archiveDir, 'state');
+const stateDir = env.STATE_DIR || join(archiveDir, 'state');
 const store = env.PERSIST_STATE === '0' ? null : new StateStore(stateDir);
 
 if (chain.online) {
@@ -73,13 +73,13 @@ const settler = chain.online && env.AUTO_SETTLE !== '0' ? refereeSettler(chain, 
 const league = chain.online ? leagueOps(chain, house) : null;
 
 // Player profiles: tutorial completion and equipped cosmetics (unlocks checked against on-chain balances).
-const profiles = new Profiles(env.PROFILES_FILE ?? profilesFile(root, chainId), (a) => chain.ownedCounts(a));
+const profiles = new Profiles(env.PROFILES_FILE || profilesFile(root, chainId), (a) => chain.ownedCounts(a));
 
 // Daily quests: progress from finished matches, Scrap and free-pack payouts through QuestRewards (needs testnet ETH).
 let quests: Quests;
 try {
   quests = new Quests({
-    file: env.QUESTS_FILE ?? questsFile(root, chainId),
+    file: env.QUESTS_FILE || questsFile(root, chainId),
     rewarder: chain.online ? questRewarder(chain, house) : null,
     chainId,
     periodDays: env.QUEST_PACK_DAYS ? Number(env.QUEST_PACK_DAYS) : undefined,
@@ -98,9 +98,9 @@ const lobby = new Lobby({
   house,
   settler,
   league,
-  turnSeconds: Number(env.TURN_SECONDS ?? 45),
-  bankSeconds: Number(env.BANK_SECONDS ?? 60),
-  resultGraceSeconds: Number(env.RESULT_GRACE_SECONDS ?? 600),
+  turnSeconds: Number(env.TURN_SECONDS || 45),
+  bankSeconds: Number(env.BANK_SECONDS || 60),
+  resultGraceSeconds: Number(env.RESULT_GRACE_SECONDS || 600),
   store,
 });
 
@@ -175,7 +175,7 @@ const flushLobby = (force = false) => {
 setInterval(() => { lobby.tick(); flushLobby(); }, 1000);
 const botLoop = async () => {
   try { await lobby.stepBots(); } catch (e) { console.error('bot error', e); }
-  setTimeout(botLoop, Number(env.BOT_DELAY_MS ?? 600));
+  setTimeout(botLoop, Number(env.BOT_DELAY_MS || 600));
 };
 botLoop();
 
@@ -185,7 +185,7 @@ const settleLoop = async () => {
     for (const id of r.settled) console.log(`referee settled ${id}`);
     for (const f of r.failed) console.warn(`referee could not settle ${f.matchId}: ${f.error}`);
   } catch (e) { console.error('settle loop error', e); }
-  setTimeout(settleLoop, Number(env.SETTLE_INTERVAL_MS ?? 5000));
+  setTimeout(settleLoop, Number(env.SETTLE_INTERVAL_MS || 5000));
 };
 if (settler) settleLoop();
 
@@ -196,7 +196,7 @@ const questLoop = async () => {
     for (const p of r.paid) console.log(`quest reward paid to ${p.address}: ${p.scrap ? `${p.scrap} Scrap` : `${p.packs} pack`} (${p.ref}) ${p.tx ?? ''}`);
     for (const p of r.failed) console.warn(`quest reward for ${p.address} (${p.ref}) will retry: ${p.error}`);
   } catch (e) { console.error('quest payout loop error', e); }
-  setTimeout(questLoop, Number(env.QUEST_PAY_INTERVAL_MS ?? 5000));
+  setTimeout(questLoop, Number(env.QUEST_PAY_INTERVAL_MS || 5000));
 };
 if (quests.paysOnChain) questLoop();
 
@@ -204,15 +204,15 @@ if (quests.paysOnChain) questLoop();
 const vrfFulfill = devVrfFulfiller(chain, house);
 const vrfLoop = async () => {
   try { const tx = await vrfFulfill!(); if (tx) console.log(`dev VRF: fulfilled pack randomness ${tx}`); } catch (e) { console.warn('dev VRF fulfill failed', (e as Error).message); }
-  setTimeout(vrfLoop, Number(env.DEV_VRF_INTERVAL_MS ?? 2000));
+  setTimeout(vrfLoop, Number(env.DEV_VRF_INTERVAL_MS || 2000));
 };
 if (vrfFulfill) vrfLoop();
 
 const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
-const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
-const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)), store });
+const rewards = new Rewards(env.REWARDS_DIR || rewardsDir(root, chain.chainId));
+const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR || leagueDir(root, chain.chainId)), store });
 
 // Stop cleanly on a redeploy: stop taking new connections, let requests already in flight finish (a move being
 // verified is applied and answered), then save the queue and challenges and exit. Matches and sessions are saved
@@ -234,7 +234,7 @@ for (const sig of ['SIGTERM', 'SIGINT'] as const) {
   });
 }
 
-const port = Number(env.PORT ?? 8787);
+const port = Number(env.PORT || 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);
   const name = chain.chainId === BASE_SEPOLIA ? 'Base Sepolia' : chain.chainId === ANVIL ? 'local Anvil' : `chain ${chain.chainId}`;

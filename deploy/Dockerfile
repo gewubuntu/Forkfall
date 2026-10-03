@@ -13,6 +13,8 @@ ARG VITE_BASE_SEPOLIA_RPC_URL=""
 ARG VITE_WALLETCONNECT_PROJECT_ID=""
 ARG VITE_ROBINHOOD_TESTNET_RPC_URL=""
 RUN pnpm web:build
+# Readable by the runtime user whatever the checkout's umask was (the runtime copy stays root-owned).
+RUN chmod -R a+rX,go-w /app
 
 FROM base AS runtime
 ENV NODE_ENV=production \
@@ -24,7 +26,8 @@ ENV NODE_ENV=production \
     SETTLEMENT_DIR=/data/settlements \
     REWARDS_DIR=/data/rewards \
     LEAGUE_DIR=/data/league
-COPY --from=build --chown=node:node /app /app
+# The code stays root-owned (read-only for the server); only /data is writable.
+COPY --from=build /app /app
 RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME /data

@@ -41,10 +41,12 @@ ssh root@<server-ip> 'bash setup-server.sh forkfall'
 
 The script:
 - installs Docker, `ufw` (only SSH, HTTP and HTTPS open), `fail2ban`, automatic security updates and 2 GB of swap;
-- creates the `forkfall` user with your SSH key;
+- creates the `forkfall` user with your SSH key and passwordless `sudo`;
 - turns off SSH password login.
 
-Check that `ssh forkfall@<server-ip>` works, then you can also turn off root login (the script prints how).
+Check that `ssh forkfall@<server-ip>` and `sudo -v` work, then turn off root login (the script prints the command).
+
+The `forkfall` user can run Docker, which is the same as root. Guard its SSH key like a root key.
 
 ## 4. Configure
 
@@ -118,6 +120,17 @@ docker compose up -d
 | Restart | `docker compose restart referee` (running matches resume) |
 | Stop | `docker compose down` (data and certificates stay in their volumes) |
 | Shell in the container | `docker compose exec referee sh` |
-| Publish season rewards | `docker compose exec referee pnpm rewards:publish` (with the variables the main README lists) |
+| Publish season rewards | See below |
+
+**Publishing season rewards or league weeks** needs the admin key. Pass it without leaving it in your shell history:
+
+```bash
+read -rs ADMIN_KEY   # paste the key, press Enter (nothing is shown)
+docker compose exec -e REWARDS_ADMIN_PRIVATE_KEY="$ADMIN_KEY" -e SEASON=1 -e POOL=1000 referee pnpm rewards:publish
+docker compose exec -e REWARDS_ADMIN_PRIVATE_KEY="$ADMIN_KEY" -e WEEK=1 referee pnpm league:publish
+unset ADMIN_KEY
+```
+
+Or run them from your own machine (main README) and copy the JSON they write into the volume.
 
 **Watch the referee key's ETH balance.** Settlements, quest payouts and league starts all spend gas from it.
