@@ -54,12 +54,14 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
   const matchRef = useRef(matchId);
   matchRef.current = matchId;
 
-  const pullEvents = useCallback(async () => {
+  const pullEvents = useCallback(async (): Promise<void> => {
     if (!client) return;
     const from = cursor.current;
     const r = await client.events(matchId, from);
+    if (matchId !== matchRef.current) return;
     // Two overlapping fetches from the same cursor: only the first to land counts, so nothing is logged twice.
-    if (matchId !== matchRef.current || cursor.current !== from) return;
+    // If this one saw further than the one that won, fetch the rest from where that one stopped.
+    if (cursor.current !== from) { if (r.next > cursor.current) await pullEvents(); return; }
     cursor.current = r.next;
     ingest(r.events);
   }, [client, matchId, ingest]);

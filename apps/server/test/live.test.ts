@@ -1,5 +1,7 @@
 import { ForkfallClient, LiveClient, runMatch } from '@forkfall/sdk';
-import type { AddressInfo } from 'node:net';
+import { connect, type AddressInfo } from 'node:net';
+import { createServer } from 'node:http';
+import { Live } from '../src/live.ts';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Chain } from '../src/chain.ts';
@@ -187,4 +189,38 @@ describe('live notices', () => {
     await settle(() => api.live.size === 0);
     expect(api.live.size).toBe(0);
   }, 15_000);
+
+  it('a socket refused at the cap that sends a bad frame does not crash the server', async () => {
+    const srv = createServer();
+    const live = new Live(srv, { authenticate: () => null, maxSocketsPerIp: 1 });
+    await new Promise<void>((r) => srv.listen(0, r));
+    const port = (srv.address() as AddressInfo).port;
+    const first = new WebSocket(`ws://127.0.0.1:${port}/v1/live`);
+    await new Promise((r) => first.addEventListener('open', r));
+    // Second socket from the same IP: refused. Send a frame with RSV2/RSV3 set before the close lands.
+    const raw = connect(port, '127.0.0.1');
+    await new Promise((r) => raw.on('connect', r));
+    raw.write('GET /v1/live HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+      'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n');
+    await new Promise((r) => raw.once('data', r)); // 101 Switching Protocols
+    raw.write(Buffer.from([0xb1, 0x80, 0, 0, 0, 0])); // FIN + RSV2 + RSV3, text, masked, empty
+    await new Promise((r) => setTimeout(r, 200));
+    // Still alive: a new socket on the original connection's server answers.
+    const ok = await fetch(`${url}/v1/config`);
+    expect(ok.ok).toBe(true);
+    expect(first.readyState).toBe(WebSocket.OPEN);
+    raw.destroy(); first.close(); live.close(); srv.close();
+  });
+
+  it('a closeLive() between borrows never leaves the next socket open', async () => {
+    const a = await player();
+    const x = a.retainLive();
+    a.closeLive(); // e.g. logout while a match runs
+    const y = a.retainLive();
+    expect(y.live).not.toBe(x.live);
+    x.release(); // the old borrow must not count against the new socket
+    expect((a as unknown as { liveClient?: unknown }).liveClient).toBe(y.live);
+    y.release();
+    expect((a as unknown as { liveClient?: unknown }).liveClient).toBeUndefined();
+  });
 });

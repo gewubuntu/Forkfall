@@ -28,6 +28,8 @@ export interface ClientOptions {
   wallet?: Address;
   /** How the wallet signs results; defaults to `account`. */
   signResult?: ResultSigner;
+  /** Abort an API request that takes longer than this (default 20 s), so a stalled connection can't hang a caller. */
+  timeoutMs?: number;
 }
 
 export interface Me {
@@ -221,7 +223,8 @@ export class ForkfallClient {
 
   private liveClient?: LiveClient;
   private livePinned = false;
-  private liveUsers = 0;
+  /** Borrowers per socket instance, so a closeLive() in between can't skew the next socket's count. */
+  private liveUsers = new WeakMap<LiveClient, number>();
   /**
    * The live-notice socket for this client (created on first use; signs in with this client's session). It stays
    * open until `closeLive()` or `logout()`; in a Node script, call one of them when done or the process won't exit.
@@ -238,24 +241,25 @@ export class ForkfallClient {
   /** Borrow the live socket for a while (as `runMatch` does): it closes again when the last borrower releases it, unless `live()` pinned it. */
   retainLive(): { live: LiveClient; release: () => void } {
     const live = this.ensureLive();
-    this.liveUsers++;
+    this.liveUsers.set(live, (this.liveUsers.get(live) ?? 0) + 1);
     let done = false;
     return {
       live,
       release: () => {
         if (done) return;
         done = true;
-        if (--this.liveUsers === 0 && !this.livePinned && this.liveClient === live) this.closeLive();
+        const n = (this.liveUsers.get(live) ?? 1) - 1;
+        this.liveUsers.set(live, n);
+        if (n === 0 && this.liveClient === live && !this.livePinned) this.closeLive();
       },
     };
   }
 
-  /** Close the live socket (a later `live()` opens a fresh one). */
+  /** Close the live socket (a later `live()` or `runMatch` opens a fresh one). */
   closeLive() {
     this.liveClient?.close();
     this.liveClient = undefined;
     this.livePinned = false;
-    this.liveUsers = 0;
   }
 
   private ensureLive(): LiveClient {
@@ -271,6 +275,7 @@ export class ForkfallClient {
         ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(this.opts.timeoutMs ?? 20_000),
     });
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};

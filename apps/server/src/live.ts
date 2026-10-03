@@ -50,7 +50,7 @@ export interface LiveOptions {
   maxSockets?: number;
   /** Incoming messages per second per socket (burst 3x); a socket that keeps flooding is closed. */
   messagesPerSec?: number;
-  /** Take the client IP from X-Forwarded-For (only behind a proxy you control). */
+  /** Take the client IP from the last X-Forwarded-For entry (only behind exactly one proxy you control). */
   trustProxy?: boolean;
 }
 
@@ -69,6 +69,7 @@ export class Live implements LiveBus {
   private maxPerAddress: number;
   private perAddress = new Map<string, number>();
   private perIp = new Map<string, number>();
+  private byWs = new WeakMap<WebSocket, Client>();
 
   constructor(server: Server, private opts: LiveOptions) {
     this.maxTopics = opts.maxTopics ?? 32;
@@ -127,7 +128,9 @@ export class Live implements LiveBus {
   }
 
   private accept(ws: WebSocket, req: IncomingMessage) {
-    const fwd = this.opts.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() : '';
+    ws.on('error', () => this.dropSocket(ws)); // first: a socket with no 'error' listener crashes the process on a bad frame
+    // Behind a proxy, the rightmost X-Forwarded-For entry is the one our proxy appended (the rest is client-supplied).
+    const fwd = this.opts.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',').at(-1)!.trim() : '';
     const ip = fwd || req.socket.remoteAddress || '?';
     if (this.clients.size >= (this.opts.maxSockets ?? 10_000) || (this.perIp.get(ip) ?? 0) >= (this.opts.maxSocketsPerIp ?? 64)) {
       ws.close(1013, 'too many live connections');
@@ -138,8 +141,8 @@ export class Live implements LiveBus {
     this.clients.add(c);
     this.perIp.set(ip, (this.perIp.get(ip) ?? 0) + 1);
     ws.on('pong', () => { c.alive = true; });
+    this.byWs.set(ws, c);
     ws.on('close', () => this.drop(c));
-    ws.on('error', () => this.drop(c));
     ws.on('message', (raw) => {
       try { this.handle(c, raw); } catch (e) {
         // Never let one client's message take the referee down.
@@ -236,6 +239,12 @@ export class Live implements LiveBus {
     const set = this.subs.get(key);
     set?.delete(c);
     if (set && !set.size) this.subs.delete(key);
+  }
+
+  private dropSocket(ws: WebSocket) {
+    const c = this.byWs.get(ws);
+    if (c) this.drop(c);
+    ws.terminate();
   }
 
   private drop(c: Client) {
