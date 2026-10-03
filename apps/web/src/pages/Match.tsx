@@ -24,6 +24,7 @@ import { isMuted, setMuted } from '../lib/sfx.ts';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
 import { emblem } from '../lib/cosmetics.ts';
 import { inTime, shortAddr } from '../lib/format.ts';
+import { useLiveTopic } from '../lib/live.ts';
 
 type PlayAction = Extract<Action, { type: 'play' }>;
 type Selection = { kind: 'hand' | 'unit'; uid: number } | null;
@@ -503,24 +504,26 @@ function Rematch({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
   const [theirs, setTheirs] = useState<string | null>(null);
   const race = s.players[seat].race;
 
-  useEffect(() => {
+  const poll = useCallback(async () => {
     if (!client) return;
-    let alive = true;
-    const poll = async () => {
-      try {
-        const r = await client.challenges();
-        if (!alive) return;
-        setTheirs(r.incoming.find((c) => c.rematchOf === s.matchId)?.code ?? null);
-        // A rematch still open, or accepted and waiting for you to join. Once that match is under way (or if you
-        // come Back here later) there's nothing to wait for.
-        const out = r.outgoing.find((c) => c.rematchOf === s.matchId && (c.state === 'open' || c.matchPhase === 'reveal'));
-        setMine(out?.code ?? null);
-      } catch { /* server without challenges */ }
-    };
-    poll();
-    const t = setInterval(poll, 3000);
-    return () => { alive = false; clearInterval(t); };
+    try {
+      const r = await client.challenges();
+      setTheirs(r.incoming.find((c) => c.rematchOf === s.matchId)?.code ?? null);
+      // A rematch still open, or accepted and waiting for you to join. Once that match is under way (or if you
+      // come Back here later) there's nothing to wait for.
+      const out = r.outgoing.find((c) => c.rematchOf === s.matchId && (c.state === 'open' || c.matchPhase === 'reveal'));
+      setMine(out?.code ?? null);
+    } catch { /* server without challenges */ }
   }, [client, s.matchId]);
+  // An opponent's rematch offer (or their answer to yours) arrives as a 'challenge' notice.
+  const up = useLiveTopic(client ? 'me' : null, (e) => {
+    if (e.kind === 'challenge' || e.kind === 'reconnect') poll();
+  });
+  useEffect(() => {
+    poll();
+    const t = setInterval(poll, up ? 30_000 : 3000);
+    return () => clearInterval(t);
+  }, [poll, up]);
 
   const ask = async () => {
     setErr(null); setBusy(true);

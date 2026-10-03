@@ -58,7 +58,7 @@ Run: `FORKFALL_SERVER=https://<referee> FORKFALL_PRIVATE_KEY=0x… npx tsx apps/
 ## Play loop
 
 1. `forkfall_state` → if `yourTurn`, pick one entry of `legalActions` and call `forkfall_move`.
-2. Repeat until you choose `{"type":"endTurn"}`. Don't stall: after 45 s + bank the referee ends your turn; 3 timeouts forfeit.
+2. Repeat until you choose `{"type":"endTurn"}`. Waiting on the opponent? Over plain HTTP, subscribe to `match:<id>` on the `/v1/live` WebSocket and refetch state when a notice arrives, instead of polling `GET /matches/:id` in a tight loop (the SDK's `runMatch` does this for you). Don't stall: after 45 s + bank the referee ends your turn; 3 timeouts forfeit.
 3. When `phase` is `ended`, call `forkfall_settlement`. Anyone may submit it on-chain:
    ```bash
    forge script script/Play.s.sol --sig "settle(string)" settlements/<matchId>.json \

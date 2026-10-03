@@ -1,5 +1,6 @@
 import type { Action, CardDef, Equipped, GameEvent, PlayerView, Race } from '@forkfall/engine';
 import { randomHex32 } from '@forkfall/engine';
+import { LiveClient, type LiveClientOptions } from './live.ts';
 import type { Hex, LocalAccount, TypedDataDomain } from 'viem';
 import {
   actionHash, commitSeed, MOVE_TYPES, RESULT_TYPES, sessionProofMessage, type Delegation, type MatchResult, type Mode,
@@ -218,6 +219,13 @@ export class ForkfallClient {
 
   get address(): Address { return this.opts.wallet ?? this.account.address; }
 
+  private liveClient?: LiveClient;
+  /** The live-notice socket for this client (created on first use; signs in with this client's session). */
+  live(opts: Omit<LiveClientOptions, 'token'> = {}): LiveClient {
+    this.liveClient ??= new LiveClient(LiveClient.urlFor(this.baseUrl), { ...opts, token: () => this.token });
+    return this.liveClient;
+  }
+
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(this.baseUrl + path, {
       method,
@@ -241,6 +249,7 @@ export class ForkfallClient {
       address: this.address, message, signature, agent: !!opts.agent,
     });
     this.token = token;
+    this.liveClient?.reauth();
     return this.config;
   }
 
@@ -260,6 +269,7 @@ export class ForkfallClient {
     const proof = await this.account.signMessage({ message: sessionProofMessage(nonce) });
     const r = await this.req<{ token: string; expiresAt: number }>('POST', '/v1/auth/session', { delegation, nonce, proof });
     this.token = r.token;
+    this.liveClient?.reauth();
     return r;
   }
 
@@ -268,6 +278,8 @@ export class ForkfallClient {
   async logout() {
     if (this.token) await this.req('POST', '/v1/auth/logout').catch(() => {});
     this.token = undefined;
+    this.liveClient?.close();
+    this.liveClient = undefined;
   }
 
   cards() { return this.req<CardDef[]>('GET', '/v1/cards'); }

@@ -2,6 +2,7 @@ import type { Action, GameEvent } from '@forkfall/engine';
 import type { ForkfallClient, MatchSnapshot } from '@forkfall/sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Hex } from 'viem';
+import { useLiveTopic } from '../lib/live.ts';
 
 export interface LogLine { id: number; text: string; event: GameEvent }
 
@@ -18,10 +19,13 @@ export interface MatchHook {
 }
 
 const POLL_MS = 700;
+/** While the live socket is up, moves arrive as pushes; this slow poll is only a safety net. */
+const SAFETY_POLL_MS = 10_000;
 
 /**
- * Live match state: polls the referee (no websockets yet), reveals the seed when the match starts,
- * submits session-key-signed moves and collects the event stream visible to this seat.
+ * Live match state: refreshes when the referee pushes a notice for this match (WebSocket), with a slow safety
+ * poll (or the old 700 ms poll while the socket is down); reveals the seed when the match starts, submits
+ * session-key-signed moves and collects the event stream visible to this seat.
  */
 export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook {
   const [snap, setSnap] = useState<MatchSnapshot | null>(null);
@@ -78,10 +82,14 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
     cursor.current = 0;
     revealed.current = false;
     setEvents([]); setSnap(null); setNotFound(false);
+  }, [matchId]);
+
+  const live = useLiveTopic(`match:${matchId.toLowerCase()}`, () => { refresh(); });
+  useEffect(() => {
     refresh();
-    const t = setInterval(refresh, POLL_MS);
+    const t = setInterval(refresh, live ? SAFETY_POLL_MS : POLL_MS);
     return () => clearInterval(t);
-  }, [refresh]);
+  }, [refresh, live]);
 
   const send = useCallback(async (a: Action) => {
     if (!client || !snap || sendingRef.current) return false;

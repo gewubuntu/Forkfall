@@ -2,11 +2,12 @@ import { emblem } from '../lib/cosmetics.ts';
 import { cosmetic } from '@forkfall/engine';
 import type { ChallengeView } from '@forkfall/sdk';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
 import { avatarSvg } from '../lib/art.ts';
+import { useLiveTopic } from '../lib/live.ts';
 import { shortAddr, timeLeft } from '../lib/format.ts';
 
 /** The challenge you're waiting on, kept per tab so a reload resumes it. */
@@ -18,10 +19,18 @@ export const saveWaiting = (code: string | null) => {
 /** Forget the saved Play challenge, but only if it's this one (a rematch never touches it). */
 const clearWaiting = (code: string) => { if (loadWaiting() === code) saveWaiting(null); };
 
-/** Your challenges and the ones addressed to you, polled every 5 s (shared by every component that asks). */
+/**
+ * Your challenges and the ones addressed to you (shared by every component that asks). Refetched when the referee
+ * pushes a challenge or match notice; polled every 5 s only while the live socket is down.
+ */
 export function useChallenges() {
   const { client, me } = useAuth();
-  return useQuery({ queryKey: ['challenges', me?.address], queryFn: () => client!.challenges(), enabled: !!client, refetchInterval: 5000, retry: false });
+  const qc = useQueryClient();
+  const key = ['challenges', me?.address];
+  const up = useLiveTopic(client ? 'me' : null, (e) => {
+    if (e.kind === 'challenge' || e.kind === 'match' || e.kind === 'reconnect') qc.invalidateQueries({ queryKey: key });
+  });
+  return useQuery({ queryKey: key, queryFn: () => client!.challenges(), enabled: !!client, refetchInterval: up ? 60_000 : 5000, retry: false });
 }
 
 export const challengeLink = (code: string) => `${location.origin}/challenge/${code}`;
@@ -42,7 +51,8 @@ export function Challenger({ c }: { c: ChallengeView }) {
 }
 
 /**
- * Your open challenge: the link to share, then straight into the match when it's accepted. Polls every 2 s.
+ * Your open challenge: the link to share, then straight into the match when it's accepted (pushed over the live
+ * socket; polls every 2 s only while it's down).
  * `rematch` changes the copy for the result screen.
  */
 export function ChallengeWaiting({ code, onDone, rematch = false }: { code: string; onDone: () => void; rematch?: boolean }) {
@@ -52,22 +62,26 @@ export function ChallengeWaiting({ code, onDone, rematch = false }: { code: stri
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  const poll = useCallback(async () => {
     if (!client) return;
-    let alive = true;
-    const poll = async () => {
-      try {
-        const x = await client.challenge(code);
-        if (!alive) return;
-        setC(x);
-        if (x.matchId && (x.matchPhase === 'reveal' || x.matchPhase === 'active')) { clearWaiting(code); navigate(`/match/${x.matchId}`); return; }
-        if (x.state !== 'open') clearWaiting(code);
-      } catch (e) { if (alive) setErr(friendlyError(e)); }
-    };
-    poll();
-    const t = setInterval(poll, 2000);
-    return () => { alive = false; clearInterval(t); };
+    try {
+      const x = await client.challenge(code);
+      if (!mounted.current) return;
+      setC(x);
+      if (x.matchId && (x.matchPhase === 'reveal' || x.matchPhase === 'active')) { clearWaiting(code); navigate(`/match/${x.matchId}`); return; }
+      if (x.state !== 'open') clearWaiting(code);
+    } catch (e) { setErr(friendlyError(e)); }
   }, [client, code, navigate]);
+  const up = useLiveTopic(client ? 'me' : null, (e) => {
+    if ((e.kind === 'challenge' && e.code === code) || e.kind === 'match' || e.kind === 'reconnect') poll();
+  });
+  useEffect(() => {
+    poll();
+    const t = setInterval(poll, up ? 30_000 : 2000);
+    return () => clearInterval(t);
+  }, [poll, up]);
 
   const link = challengeLink(code);
   const copy = async () => { await navigator.clipboard.writeText(link).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); };

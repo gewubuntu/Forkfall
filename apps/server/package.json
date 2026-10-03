@@ -11,6 +11,10 @@
     "@forkfall/engine": "workspace:*",
     "@forkfall/sdk": "workspace:*",
     "@openzeppelin/merkle-tree": "^1.0.8",
-    "viem": "^2.57.2"
+    "viem": "^2.57.2",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
   }
 }

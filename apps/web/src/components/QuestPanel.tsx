@@ -5,15 +5,21 @@ import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
 import { timeLeft } from '../lib/format.ts';
+import { useLiveTopic } from '../lib/live.ts';
 
-/** Today's quests for the signed-in player, refreshed every 30s (and on demand after a match). */
+/** Today's quests for the signed-in player: refetched when the referee pushes a quest notice, else every 30s. */
 export function useQuests() {
   const { client, me } = useAuth();
+  const qc = useQueryClient();
+  const key = ['quests', me?.address];
+  const up = useLiveTopic(client ? 'me' : null, (e) => {
+    if (e.kind === 'quests' || e.kind === 'reconnect') qc.invalidateQueries({ queryKey: key });
+  });
   return useQuery({
-    queryKey: ['quests', me?.address],
+    queryKey: key,
     queryFn: () => client!.quests(),
     enabled: !!client,
-    refetchInterval: 30_000,
+    refetchInterval: up ? 120_000 : 30_000,
     retry: false,
   });
 }
