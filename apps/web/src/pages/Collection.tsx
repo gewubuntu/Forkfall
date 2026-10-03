@@ -4,10 +4,10 @@ import {
 } from '@forkfall/engine';
 import { craftingAbi, faucetTokenAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { formatEther, formatUnits, maxUint256, parseEventLogs, type Address } from 'viem';
-import { useBalance, useBlockNumber, useReadContracts } from 'wagmi';
+import { useBalance, useBlockNumber, useReadContract, useReadContracts } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useTx } from '../chain/Tx.tsx';
 import { useHub } from '../chain/useHub.ts';
@@ -96,6 +96,12 @@ function CollectionLive({ chainId }: { chainId: number }) {
       { address: c.PackSale, abi: packSaleAbi, functionName: 'retryableAt', args: [id], chainId: cid } as const,
     ]),
   });
+  // VRF packs open oldest first: which one is next, and whether a pack already has its word.
+  const nextVrfRead = useReadContract({ address: c.PackSale, abi: packSaleAbi, functionName: 'nextVrfPack', args: [player], chainId: cid });
+  const words = useReadContracts({
+    contracts: packIds.map((id) => ({ address: c.PackSale, abi: packSaleAbi, functionName: 'vrfWordOf', args: [id], chainId: cid } as const)),
+  });
+  const nextVrf = nextVrfRead.data as bigint | undefined;
   const { data: block } = useBlockNumber({ chainId: cid, watch: true });
   const unopened = packIds
     .map((id, i) => ({
@@ -104,17 +110,20 @@ function CollectionLive({ chainId }: { chainId: number }) {
       ready: packs.data?.[i * 3 + 1]?.result as boolean | undefined,
       /** Waiting on Chainlink VRF; from this block its owner may request again (0n = not waiting). */
       retryAt: (packs.data?.[i * 3 + 2]?.result as bigint | undefined) ?? 0n,
+      seeded: ((words.data?.[i]?.result as bigint | undefined) ?? 0n) > 0n,
     }))
     .filter((x) => x.p && !x.p[2])
     .map((x) => ({
-      id: x.id, revealBlock: x.p![1], kind: Number(x.p![3] ?? 0) as 0 | 1, vrf: x.retryAt > 0n, retryAt: x.retryAt,
+      id: x.id, revealBlock: x.p![1], kind: Number(x.p![3] ?? 0) as 0 | 1, vrf: x.retryAt > 0n || x.seeded, retryAt: x.retryAt,
+      /** Has its random word but an older VRF pack must be opened first. */
+      queued: x.seeded && nextVrf !== undefined && nextVrf !== x.id,
       // Older PackSale deployments have no packReady: fall back to the reveal block.
       ready: x.ready ?? (block !== undefined && block > x.p![1]),
     }));
   // While a pack waits for randomness, re-read on every new block and every 3 s (VRF answers in its own
   // transaction, and block notifications can be missed); once everything is ready, stop.
   const waiting = unopened.some((p) => !p.ready);
-  const refetchPacks = packs.refetch;
+  const refetchPacks = useCallback(() => { packs.refetch(); words.refetch(); nextVrfRead.refetch(); }, [packs.refetch, words.refetch, nextVrfRead.refetch]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (waiting) refetchPacks(); }, [block, waiting, refetchPacks]);
   useEffect(() => {
     if (!waiting) return;
@@ -326,13 +335,13 @@ function CollectionLive({ chainId }: { chainId: number }) {
             {notice && <div className="alert info"><span>{notice}</span><button onClick={() => setNotice(null)} aria-label="Dismiss">✕</button></div>}
             {unopened.length === 0 ? <p className="muted">No sealed packs. Buy one to get started.</p> : (
               <ul className="pack-list">
-                {unopened.map(({ id, revealBlock, kind: k, ready, vrf, retryAt }) => {
-                  const canRetry = vrf && !ready && block !== undefined && block >= retryAt;
+                {unopened.map(({ id, revealBlock, kind: k, ready, vrf, retryAt, queued }) => {
+                  const canRetry = retryAt > 0n && !ready && block !== undefined && block >= retryAt;
                   const wait = block !== undefined ? Number(revealBlock - block + 1n) : null;
                   return (
                     <li key={String(id)} className="pack-row">
                       <div className={`pack-art kind-${k}`} aria-hidden><img src={k === 1 ? spriteSvg(48) : LOGO_MARK} alt="" /></div>
-                      <div className="pr-text"><b>{KINDS[k]?.short ?? 'Set 1'} pack #{String(id)}</b><small className="muted">{ready ? 'Ready to open' : vrf ? 'Waiting for verifiable randomness (Chainlink VRF)…' : wait !== null && wait > 0 ? `Sealing… ${wait} block${wait === 1 ? '' : 's'}` : '…'}</small></div>
+                      <div className="pr-text"><b>{KINDS[k]?.short ?? 'Set 1'} pack #{String(id)}</b><small className="muted">{ready ? 'Ready to open' : queued ? 'Randomness in: open your older packs first' : vrf ? 'Waiting for verifiable randomness (Chainlink VRF)…' : wait !== null && wait > 0 ? `Sealing… ${wait} block${wait === 1 ? '' : 's'}` : '…'}</small></div>
                       {canRetry
                         ? <button className="btn" disabled={tx.busy} onClick={() => retry(id)} title="Chainlink hasn't answered for a while: ask again (the first answer to arrive counts)">Request again</button>
                         : <button className="btn btn-primary" disabled={!ready || tx.busy} onClick={() => open(id)}>Open</button>}

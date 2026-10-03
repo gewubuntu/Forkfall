@@ -8,7 +8,7 @@ import {VRFCoordinatorMock} from "../src/vrf/VRFCoordinatorMock.sol";
 
 contract VrfTest is Fixture {
     VRFCoordinatorMock vrf;
-    uint32 constant GAS_PER_PACK = 150_000;
+    uint32 constant GAS_PER_PACK = 30_000;
 
     function config(address coordinator) internal pure returns (PackSale.VrfConfig memory) {
         return PackSale.VrfConfig({
@@ -27,7 +27,7 @@ contract VrfTest is Fixture {
         PackSale.VrfConfig memory c = config(address(vrf));
         vm.prank(admin);
         d.packs.setVrf(c);
-        vm.deal(alice, 10 ether);
+        vm.deal(alice, 100 ether);
     }
 
     function buy(address who, uint256 n) internal returns (uint256 first) {
@@ -36,14 +36,25 @@ contract VrfTest is Fixture {
         first = d.packs.buyWithEthOf{value: price}(0, n);
     }
 
-    function contents(uint256 packId) internal view returns (uint256[5] memory ids) {
-        uint256 rolled = d.packs.rolledOf(packId);
-        for (uint256 i; i < 5; ++i) {
-            ids[i] = (rolled >> (32 * i)) & type(uint32).max;
+    function fulfillAll() internal returns (bool allOk) {
+        vm.recordLogs();
+        while (vrf.pending() > 0) {
+            vrf.fulfillPending();
+        }
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("RandomWordsFulfilled(uint256,bool)");
+        allOk = true;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics[0] == sig && !abi.decode(logs[i].data, (bool))) allOk = false;
         }
     }
 
-    function test_contentsAreFixedWhenTheWordArrivesAndOpeningOnlyMintsThem() public {
+    function openAs(address who, uint256 id) internal returns (uint256[5] memory) {
+        vm.prank(who);
+        return d.packs.open(id);
+    }
+
+    function test_packWaitsForItsWordThenOpensExactlyAsPreviewed() public {
         uint256 id = buy(alice, 1);
         assertFalse(d.packs.packReady(id));
         vm.roll(block.number + 50); // block height alone no longer opens it
@@ -51,39 +62,82 @@ contract VrfTest is Fixture {
         vm.expectRevert(abi.encodeWithSelector(PackSale.RandomnessPending.selector, id));
         d.packs.open(id);
 
-        vrf.fulfillPending();
+        assertTrue(fulfillAll());
         assertTrue(d.packs.packReady(id));
-        uint256[5] memory fixedIds = contents(id);
-        assertGt(fixedIds[0], 0);
-        // Whatever Alice does now (buy and open other packs, move cards away) can't change this pack.
-        uint256 other = buy(alice, 1);
-        vrf.fulfillPending();
-        vm.prank(alice);
-        d.packs.open(other);
-        vm.prank(alice);
-        uint256[5] memory got = d.packs.open(id);
+        (uint256 next, uint256[5] memory preview) = d.packs.previewVrfOpen(alice);
+        assertEq(next, id);
+        uint256[5] memory got = openAs(alice, id);
         for (uint256 i; i < 5; ++i) {
-            assertEq(got[i], fixedIds[i]);
+            assertEq(got[i], preview[i]);
             assertGt(d.cards.balanceOf(alice, got[i]), 0);
         }
-        assertFalse(d.packs.packReady(id));
     }
 
-    function test_pityIsDecidedWhenTheWordArrives() public {
-        // 19 packs without a Legendary: the 20th must roll one, whichever order Alice opens them in.
+    function test_theCallbackOnlyStoresWordsSoAFullCollectionCantMakeItFail() public {
+        // Alice holds 2 of every card, the worst case for duplicate protection; a 10-pack bundle still fulfills.
+        bytes32 minter = d.cards.MINTER_ROLE();
+        vm.prank(admin);
+        d.cards.grantRole(minter, address(this));
+        uint256[] memory all = d.cards.allCards();
+        uint256[] memory twos = new uint256[](all.length);
+        for (uint256 i; i < all.length; ++i) {
+            twos[i] = 2;
+        }
+        d.cards.mintBatch(alice, all, twos);
         uint256 first = buy(alice, 10);
-        uint256 second = buy(alice, 10);
-        vrf.fulfillPending();
-        bool legendary;
-        for (uint256 i; i < 20; ++i) {
-            uint256[5] memory ids = contents(i < 10 ? first + i : second + i - 10);
-            for (uint256 j; j < 5; ++j) {
-                uint256 base = ids[j] >= d.cards.FOIL_OFFSET() ? ids[j] - d.cards.FOIL_OFFSET() : ids[j];
-                if (d.cards.cardInfo(base).rarity == 3) legendary = true;
+        assertTrue(fulfillAll(), "callback ran out of gas");
+        for (uint256 i; i < 10; ++i) {
+            assertGt(d.packs.vrfWordOf(first + i), 0);
+        }
+        openAs(alice, first); // opening (paid by the player) handles the full collection
+    }
+
+    function test_vrfPacksOpenOldestFirst() public {
+        uint256 first = buy(alice, 2);
+        fulfillAll();
+        assertFalse(d.packs.packReady(first + 1));
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(PackSale.OpenInOrder.selector, first));
+        d.packs.open(first + 1);
+        openAs(alice, first);
+        assertTrue(d.packs.packReady(first + 1));
+        openAs(alice, first + 1);
+        assertEq(d.packs.nextVrfPack(alice), type(uint256).max);
+    }
+
+    function test_movingCardsAwayDoesNotChangeWhatAPackHolds() public {
+        uint256 first = buy(alice, 2);
+        fulfillAll();
+        uint256[5] memory one = openAs(alice, first);
+        (, uint256[5] memory before) = d.packs.previewVrfOpen(alice);
+        // Alice moves everything from the first pack to Bob: duplicate protection counts pulls, not holdings.
+        for (uint256 i; i < 5; ++i) {
+            uint256 bal = d.cards.balanceOf(alice, one[i]);
+            if (bal > 0) {
+                vm.prank(alice);
+                d.cards.safeTransferFrom(alice, bob, one[i], bal, "");
             }
         }
-        assertTrue(legendary);
-        assertLe(d.packs.packsSinceLegendary(alice), 19);
+        (, uint256[5] memory afterMove) = d.packs.previewVrfOpen(alice);
+        uint256[5] memory got = openAs(alice, first + 1);
+        for (uint256 i; i < 5; ++i) {
+            assertEq(afterMove[i], before[i]);
+            assertEq(got[i], before[i]);
+        }
+    }
+
+    function test_duplicateProtectionCountsPulls() public {
+        uint256 first = buy(alice, 10);
+        fulfillAll();
+        uint256 total;
+        for (uint256 i; i < 10; ++i) {
+            openAs(alice, first + i);
+        }
+        uint256[] memory all = d.cards.allCards();
+        for (uint256 i; i < all.length; ++i) {
+            total += d.packs.pulled(alice, all[i]);
+        }
+        assertEq(total, 50);
     }
 
     function test_onlyTheRequestsCoordinatorAnswers() public {
@@ -93,35 +147,12 @@ contract VrfTest is Fixture {
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PackSale.OnlyCoordinator.selector, alice, address(vrf)));
         d.packs.rawFulfillRandomWords(1, words);
-        // Unknown requests are ignored rather than reverting.
         vm.prank(alice);
-        d.packs.rawFulfillRandomWords(999, words);
-        assertEq(d.packs.rolledOf(id), 0);
+        d.packs.rawFulfillRandomWords(999, words); // unknown: ignored
+        assertEq(d.packs.vrfWordOf(id), 0);
     }
 
-    function test_aSinglePackRollsWithinTheCallbackGasLimit() public {
-        uint256 id = buy(alice, 1);
-        vrf.fulfillPending();
-        assertGt(d.packs.rolledOf(id), 0);
-    }
-
-    function test_aTenPackBundleRollsWithinTheCallbackGasLimit() public {
-        vm.recordLogs();
-        uint256 first = buy(alice, 10);
-        vrf.fulfillPending();
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 sig = keccak256("RandomWordsFulfilled(uint256,bool)");
-        bool ok;
-        for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == sig) ok = abi.decode(logs[i].data, (bool));
-        }
-        assertTrue(ok, "callback ran out of gas");
-        for (uint256 i; i < 10; ++i) {
-            assertGt(d.packs.rolledOf(first + i), 0);
-        }
-    }
-
-    function test_retryNeverReRollsTheFirstAnswerWins() public {
+    function test_retryNeverSwapsAWordTheFirstAnswerWins() public {
         uint256 id = buy(alice, 1);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PackSale.NotRetryable.selector, id));
@@ -132,39 +163,46 @@ contract VrfTest is Fixture {
         d.packs.retryRandomness(id);
         vm.prank(alice);
         d.packs.retryRandomness(id);
-        assertEq(d.packs.vrfRequestOf(id), 2);
-        // The coordinator answers the original request first: that answer decides the pack, the retry's is ignored.
         vm.recordLogs();
-        vrf.fulfillPending();
+        vrf.fulfillPending(); // answers the original request, then the retry
         Vm.Log[] memory logs = vm.getRecordedLogs();
-        bytes32 rolledSig = keccak256("PackRolled(uint256,uint256,uint256[5])");
-        uint256 rolls;
+        bytes32 seeded = keccak256("PackSeeded(uint256,uint256)");
+        uint256 n;
+        uint256 word;
         for (uint256 i; i < logs.length; ++i) {
-            if (logs[i].topics[0] == rolledSig) rolls++;
+            if (logs[i].topics[0] == seeded) {
+                n++;
+                (word) = abi.decode(logs[i].data, (uint256));
+            }
         }
-        assertEq(rolls, 1);
-        assertEq(d.packs.retryableAt(id), 0);
-        vm.prank(alice);
-        d.packs.open(id);
+        assertEq(n, 1);
+        assertEq(d.packs.vrfWordOf(id), word);
+        openAs(alice, id);
     }
 
-    function test_switchingVrfOffNeverStrandsAPack() public {
-        uint256 id = buy(alice, 1);
+    function test_switchingVrfOffReSealsOnlyAfterTheRetryWindowAndNeverBlocksTheQueue() public {
+        uint256 first = buy(alice, 2);
         PackSale.VrfConfig memory off;
         vm.prank(admin);
         d.packs.setVrf(off);
-        assertTrue(d.packs.packReady(id)); // opening makes progress: it re-seals to a blockhash
+        // An answer may still be on its way: no dodging it by re-sealing right away.
+        assertFalse(d.packs.packReady(first));
         vm.prank(alice);
-        uint256[5] memory none = d.packs.open(id);
+        vm.expectRevert(abi.encodeWithSelector(PackSale.RandomnessPending.selector, first));
+        d.packs.open(first);
+        vm.roll(block.number + d.packs.VRF_RETRY_BLOCKS());
+        assertTrue(d.packs.packReady(first));
+        uint256[5] memory none = openAs(alice, first);
         assertEq(none[0], 0);
-        assertEq(d.packs.vrfRequestOf(id), 0);
+        assertEq(d.packs.vrfRequestOf(first), 0);
+        // The next VRF pack is now first in line; re-seal it too, then both open from blockhashes.
+        uint256[5] memory none2 = openAs(alice, first + 1);
+        assertEq(none2[0], 0);
         vm.roll(block.number + 3);
-        vm.prank(alice);
-        uint256[5] memory got = d.packs.open(id);
-        assertGt(got[0], 0);
-        // A late answer from the old coordinator no longer touches it.
-        vrf.fulfillPending();
-        assertEq(d.packs.rolledOf(id), 0);
+        assertGt(openAs(alice, first)[0], 0);
+        assertGt(openAs(alice, first + 1)[0], 0);
+        vrf.fulfillPending(); // late answers no longer touch them
+        assertEq(d.packs.vrfWordOf(first), 0);
     }
 
     function test_theOldCoordinatorsAnswerStillCountsAfterSwitching() public {
@@ -173,10 +211,9 @@ contract VrfTest is Fixture {
         PackSale.VrfConfig memory c = config(address(next));
         vm.prank(admin);
         d.packs.setVrf(c);
-        vrf.fulfillPending(); // the coordinator the request went to answers
-        assertGt(d.packs.rolledOf(id), 0);
-        vm.prank(alice);
-        d.packs.open(id);
+        vrf.fulfillPending();
+        assertGt(d.packs.vrfWordOf(id), 0);
+        openAs(alice, id);
     }
 
     function test_freeQuestPacksUseVrfToo() public {
@@ -185,9 +222,8 @@ contract VrfTest is Fixture {
         uint256 id = d.packs.packCount() - 1;
         assertGt(d.packs.vrfRequestOf(id), 0);
         assertFalse(d.packs.packReady(id));
-        vrf.fulfillPending();
-        vm.prank(alice);
-        d.packs.open(id);
+        fulfillAll();
+        openAs(alice, id);
     }
 
     function test_onlyTheRandomnessAdminSwitchesTheSource() public {
@@ -201,7 +237,6 @@ contract VrfTest is Fixture {
         assertEq(d.packs.vrfRequestOf(id), 0);
         vm.roll(block.number + 3);
         assertTrue(d.packs.packReady(id));
-        vm.prank(alice);
-        d.packs.open(id);
+        openAs(alice, id);
     }
 }

@@ -153,16 +153,22 @@ Play someone you know without hoping the queue pairs you: **Play → Friend** cr
 
 ### Pack randomness (Chainlink VRF)
 
-Pack contents come from one random word per pack. With Chainlink VRF v2.5 configured, buying a pack (or receiving a free one) requests the word. The VRF coordinator answers with the word and a proof that it was generated correctly, and **`PackSale` rolls the pack's contents right there in the callback**: the pity counter and duplicate protection are read at that instant, before anyone can see the word, and the five cards are stored with the pack. Opening only mints what was fixed. So nobody (players, the block producer, the referee or the contract admin) can bias a word or pick between outcomes, not even by choosing which pack to open first or moving cards to another wallet before opening. Contents become visible on-chain once rolled, before opening; opening is the reveal.
+Pack contents come from one random word per pack. With Chainlink VRF v2.5 configured, buying a pack (or receiving a free one) requests the word; the VRF coordinator answers with the word and a proof that it was generated correctly, and `PackSale` **only stores it**: the callback does nothing else, so its gas is small and fixed (60k + 30k per pack) and nothing a player does can make it fail.
+
+Opening then rolls the contents from the word, and every other input is fixed before the word exists, so the result is fully determined (anyone can check it with `previewVrfOpen`):
+
+- **Order:** a wallet's VRF packs open strictly oldest first (`OpenInOrder` otherwise; Collection labels later packs "open your older packs first"). The pity counter therefore advances in a fixed order: no choosing which pack takes the guaranteed Legendary.
+- **Duplicate protection** counts the copies a wallet has **pulled from packs** (`pulled`), not what it currently holds, so moving cards to another wallet before opening changes nothing. Starter decks and crafted cards don't count toward it.
+
+So no one (players, the block producer, the referee or the contract admin) can bias a word or steer what a pack holds.
 
 Robustness:
 
-- **Retry:** if a request goes unanswered for 500 blocks, the pack's owner can request again (Collection shows *Request again*). The old request stays valid and the first answer to arrive decides the pack, so a retry can never re-roll a known word.
-- **Switching sources:** each request remembers its coordinator and accepts that coordinator's answer even if the admin changes it later. If VRF is switched off while a pack waits, opening re-seals it to the blockhash source instead of leaving it stuck.
-- **Gas:** rolling in the callback costs about 250k gas for a first pack and 150k for each further one; the callback limit is 300k + 150k per pack (1.8M for a 10-pack bundle, under Chainlink's 2.5M maximum). This is paid from the VRF subscription (LINK, or native if chosen).
-- **Deploy checks:** `CheckDeployment` confirms the key hash and subscription are set, PackSale is a consumer, and the subscription is funded.
+- **Retry:** if a request goes unanswered for 500 blocks, the pack's owner can request again (Collection shows *Request again*). The old request stays valid and the first answer to arrive decides the pack, so a retry can never swap a known word.
+- **Switching sources:** each request remembers its coordinator and accepts that coordinator's answer even if the admin changes it later. If VRF is switched off while a pack still waits, opening re-seals it to the blockhash source, but only once its request is 500 blocks old, so an answer already on its way can't be dodged; the queue moves on either way.
+- **Deploy checks:** the deploy refuses a coordinator without key hash and subscription; `CheckDeployment` confirms PackSale is a consumer of a funded subscription.
 
-Without VRF (testnets that haven't set it up), packs fall back to the commit/blockhash source: the purchase commits to a block two blocks ahead and opening reads its hash and rolls then. That is fine for testnet, but a block producer could in principle withhold a block to re-roll, and contents depend on the opener's state at opening time, which is why mainnet requires VRF. The admin (`RANDOMNESS_ADMIN_ROLE`) switches sources with `setVrf`. Local Anvil deploys a mock coordinator that the referee server answers every two seconds, so local play exercises the same flow.
+Without VRF (testnets that haven't set it up), packs fall back to the commit/blockhash source: the purchase commits to a block two blocks ahead and opening reads its hash and rolls then, with duplicate protection on current holdings. That is fine for testnet, but a block producer could in principle withhold a block to re-roll, and holdings can be moved before opening, which is why mainnet requires VRF. The admin (`RANDOMNESS_ADMIN_ROLE`) switches sources with `setVrf`. Local Anvil deploys a mock coordinator that the referee server answers every two seconds, so local play exercises the same flow.
 
 ### Daily quests and free packs
 

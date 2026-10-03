@@ -17,13 +17,14 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 ///         every card of that rarity is at the limit. Each card is a cosmetic foil ~1 in 15 (same card in play).
 /// @dev Randomness, per pack, from one of two sources:
 ///      - Chainlink VRF v2.5 (once `setVrf` configures a coordinator): buying requests one verifiable random word
-///        per pack, and the coordinator's callback rolls the pack's contents from it on the spot (pity counter and
-///        duplicate protection read at that instant), before anyone can see the word. Opening only mints them, so
-///        no one (players, the block producer, this contract's admin) can bias or pick between outcomes.
+///        per pack; the callback only stores it (fixed gas, nothing a player can make fail). A wallet's VRF packs
+///        then open strictly oldest first, rolling from the word with duplicate protection counting the copies
+///        pulled from packs (not current holdings). Every input is fixed once the word exists, so opening is fully
+///        determined: no one can bias the word or steer a pack (by opening order, timing, or moving cards around).
 ///        Required for mainnet.
 ///      - Otherwise a two-step commit/blockhash: buying commits to a future block, opening reads that block's
 ///        hash. Fine for testnets: a block producer could in principle withhold a block to re-roll, and contents
-///        depend on the opener's state when opening (pity, duplicates), after the hash is known.
+///        depend on the opener's holdings when opening.
 contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     using SafeERC20 for IERC20;
 
@@ -46,10 +47,9 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     uint8 public constant KIND_SET1 = 0;
     /// @notice A VRF request unanswered for this many blocks may be re-requested by the pack's owner.
     uint256 public constant VRF_RETRY_BLOCKS = 500;
-    /// @notice VRF callback gas: this base plus `callbackGasPerPack` per pack. Rolling contents in the callback costs
-    ///         ~250k for a first (cold) pack and ~150k for each further one, so 300k + 150k/pack covers 1–10 packs
-    ///         (≤ 1.8M, under Chainlink's 2.5M callback maximum).
-    uint256 public constant CALLBACK_GAS_BASE = 300_000;
+    /// @notice VRF callback gas: this base plus `callbackGasPerPack` per pack. The callback only stores one word per
+    ///         pack (no rolling, no external calls), so its cost is fixed and independent of the owner's cards.
+    uint256 public constant CALLBACK_GAS_BASE = 60_000;
 
     /// @notice Chainlink VRF v2.5 settings; `vrfCoordinator == 0` means the commit/blockhash source.
     struct VrfConfig {
@@ -73,11 +73,16 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     }
 
     mapping(uint256 => VrfRequest) public vrfRequests;
-    /// @notice Per pack: its latest VRF request (0 = a commit/blockhash pack).
+    /// @notice Per pack: its latest VRF request (0 = a commit/blockhash pack) and its random word (0 = waiting).
     mapping(uint256 => uint256) public vrfRequestOf;
-    /// @notice Per VRF pack: its contents, fixed the moment its random word arrives (5 card ids, 32 bits each, plus
-    ///         the top bit set); 0 while waiting. Opening only mints them.
-    mapping(uint256 => uint256) public rolledOf;
+    mapping(uint256 => uint256) public vrfWordOf;
+    /// @notice Each wallet's VRF packs open oldest first: the queue of its VRF pack ids and how many are done.
+    ///         With the order fixed, a word known in advance can't be steered by choosing which pack to open when.
+    mapping(address => uint256[]) private _vrfQueue;
+    mapping(address => uint256) public vrfQueueHead;
+    /// @notice Copies of each card (base id) a wallet has pulled from packs. Duplicate protection for VRF packs
+    ///         counts these instead of current holdings, which a player could change by moving cards around.
+    mapping(address => mapping(uint256 => uint256)) public pulled;
 
     CardRegistry public immutable cards;
     address payable public treasury;
@@ -110,6 +115,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     error RandomnessPending(uint256 packId);
     error OnlyCoordinator(address have, address want);
     error NotRetryable(uint256 packId);
+    error OpenInOrder(uint256 nextPackId);
 
     event PacksBought(address indexed buyer, uint256 firstPackId, uint256 count, address payToken, uint256 paid);
     event PacksBoughtOfKind(address indexed buyer, uint256 firstPackId, uint256 count, uint8 kind);
@@ -120,7 +126,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     event VrfSet(address coordinator, bytes32 keyHash, uint256 subId);
     event RandomnessRequested(uint256 indexed requestId, uint256 firstPackId, uint256 count);
     event PacksSeeded(uint256 indexed requestId, uint256 firstPackId, uint256 count);
-    event PackRolled(uint256 indexed packId, uint256 word, uint256[5] cardIds);
+    event PackSeeded(uint256 indexed packId, uint256 word);
 
     constructor(CardRegistry cards_, address admin, address payable treasury_, uint256 ethPrice_) {
         cards = cards_;
@@ -244,7 +250,12 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
             _packsOf[buyer].push(packs.length);
             packs.push(Pack(buyer, reveal, false, kind));
         }
-        if (vrf.coordinator != address(0)) _requestRandomness(firstId, count);
+        if (vrf.coordinator != address(0)) {
+            for (uint256 i; i < count; ++i) {
+                _vrfQueue[buyer].push(firstId + i);
+            }
+            _requestRandomness(firstId, count);
+        }
     }
 
     function _requestRandomness(uint256 firstId, uint256 count) internal {
@@ -269,11 +280,10 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
         emit RandomnessRequested(requestId, firstId, count);
     }
 
-    /// @notice Chainlink VRF callback. Rolls each pack's contents right here, from its word and the owner's state at
-    ///         this instant (pity counter, duplicate protection), before anyone can see the word: nothing a player
-    ///         does afterwards (opening order, moving cards away) can change what a pack holds. The first answer to
-    ///         any request covering a pack wins, so a retry can never re-roll a pack. Never reverts for a known
-    ///         request from its coordinator; unknown or already-answered requests are ignored.
+    /// @notice Chainlink VRF callback: stores one word per pack, nothing else, so its gas is fixed and no player
+    ///         action can make it fail. The first answer to any request covering a pack wins, so a retry can never
+    ///         swap a known word. Unknown or already-answered requests are ignored; never reverts for a known
+    ///         request from its coordinator.
     function rawFulfillRandomWords(uint256 requestId, uint256[] calldata words) external {
         VrfRequest memory r = vrfRequests[requestId];
         if (r.coordinator == address(0)) return;
@@ -282,26 +292,12 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
         delete vrfRequests[requestId];
         for (uint256 i; i < r.count; ++i) {
             uint256 packId = r.firstPackId + i;
-            if (vrfRequestOf[packId] == 0 || rolledOf[packId] != 0 || packs[packId].opened) continue;
-            _rollVrfPack(packId, words[i]);
+            if (vrfRequestOf[packId] == 0 || vrfWordOf[packId] != 0) continue;
+            uint256 w = words[i] == 0 ? 1 : words[i];
+            vrfWordOf[packId] = w;
+            emit PackSeeded(packId, w);
         }
         emit PacksSeeded(requestId, r.firstPackId, r.count);
-    }
-
-    function _rollVrfPack(uint256 packId, uint256 word) internal {
-        Pack storage p = packs[packId];
-        address owner = p.owner;
-        bool pity = packsSinceLegendary[owner] + 1 >= PITY_PACKS;
-        uint256[5] memory ids = roll(keccak256(abi.encode(word, packId, owner, address(this))), owner, pity, p.kind);
-        bool gotLegendary;
-        uint256 packed = uint256(1) << 255;
-        for (uint256 i; i < CARDS_PER_PACK; ++i) {
-            packed |= ids[i] << (32 * i);
-            if (cards.cardInfo(ids[i]).rarity == 3) gotLegendary = true;
-        }
-        packsSinceLegendary[owner] = gotLegendary ? 0 : packsSinceLegendary[owner] + 1;
-        rolledOf[packId] = packed;
-        emit PackRolled(packId, word, ids);
     }
 
     /// @notice If a pack's VRF request went unanswered for `VRF_RETRY_BLOCKS`, its owner can request again. The old
@@ -316,57 +312,77 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     /// @notice Block from which `retryRandomness` is allowed for a pack still waiting on VRF (0 = not waiting).
     function retryableAt(uint256 packId) public view returns (uint256) {
         uint256 req = vrfRequestOf[packId];
-        if (req == 0 || rolledOf[packId] != 0 || packs[packId].opened) return 0;
+        if (req == 0 || vrfWordOf[packId] != 0 || packs[packId].opened) return 0;
         return uint256(vrfRequests[req].requestedAt) + VRF_RETRY_BLOCKS;
     }
 
-    /// @notice Whether `open` makes progress now: VRF contents rolled, a reveal block passed, or a VRF pack whose
-    ///         randomness was switched off (opening then re-seals it to a blockhash).
+    /// @notice The VRF pack `owner` must open next (type(uint256).max if none).
+    function nextVrfPack(address owner) public view returns (uint256) {
+        uint256 h = vrfQueueHead[owner];
+        return h < _vrfQueue[owner].length ? _vrfQueue[owner][h] : type(uint256).max;
+    }
+
+    /// @notice Whether `open` makes progress now. VRF packs: its word is in and it's the owner's oldest unopened VRF
+    ///         pack (or VRF was switched off and its request is old enough to re-seal). Blockhash packs: the reveal
+    ///         block has passed.
     function packReady(uint256 packId) public view returns (bool) {
         Pack storage p = packs[packId];
         if (p.opened) return false;
-        if (vrfRequestOf[packId] != 0) return rolledOf[packId] != 0 || vrf.coordinator == address(0);
-        return block.number > p.revealBlock;
+        uint256 req = vrfRequestOf[packId];
+        if (req == 0) return block.number > p.revealBlock;
+        if (nextVrfPack(p.owner) != packId) return false;
+        if (vrfWordOf[packId] != 0) return true;
+        return vrf.coordinator == address(0) && block.number >= retryableAt(packId);
     }
 
     // ─── Open ───────────────────────────────────────────────────
-    /// @notice Open a pack. A VRF pack mints the contents fixed when its word arrived. A commit/blockhash pack
-    ///         rolls now from its reveal block's hash; if that hash aged out (>256 blocks) it is re-sealed to a new
-    ///         future block instead. A VRF pack still waiting after VRF was switched off is re-sealed the same way.
+    /// @notice Open a pack. VRF packs open oldest first and roll from their word; duplicate protection counts the
+    ///         copies pulled from packs. Blockhash packs roll from their reveal block's hash and the opener's holdings;
+    ///         if the hash aged out (>256 blocks) the pack is re-sealed to a new future block instead. A VRF pack whose
+    ///         word never came after VRF was switched off is re-sealed the same way (once its request is
+    ///         `VRF_RETRY_BLOCKS` old, so an answer already on its way can't be dodged).
     function open(uint256 packId) external nonReentrant returns (uint256[5] memory ids) {
         Pack storage p = packs[packId];
         if (p.owner != msg.sender) revert NotOwner();
         if (p.opened) revert AlreadyOpened();
+        bytes32 rand;
+        bool fromPulls;
         if (vrfRequestOf[packId] != 0) {
-            uint256 rolled = rolledOf[packId];
-            if (rolled == 0) {
-                if (vrf.coordinator != address(0)) revert RandomnessPending(packId);
+            uint256 expected = nextVrfPack(msg.sender);
+            if (expected != packId) revert OpenInOrder(expected);
+            uint256 w = vrfWordOf[packId];
+            if (w == 0) {
+                if (vrf.coordinator != address(0) || block.number < retryableAt(packId)) {
+                    revert RandomnessPending(packId);
+                }
                 vrfRequestOf[packId] = 0;
+                vrfQueueHead[msg.sender]++;
                 p.revealBlock = uint64(block.number + REVEAL_DELAY);
                 emit PackRecommitted(packId, p.revealBlock);
                 return ids;
             }
-            p.opened = true;
-            for (uint256 i; i < CARDS_PER_PACK; ++i) {
-                ids[i] = (rolled >> (32 * i)) & type(uint32).max;
+            vrfQueueHead[msg.sender]++;
+            rand = keccak256(abi.encode(w, packId, p.owner, address(this)));
+            fromPulls = true;
+        } else {
+            if (block.number <= p.revealBlock) revert TooEarly(p.revealBlock);
+            bytes32 bh = blockhash(p.revealBlock);
+            if (bh == bytes32(0)) {
+                p.revealBlock = uint64(block.number + REVEAL_DELAY);
+                emit PackRecommitted(packId, p.revealBlock);
+                return ids;
             }
-            _mint(ids);
-            emit PackOpened(packId, msg.sender, ids);
-            return ids;
-        }
-        if (block.number <= p.revealBlock) revert TooEarly(p.revealBlock);
-        bytes32 bh = blockhash(p.revealBlock);
-        if (bh == bytes32(0)) {
-            p.revealBlock = uint64(block.number + REVEAL_DELAY);
-            emit PackRecommitted(packId, p.revealBlock);
-            return ids;
+            rand = keccak256(abi.encode(bh, packId, p.owner, address(this)));
         }
         p.opened = true;
         bool pity = packsSinceLegendary[msg.sender] + 1 >= PITY_PACKS;
-        ids = roll(keccak256(abi.encode(bh, packId, p.owner, address(this))), msg.sender, pity, p.kind);
+        ids = _roll(rand, msg.sender, pity, p.kind, fromPulls);
         bool gotLegendary;
+        uint256 foil = cards.FOIL_OFFSET();
         for (uint256 i; i < CARDS_PER_PACK; ++i) {
-            if (cards.cardInfo(ids[i]).rarity == 3) gotLegendary = true;
+            uint256 base = ids[i] >= foil ? ids[i] - foil : ids[i];
+            pulled[msg.sender][base]++;
+            if (cards.cardInfo(base).rarity == 3) gotLegendary = true;
         }
         packsSinceLegendary[msg.sender] = gotLegendary ? 0 : packsSinceLegendary[msg.sender] + 1;
         _mint(ids);
@@ -400,12 +416,36 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
         view
         returns (uint256[5] memory ids)
     {
+        return _roll(rand, opener, forceLegendary, kind, false);
+    }
+
+    /// @notice What `owner`'s next VRF pack will hold once its word is in (all zero if it isn't): anyone can check
+    ///         that opening is deterministic.
+    function previewVrfOpen(address owner) external view returns (uint256 packId, uint256[5] memory ids) {
+        packId = nextVrfPack(owner);
+        if (packId == type(uint256).max || vrfWordOf[packId] == 0) return (packId, ids);
+        bool pity = packsSinceLegendary[owner] + 1 >= PITY_PACKS;
+        ids = _roll(
+            keccak256(abi.encode(vrfWordOf[packId], packId, owner, address(this))),
+            owner,
+            pity,
+            packs[packId].kind,
+            true
+        );
+    }
+
+    /// @dev `fromPulls`: duplicate protection counts copies pulled from packs (VRF) instead of current holdings.
+    function _roll(bytes32 rand, address opener, bool forceLegendary, uint8 kind, bool fromPulls)
+        internal
+        view
+        returns (uint256[5] memory ids)
+    {
         uint256[] memory legendaries = kindCards(kind, 3);
         uint256[5] memory got; // base ids already in this pack, for duplicate protection within the pack
         for (uint256 i; i < 3; ++i) {
-            got[i] = _pick(kindCards(kind, 0), uint256(keccak256(abi.encode(rand, i))), opener, got, 2);
+            got[i] = _pick(kindCards(kind, 0), uint256(keccak256(abi.encode(rand, i))), opener, got, 2, fromPulls);
         }
-        got[3] = _pick(kindCards(kind, 1), uint256(keccak256(abi.encode(rand, 3))), opener, got, 2);
+        got[3] = _pick(kindCards(kind, 1), uint256(keccak256(abi.encode(rand, 3))), opener, got, 2, fromPulls);
         bool upgrade =
             forceLegendary || uint256(keccak256(abi.encode(rand, "legendary"))) % 10_000 < LEGENDARY_UPGRADE_BPS;
         bool legendary = upgrade && legendaries.length > 0;
@@ -414,7 +454,8 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
             uint256(keccak256(abi.encode(rand, 4))),
             opener,
             got,
-            legendary ? 1 : 2
+            legendary ? 1 : 2,
+            fromPulls
         );
         for (uint256 i; i < CARDS_PER_PACK; ++i) {
             bool foil = uint256(keccak256(abi.encode(rand, "foil", i))) % 10_000 < FOIL_BPS;
@@ -424,15 +465,18 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
 
     /// @dev Start at a random card of `pool`; walk forward to the first one the opener holds fewer than `limit`
     ///      of (counting this pack). If every card is at the limit, keep the random pick (extras can be scrapped).
-    function _pick(uint256[] memory pool, uint256 r, address opener, uint256[5] memory got, uint256 limit)
-        internal
-        view
-        returns (uint256)
-    {
+    function _pick(
+        uint256[] memory pool,
+        uint256 r,
+        address opener,
+        uint256[5] memory got,
+        uint256 limit,
+        bool fromPulls
+    ) internal view returns (uint256) {
         uint256 start = r % pool.length;
         for (uint256 k; k < pool.length; ++k) {
             uint256 id = pool[(start + k) % pool.length];
-            uint256 have = cards.playableBalance(opener, id);
+            uint256 have = fromPulls ? pulled[opener][id] : cards.playableBalance(opener, id);
             for (uint256 j; j < 5; ++j) {
                 if (got[j] == id) have++;
             }

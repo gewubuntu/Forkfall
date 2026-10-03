@@ -36,9 +36,11 @@ contract VRFCoordinatorMock is IVRFCoordinatorV2Plus, TestnetOnly {
         return requests.length - nextToFulfill;
     }
 
-    /// @notice Fulfill every queued request (in order). Words: keccak(request id, i, previous block hash).
+    /// @notice Fulfill up to `MAX_PER_CALL` queued requests (in order). Words: keccak(request id, i, previous block hash).
+    uint256 public constant MAX_PER_CALL = 5;
+
     function fulfillPending() external {
-        while (nextToFulfill < requests.length) {
+        for (uint256 n; n < MAX_PER_CALL && nextToFulfill < requests.length; ++n) {
             uint256 requestId = nextToFulfill + 1;
             Request storage r = requests[nextToFulfill++];
             uint256[] memory words = new uint256[](r.numWords);
