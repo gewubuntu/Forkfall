@@ -104,6 +104,33 @@ const lobby = new Lobby({
   store,
 });
 
+// Archive finished matches and export a Foundry-ready settlement file as soon as a match has enough signatures.
+// Set before anything is restored: a finished match recovered at startup is archived through this too.
+lobby.onChange = (m) => {
+  if (m.phase !== 'ended') return true;
+  try {
+    const f = finishedMatch(m);
+    if (f) {
+      const fresh = !quests.hasSeen(f.id);
+      quests.record(f);
+      // Notify once, when the match first counts (onChange also fires for every later signature/settlement step).
+      if (fresh && quests.hasSeen(f.id)) for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
+    }
+  } catch (e) { console.error('quest tracking failed', e); }
+  let archived = true;
+  try {
+    writeFileAtomic(join(archiveDir, `${m.id}.json`), JSON.stringify(lobby.archive(m.id)));
+  } catch (e) {
+    // Keep the running-match file (return false) so the match is archived at the next start instead of lost.
+    console.error('archive failed', e);
+    archived = false;
+  }
+  try {
+    writeFileAtomic(join(settlementDir, `${m.id}.json`), JSON.stringify(lobby.settlement(m.id), null, 2));
+  } catch { /* not settleable yet */ }
+  return archived;
+};
+
 // Finished matches (log + signatures) are archived so history, replays and settlement survive a restart.
 let restored = 0;
 if (existsSync(archiveDir)) {
@@ -144,31 +171,6 @@ const flushLobby = (force = false) => {
   try { store.write('lobby.json', s); lastLobby = body; lastAlive = Date.now(); } catch (e) { console.error('could not save lobby state', e); }
 };
 
-// Export a Foundry-ready settlement file as soon as a match has enough signatures.
-lobby.onChange = (m) => {
-  if (m.phase !== 'ended') return true;
-  try {
-    const f = finishedMatch(m);
-    if (f) {
-      const fresh = !quests.hasSeen(f.id);
-      quests.record(f);
-      // Notify once, when the match first counts (onChange also fires for every later signature/settlement step).
-      if (fresh && quests.hasSeen(f.id)) for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
-    }
-  } catch (e) { console.error('quest tracking failed', e); }
-  let archived = true;
-  try {
-    writeFileAtomic(join(archiveDir, `${m.id}.json`), JSON.stringify(lobby.archive(m.id)));
-  } catch (e) {
-    // Keep the running-match file (return false) so the match is archived at the next start instead of lost.
-    console.error('archive failed', e);
-    archived = false;
-  }
-  try {
-    writeFileAtomic(join(settlementDir, `${m.id}.json`), JSON.stringify(lobby.settlement(m.id), null, 2));
-  } catch { /* not settleable yet */ }
-  return archived;
-};
 
 setInterval(() => { lobby.tick(); flushLobby(); }, 1000);
 const botLoop = async () => {

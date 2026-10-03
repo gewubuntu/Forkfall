@@ -305,5 +305,29 @@ describe('referee restarts', () => {
       expect(m.league?.state).toBe('failed');
       expect(cancels).toEqual([]); // nothing was charged, nothing to refund
     });
+
+    it('refunds a charge that lands after it was given up', async () => {
+      const dir = tmp();
+      const { id, league } = await pendingLeagueMatch(dir);
+      let t = 2_000_000;
+      let landed = false;
+      const cancels: Hex[] = [];
+      const r2 = referee(dir, {
+        now: () => t,
+        league: {
+          ...league,
+          started: async () => landed,
+          start: async () => { throw new Error('receipt timeout'); },
+          cancel: async (mid: Hex) => { cancels.push(mid); return mid; },
+        },
+      });
+      const m = r2.lobby.matches.get(id)!;
+      for (let i = 0; i < 6 && m.phase === 'reveal'; i++) { r2.lobby.tick(); await settle(); t += 30_000; }
+      expect(m.phase).toBe('cancelled');
+      expect(cancels).toEqual([]);
+      landed = true; // the "timed out" transaction mines after all
+      for (let i = 0; i < 3; i++) { r2.lobby.tick(); await settle(); t += 30_000; }
+      expect(cancels).toEqual([id]); // both fees refunded, once
+    });
   });
 });

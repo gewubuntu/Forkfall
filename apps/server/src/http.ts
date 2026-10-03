@@ -58,12 +58,16 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       sessions.set(k, { ...v, bucket: burst, refilledAt: now });
     }
   }
-  const saveSessions = () => {
-    if (!store) return;
+  const pruneSessions = () => {
     const now = Date.now();
     for (const [k, v] of sessions) {
       if (v.expiresAt ? v.expiresAt < now : (v.createdAt ?? now) < now - SIGNATURE_SESSION_KEEP_MS) sessions.delete(k);
     }
+  };
+  setInterval(pruneSessions, 3600_000).unref();
+  const saveSessions = () => {
+    pruneSessions();
+    if (!store) return;
     try {
       store.write('sessions.json', {
         v: 1,

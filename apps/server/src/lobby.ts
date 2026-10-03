@@ -64,6 +64,8 @@ export interface Match {
     state: 'charging' | 'charged' | 'failed'; tx?: Hex; error?: string;
     /** While charging: when to check again (the outcome of the last attempt is unknown), and how many times it read "not started". */
     retryAt?: number; notStarted?: number;
+    /** After giving up: keep checking until then, in case a transaction still pending lands and needs refunding. */
+    watchUntil?: number;
   };
   /** Friend challenge this match came from (casual). */
   challenge?: string;
@@ -541,7 +543,10 @@ export class Lobby {
         if (started) { m.league = { state: 'charged' }; this.save(m); this.maybeStart(m); return; }
         const notStarted = (m.league?.notStarted ?? 0) + (started === false ? 1 : 0);
         if (notStarted >= LEAGUE_CHARGE_CHECKS) {
-          m.league = { state: 'failed', error: (e as Error).message }; m.phase = 'cancelled'; this.changed(m);
+          // Gave up, but a transaction still pending could land later: watch for it and refund if it does.
+          const at = this.now() + (this.opts.leagueRecheckMs ?? LEAGUE_RECHECK_MS);
+          m.league = { state: 'failed', error: (e as Error).message, retryAt: at, watchUntil: this.now() + LEAGUE_WATCH_MS };
+          m.phase = 'cancelled'; this.changed(m);
           return;
         }
         m.league = { state: 'charging', error: (e as Error).message, notStarted, retryAt: this.now() + (this.opts.leagueRecheckMs ?? LEAGUE_RECHECK_MS) };
@@ -625,6 +630,17 @@ export class Lobby {
     for (const m of this.matches.values()) {
       if (m.phase === 'reveal' && m.league?.state === 'charging' && m.league.retryAt !== undefined && now >= m.league.retryAt) {
         this.chargeLeague(m);
+        continue;
+      }
+      if (m.league?.state === 'failed' && m.league.watchUntil !== undefined && m.league.retryAt !== undefined && now >= m.league.retryAt) {
+        const l = m.league;
+        if (now > l.watchUntil!) { l.watchUntil = undefined; continue; }
+        l.retryAt = now + (this.opts.leagueRecheckMs ?? LEAGUE_RECHECK_MS);
+        this.opts.league?.started(m.id).then((started) => {
+          if (!started) return;
+          l.watchUntil = undefined;
+          this.refundLeague(m); // the charge landed after we gave up: give both fees back
+        }, () => { /* ask again next time */ });
         continue;
       }
       const revealWindow = m.challenge ? CHALLENGE_REVEAL_MS : this.revealMs;
@@ -1012,7 +1028,9 @@ export class Lobby {
 
   /** A running-match record that can't be resumed: refund its league entry fees if they were charged. */
   abandon(rec: SavedMatch) {
-    if (rec?.match?.mode === 'league' && rec.match.league?.state !== 'failed') this.refundLeague(rec.match as Match);
+    // Only a match that never finished: a played one keeps its result (and its fees went where they should).
+    const unplayed = rec?.match?.phase === 'reveal' || rec?.match?.phase === 'active';
+    if (unplayed && rec.match.mode === 'league' && rec.match.league?.state !== 'failed') this.refundLeague(rec.match as Match);
   }
 
   private changed(m: Match) {
@@ -1033,6 +1051,7 @@ function pickRandom(snap: MatchSnapshot): Action {
 /** League charges: how often "not started" must be read, LEAGUE_RECHECK_MS apart, before giving up. */
 const LEAGUE_CHARGE_CHECKS = 3;
 const LEAGUE_RECHECK_MS = 20_000;
+const LEAGUE_WATCH_MS = 30 * 60_000;
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 /** 10 characters, no look-alikes (0/O, 1/I/L): easy to read out or type. */
