@@ -12,11 +12,16 @@ export class StateStore {
   }
 
   write(rel: string, data: unknown) {
-    const p = join(this.dir, rel);
-    mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
-    const tmp = `${p}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 });
-    renameSync(tmp, p);
+    writeFileAtomic(join(this.dir, rel), JSON.stringify(data), 0o600);
+  }
+
+  /** Raw text (e.g. a record that couldn't be parsed, set aside for a human to look at). */
+  writeRaw(rel: string, text: string) {
+    writeFileAtomic(join(this.dir, rel), text, 0o600);
+  }
+
+  readRaw(rel: string): string | null {
+    try { return readFileSync(join(this.dir, rel), 'utf8'); } catch { return null; }
   }
 
   read<T>(rel: string): T | null {
@@ -31,4 +36,12 @@ export class StateStore {
   list(sub: string): string[] {
     try { return readdirSync(join(this.dir, sub)).filter((f) => f.endsWith('.json')).map((f) => join(sub, f)); } catch { return []; }
   }
+}
+
+/** Write a file so readers only ever see the old or the new version: temp file in the same directory, then rename. */
+export function writeFileAtomic(path: string, text: string, mode = 0o644) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, text, { mode });
+  renameSync(tmp, path);
 }

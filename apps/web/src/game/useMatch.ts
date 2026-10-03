@@ -138,7 +138,7 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
       await pullEvents();
       return true;
     } catch (e) {
-      if (isNetworkError(e)) { setOffline(true); setError('Couldn’t reach the referee, so that move wasn’t sent. Try again in a moment.'); }
+      if (isNetworkError(e)) { setOffline(true); setError('Lost the connection to the referee: that move may not have gone through. The board updates once it’s back.'); }
       else setError(String((e as Error).message).replace(/^.*?→ \d+: /, ''));
       // Stale view (e.g. a timeout ended the turn): resync.
       sendingRef.current = false;

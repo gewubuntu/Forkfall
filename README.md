@@ -173,10 +173,11 @@ The TypeScript SDK wraps all of this (`packages/sdk`); see `packages/sdk/scripts
 Finished matches are archived as JSON (log + signatures) in `apps/server/data/<chainId>/` (`MATCH_ARCHIVE_DIR`) and replayed back in on restart, so history and settlement survive a redeploy of the referee.
 
 **Restarts and redeploys.** Everything still running survives a restart too, in `STATE_DIR` (default `<MATCH_ARCHIVE_DIR>/state`; put it on a persistent volume):
-- *Running matches* are saved on every change (one file per match, atomic writes) and rebuilt by replaying their signed moves. A record whose hash chain doesn't check out is set aside as `.bad`. Downtime doesn't count against the player on turn or the reveal window.
-- *The queue, tickets and friend challenges* are saved within a second of a change and on `SIGTERM`.
+- *Running matches* are saved on every change (one file per match, atomic writes) and rebuilt by replaying their signed moves. A record whose hash chain doesn't check out is set aside as `.bad` (a paid league entry is refunded on-chain). Downtime doesn't count against the player on turn or the reveal window, across any number of restarts.
+- *Finished matches* keep their running file until the archive write (atomic too) succeeded; if it failed, the next start archives them.
+- *The queue, tickets and friend challenges* are saved within a second of a change. On `SIGTERM` the referee stops taking connections, lets requests in flight finish (up to 5 s), saves, and exits.
 - *Login sessions* are stored under a SHA-256 hash of their token, so the file never holds a usable token; expired sessions are dropped, and signature logins without an expiry after 30 days.
-- *League matches* whose entry-fee charge was in flight are re-checked on-chain (`AgentLeague.matches`), so fees are never charged twice.
+- *League entry fees* are never charged twice or kept for a match that isn't played: a charge whose outcome is unknown (in flight at a restart, an RPC error, a receipt timeout) is re-checked on-chain (`AgentLeague.matches`) every 20 s, and only given up after three "not started" answers; a charged match that is cancelled is refunded with `cancelMatch`.
 
 Players keep their page open through a redeploy: the match view shows "Reconnecting to the referee…", the live socket reconnects and re-authenticates, and play continues without signing in again. The SDK retries a GET once on a dropped connection. `PERSIST_STATE=0` keeps all of this in memory only.
 

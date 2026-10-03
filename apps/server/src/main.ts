@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
@@ -11,7 +11,7 @@ import { Profiles, profilesFile } from './profiles.ts';
 import { finishedMatch, Quests, questsFile } from './quests.ts';
 import { createApi } from './http.ts';
 import { Lobby, type ArchivedMatch, type SavedLobby, type SavedMatch } from './lobby.ts';
-import { StateStore } from './state.ts';
+import { StateStore, writeFileAtomic } from './state.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const env = process.env;
@@ -122,8 +122,15 @@ if (store) {
   if (saved) lobby.restoreLobby(saved);
   for (const f of store.list('matches')) {
     const rec = store.read<SavedMatch>(f);
-    if (rec && lobby.restoreRunning(rec, downSince)) resumed++;
-    else { console.warn(`  could not resume ${f}; moved aside`); try { store.write(`${f}.bad`, rec); store.remove(f); } catch { /* keep going */ } }
+    const r = rec ? lobby.restoreRunning(rec, downSince) : false;
+    if (r === 'resumed') resumed++;
+    else if (r === 'archived') store.remove(f); // finished and archived just before the restart: a leftover
+    else {
+      // Keep it for a human to look at (it holds match secrets: owner-only), and refund a paid league entry.
+      console.warn(`  could not resume ${f}; set aside as ${f}.bad`);
+      try { store.writeRaw(`${f}.bad`, store.readRaw(f) ?? ''); store.remove(f); } catch { /* keep going */ }
+      if (rec) lobby.abandon(rec);
+    }
   }
 }
 let lastLobby = '';
@@ -139,7 +146,7 @@ const flushLobby = (force = false) => {
 
 // Export a Foundry-ready settlement file as soon as a match has enough signatures.
 lobby.onChange = (m) => {
-  if (m.phase !== 'ended') return;
+  if (m.phase !== 'ended') return true;
   try {
     const f = finishedMatch(m);
     if (f) {
@@ -149,15 +156,18 @@ lobby.onChange = (m) => {
       if (fresh && quests.hasSeen(f.id)) for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
     }
   } catch (e) { console.error('quest tracking failed', e); }
+  let archived = true;
   try {
-    mkdirSync(archiveDir, { recursive: true });
-    writeFileSync(join(archiveDir, `${m.id}.json`), JSON.stringify(lobby.archive(m.id)));
-  } catch (e) { console.error('archive failed', e); }
+    writeFileAtomic(join(archiveDir, `${m.id}.json`), JSON.stringify(lobby.archive(m.id)));
+  } catch (e) {
+    // Keep the running-match file (return false) so the match is archived at the next start instead of lost.
+    console.error('archive failed', e);
+    archived = false;
+  }
   try {
-    const s = lobby.settlement(m.id);
-    mkdirSync(settlementDir, { recursive: true });
-    writeFileSync(join(settlementDir, `${m.id}.json`), JSON.stringify(s, null, 2));
+    writeFileAtomic(join(settlementDir, `${m.id}.json`), JSON.stringify(lobby.settlement(m.id), null, 2));
   } catch { /* not settleable yet */ }
+  return archived;
 };
 
 setInterval(() => { lobby.tick(); flushLobby(); }, 1000);
@@ -202,20 +212,26 @@ const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, 
 const rewards = new Rewards(env.REWARDS_DIR ?? rewardsDir(root, chain.chainId));
 const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR ?? leagueDir(root, chain.chainId)), store });
 
-// Stop cleanly on a redeploy: save the queue and challenges (matches and sessions are saved as they change).
+// Stop cleanly on a redeploy: stop taking new connections, let requests already in flight finish (a move being
+// verified is applied and answered), then save the queue and challenges and exit. Matches and sessions are saved
+// as they change. Live sockets close at once; clients reconnect to the next instance on their own.
 let stopping = false;
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {
   process.on(sig, () => {
     if (stopping) process.exit(1);
     stopping = true;
-    flushLobby(true);
-    console.log(`${sig}: state saved, shutting down`);
-    live.close(); // clients reconnect to the next instance on their own
-    server.close(() => process.exit(0));
-    server.closeAllConnections();
-    setTimeout(() => process.exit(0), 3000).unref();
+    console.log(`${sig}: finishing requests in flight, then saving state`);
+    const done = () => { flushLobby(true); process.exit(0); };
+    live.close();
+    server.close(done);
+    // Keep-alive connections between requests would hold close() open: drop them as soon as they're idle.
+    server.closeIdleConnections();
+    const idle = setInterval(() => server.closeIdleConnections(), 100);
+    idle.unref();
+    setTimeout(done, 5000).unref();
   });
 }
+
 const port = Number(env.PORT ?? 8787);
 server.listen(port, () => {
   console.log(`Forkfall referee listening on http://localhost:${port}`);

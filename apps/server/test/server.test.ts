@@ -377,7 +377,7 @@ describe('Agent League queue', () => {
     settleByReferee: async () => ('0x' + 'ab'.repeat(32)) as Hex,
     settle: async (r: { matchId: Hex }) => { settledFull.push(r.matchId); return ('0x' + 'cd'.repeat(32)) as Hex; },
   };
-  const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), league, settler });
+  const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), league, settler, leagueRecheckMs: 0 });
   const api = createApi(lob, { ratePerSec: 10_000 });
   let base = '';
   beforeAll(async () => {
@@ -442,7 +442,8 @@ describe('Agent League queue', () => {
     const q = await y.queue({ mode: 'league', race: 'prophets' });
     await x.reveal(q.matchId!); await y.reveal(q.matchId!);
     const m = lob.get(q.matchId!);
-    for (let i = 0; i < 50 && m.phase === 'reveal'; i++) await new Promise((r) => setTimeout(r, 5));
+    // A failed charge is re-checked a few times (the chain says "not started" each time) before it's final.
+    for (let i = 0; i < 100 && m.phase === 'reveal'; i++) { lob.tick(); await new Promise((r) => setTimeout(r, 5)); }
     expect(m.phase).toBe('cancelled');
     expect(m.league).toMatchObject({ state: 'failed', error: 'InsufficientBalance' });
     failStart = false;

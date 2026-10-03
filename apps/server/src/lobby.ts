@@ -60,7 +60,11 @@ export interface Match {
   /** Auto-settlement by the referee when the loser never signs. */
   referee?: RefereeSettlement;
   /** Agent League: entry fees charged on-chain when the match starts (pending → charged), or why it failed. */
-  league?: { state: 'charging' | 'charged' | 'failed'; tx?: Hex; error?: string };
+  league?: {
+    state: 'charging' | 'charged' | 'failed'; tx?: Hex; error?: string;
+    /** While charging: when to check again (the outcome of the last attempt is unknown), and how many times it read "not started". */
+    retryAt?: number; notStarted?: number;
+  };
   /** Friend challenge this match came from (casual). */
   challenge?: string;
   /** Time the referee was down while this match waited for its reveals (doesn't count against the reveal window). */
@@ -114,6 +118,8 @@ export interface LobbyOptions {
   settleAttempts?: number;
   /** Agent League (paid agents-only queue); null/absent = league disabled. */
   league?: LeagueOps | null;
+  /** League charges: wait between checks of a failed charge's outcome (default 20 s). */
+  leagueRecheckMs?: number;
   /** Where running matches, the queue and challenges survive a restart (absent = memory only). */
   store?: StateStore | null;
 }
@@ -201,7 +207,12 @@ export class Lobby {
   readonly queueTtlMs: number;
   readonly now: () => number;
   readonly domain: TypedDataDomain;
-  onChange?: (m: Match) => void;
+  /**
+   * Called on every change. For a finished match, return false if it could not be archived: its running-match
+   * file is then kept (and the archive retried at the next restart) instead of being dropped.
+   */
+  onChange?: (m: Match) => void | boolean;
+  private leagueInFlight = new Set<Hex>();
   /** Live notices to connected clients (set by the API); everything works without it, just by polling. */
   bus?: LiveBus;
 
@@ -507,19 +518,46 @@ export class Lobby {
   }
 
   /**
-   * Charge both league entry fees. If the call fails because the match is already started on-chain (a retry after
-   * a restart, while the first transaction landed), it counts as charged: the fees were taken once, so play.
+   * Charge both league entry fees. The outcome of a failed call isn't always known (an RPC error, or a receipt
+   * that timed out while the transaction is still pending), so a failure is only final once the chain has said
+   * "not started" a few times, some time apart. Until then the match stays `charging` and is re-checked from
+   * `tick`. If it turns out started, it counts as charged; a match cancelled after a charge is refunded on-chain.
    */
   private chargeLeague(m: Match) {
     const ops = this.opts.league!;
-    ops.start(m.id, m.players[0].address, m.players[1].address).then(
-      (tx) => { m.league = { state: 'charged', tx }; this.maybeStart(m); },
+    if (this.leagueInFlight.has(m.id)) return;
+    this.leagueInFlight.add(m.id);
+    (async () => {
+      // A retry first asks the chain: the earlier attempt may have gone through.
+      if ((m.league?.notStarted ?? 0) > 0 || m.league?.retryAt !== undefined) {
+        if (await ops.started(m.id)) return { tx: m.league?.tx };
+      }
+      return { tx: await ops.start(m.id, m.players[0].address, m.players[1].address) };
+    })().then(
+      ({ tx }) => { m.league = { state: 'charged', tx }; this.save(m); this.maybeStart(m); },
       async (e) => {
-        const started = await ops.started(m.id).catch(() => false);
-        if (started) { m.league = { state: 'charged' }; this.maybeStart(m); return; }
-        m.league = { state: 'failed', error: (e as Error).message }; m.phase = 'cancelled'; this.changed(m);
+        let started: boolean | null;
+        try { started = await ops.started(m.id); } catch { started = null; }
+        if (started) { m.league = { state: 'charged' }; this.save(m); this.maybeStart(m); return; }
+        const notStarted = (m.league?.notStarted ?? 0) + (started === false ? 1 : 0);
+        if (notStarted >= LEAGUE_CHARGE_CHECKS) {
+          m.league = { state: 'failed', error: (e as Error).message }; m.phase = 'cancelled'; this.changed(m);
+          return;
+        }
+        m.league = { state: 'charging', error: (e as Error).message, notStarted, retryAt: this.now() + (this.opts.leagueRecheckMs ?? LEAGUE_RECHECK_MS) };
+        this.save(m);
       },
-    );
+    ).finally(() => this.leagueInFlight.delete(m.id));
+  }
+
+  /** A league match that won't be played after all: refund both entry fees if they were charged. */
+  private refundLeague(m: Match) {
+    const ops = this.opts.league;
+    if (!ops || m.mode !== 'league') return;
+    ops.started(m.id)
+      .then((started) => (started ? ops.cancel(m.id) : null))
+      .then((tx) => { if (tx) console.log(`league match ${m.id} cancelled on-chain, entry fees refunded (${tx})`); })
+      .catch((e) => console.error(`could not refund league match ${m.id}: ${(e as Error).message}`));
   }
 
   // ─── Moves ────────────────────────────────────────────────────
@@ -583,10 +621,17 @@ export class Lobby {
     const now = this.now();
     this.pruneQueue();
     this.pruneChallenges();
+    this.pruneTickets();
     for (const m of this.matches.values()) {
+      if (m.phase === 'reveal' && m.league?.state === 'charging' && m.league.retryAt !== undefined && now >= m.league.retryAt) {
+        this.chargeLeague(m);
+        continue;
+      }
       const revealWindow = m.challenge ? CHALLENGE_REVEAL_MS : this.revealMs;
       if (m.phase === 'reveal' && now - m.createdAt - (m.pausedMs ?? 0) > revealWindow && m.league?.state !== 'charging') {
-        m.phase = 'cancelled'; this.reopenChallenge(m); this.changed(m); continue;
+        m.phase = 'cancelled'; this.reopenChallenge(m); this.changed(m);
+        if (m.league?.state === 'charged') this.refundLeague(m);
+        continue;
       }
       if (m.phase !== 'active') continue;
       const seat = m.state!.active;
@@ -875,29 +920,31 @@ export class Lobby {
 
   // ─── Surviving restarts ───────────────────────────────────────
   /** Write a running match to disk (finished ones go to the archive instead, via onChange). */
-  private save(m: Match) {
+  private save(m: Match, keepEnded = false) {
     const store = this.opts.store;
     if (!store) return;
     const file = `matches/${m.id}.json`;
     try {
-      if (m.phase === 'ended' || m.phase === 'cancelled') { store.remove(file); return; }
+      if (m.phase === 'cancelled' || (m.phase === 'ended' && !keepEnded)) { store.remove(file); return; }
       const { state: _state, events: _events, ...match } = m;
       store.write(file, { v: 1, savedAt: this.now(), match } satisfies SavedMatch);
     } catch (e) { console.error(`could not save match ${m.id}`, e); } // keep playing; it just won't survive a restart
   }
 
-  /** The queue, tickets and challenges, for `restoreLobby`. Tickets of matches no longer starting are dropped. */
+  /** The queue, tickets and challenges, for `restoreLobby`. */
   saveLobby(): SavedLobby {
-    this.pruneTickets();
     return {
       v: 1, aliveAt: this.now(), queue: this.queue,
       matchedTickets: [...this.matchedTickets], byAddressTicket: [...this.byAddressTicket], challenges: [...this.challenges.values()],
     };
   }
 
-  /** Tickets only matter until the client has seen its match start: forget them once it's under way or gone. */
+  /** A ticket answers "matched" while its match runs; once that match is over (or gone), forget it. */
   private pruneTickets() {
-    for (const [t, id] of this.matchedTickets) if (this.matches.get(id)?.phase !== 'reveal') this.matchedTickets.delete(t);
+    for (const [t, id] of this.matchedTickets) {
+      const phase = this.matches.get(id)?.phase;
+      if (phase !== 'reveal' && phase !== 'active') this.matchedTickets.delete(t);
+    }
     const live = new Set([...this.queue.map((q) => q.ticket), ...this.matchedTickets.keys()]);
     for (const [a, t] of this.byAddressTicket) if (!live.has(t)) this.byAddressTicket.delete(a);
   }
@@ -914,20 +961,21 @@ export class Lobby {
 
   /**
    * Bring back a running match after a restart: rebuild its game state by replaying the logged moves (checking
-   * the hash chain), and don't count the downtime against the player on turn or the reveal window.
-   * `downSince` is when the referee was last known alive. Returns false if the record doesn't replay.
+   * the hash chain), and don't count the downtime against the player on turn or the reveal window. The shifted
+   * clocks are saved right away, so a second restart doesn't take the downtime back.
+   * `downSince` is when the referee was last known alive.
+   * Returns 'resumed', 'archived' (already loaded from the archive: the record is a leftover), or false.
    */
-  restoreRunning(rec: SavedMatch, downSince: number): boolean {
-    if (rec?.v !== 1 || this.matches.has(rec.match.id)) return false;
+  restoreRunning(rec: SavedMatch, downSince: number): 'resumed' | 'archived' | false {
+    if (rec?.v !== 1 || !rec.match?.id) return false;
+    if (this.matches.has(rec.match.id)) return 'archived';
     const m = { ...rec.match, events: [] } as Match;
     const downtime = Math.max(0, this.now() - Math.max(downSince, rec.savedAt));
     if (m.phase === 'reveal') {
       m.pausedMs = (m.pausedMs ?? 0) + downtime;
-      if (m.league?.state === 'charging') {
-        // We don't know whether the charge landed: ask again; an "already started" answer counts as charged.
-        this.chargeLeague(m);
-      }
-    } else if (m.phase === 'active') {
+      // A charge that was in flight: its outcome is unknown, so re-check it from tick (never charge twice).
+      if (m.league?.state === 'charging') m.league = { ...m.league, retryAt: this.now() };
+    } else if (m.phase === 'active' || m.phase === 'ended') {
       try {
         const r = this.initialState(m);
         let state = r.state;
@@ -940,21 +988,37 @@ export class Lobby {
           head = nextHead(head, mv.seat, actionHash(mv.action)) as Hex;
           if (head !== mv.head) return false;
         }
-        if (head !== m.head || state.status === 'ended') return false;
+        if (head !== m.head) return false;
+        // A finished match kept here because archiving it failed. A forfeit (too many timeouts) ends without a move.
+        if (m.phase === 'ended' && state.status !== 'ended') {
+          const loser = m.clock.timeouts.findIndex((t) => t >= this.maxTimeouts);
+          if (loser < 0) return false;
+          const out = forfeit(state, loser as Seat);
+          state = out.state;
+          events.push(...out.events);
+        }
+        if (state.status === 'ended' !== (m.phase === 'ended')) return false;
         m.state = state;
         m.events = events;
       } catch { return false; }
-      m.clock.turnStartedAt += downtime;
+      if (m.phase === 'active') m.clock.turnStartedAt += downtime;
     } else return false;
     this.matches.set(m.id, m);
+    if (m.phase === 'ended') this.changed(m); // archive it now; the running file goes once that worked
+    else this.save(m);
     if (m.phase === 'reveal' && m.league?.state !== 'charging') this.maybeStart(m); // both revealed just before going down
-    return true;
+    return 'resumed';
+  }
+
+  /** A running-match record that can't be resumed: refund its league entry fees if they were charged. */
+  abandon(rec: SavedMatch) {
+    if (rec?.match?.mode === 'league' && rec.match.league?.state !== 'failed') this.refundLeague(rec.match as Match);
   }
 
   private changed(m: Match) {
-    // onChange archives a finished match first; only then does save() drop its running-match file.
-    this.onChange?.(m);
-    this.save(m);
+    // onChange archives a finished match first; its running-match file is only dropped if that worked.
+    const archived = this.onChange?.(m) !== false;
+    this.save(m, !archived);
     this.bus?.match(m.id, { seq: m.moves.length, phase: m.phase });
     if (m.phase === 'ended' || m.phase === 'cancelled') this.bus?.lobby();
   }
@@ -965,6 +1029,10 @@ function pickRandom(snap: MatchSnapshot): Action {
   if (!acts.length || Math.random() < 0.2) return { type: 'endTurn' };
   return acts[Math.floor(Math.random() * acts.length)];
 }
+
+/** League charges: how often "not started" must be read, LEAGUE_RECHECK_MS apart, before giving up. */
+const LEAGUE_CHARGE_CHECKS = 3;
+const LEAGUE_RECHECK_MS = 20_000;
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 /** 10 characters, no look-alikes (0/O, 1/I/L): easy to read out or type. */

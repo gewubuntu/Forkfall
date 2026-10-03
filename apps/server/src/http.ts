@@ -61,7 +61,9 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
   const saveSessions = () => {
     if (!store) return;
     const now = Date.now();
-    for (const [k, v] of sessions) if (v.expiresAt && v.expiresAt < now) sessions.delete(k);
+    for (const [k, v] of sessions) {
+      if (v.expiresAt ? v.expiresAt < now : (v.createdAt ?? now) < now - SIGNATURE_SESSION_KEEP_MS) sessions.delete(k);
+    }
     try {
       store.write('sessions.json', {
         v: 1,
