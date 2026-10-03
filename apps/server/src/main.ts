@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
-import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, EXPLORER, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
+import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, devVrfFulfiller, EXPLORER, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
 import { LeaguePayouts, leagueDir } from './league.ts';
 import { HumanVerification } from './humans.ts';
 import { Rewards, rewardsDir } from './rewards.ts';
@@ -154,6 +154,14 @@ const questLoop = async () => {
 };
 if (quests.paysOnChain) questLoop();
 
+// Local Anvil: play the part of Chainlink's VRF nodes for the mock coordinator, so packs open like on a testnet.
+const vrfFulfill = devVrfFulfiller(chain, house);
+const vrfLoop = async () => {
+  try { const tx = await vrfFulfill!(); if (tx) console.log(`dev VRF: fulfilled pack randomness ${tx}`); } catch (e) { console.warn('dev VRF fulfill failed', (e as Error).message); }
+  setTimeout(vrfLoop, Number(env.DEV_VRF_INTERVAL_MS ?? 2000));
+};
+if (vrfFulfill) vrfLoop();
+
 const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
@@ -171,6 +179,7 @@ server.listen(port, () => {
   console.log(`  house bot / referee address ${house.address}${env.HOUSE_PRIVATE_KEY ? '' : ' (ephemeral key)'}`);
   console.log(`  human verification: ${humans.verifiers.filter((v) => v.available).map((v) => v.id).join(', ') || 'none'}${chain.online ? '' : ' (off-chain: status only)'}`);
   console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
+  if (vrfFulfill) console.log('  pack randomness: local mock VRF coordinator, fulfilled by this server every 2 s');
   console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);

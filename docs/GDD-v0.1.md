@@ -151,6 +151,26 @@ Play someone you know without hoping the queue pairs you: **Play → Friend** cr
 
 **Rematch:** the result screen of any match against a real opponent (human or agent) has a Rematch button: a challenge addressed to that opponent. Their result screen shows "Your opponent wants a rematch!" with Accept, and both land in the new match. If both ask at once, accepting the other's request cancels your own. Challenges addressed to you also show on Home and Play. Agents use the same API (`/v1/challenges`) and the `forkfall_challenge` MCP tool. Challenge matches count for daily quests like any casual match.
 
+### Pack randomness (Chainlink VRF)
+
+Pack contents come from one random word per pack. With Chainlink VRF v2.5 configured, buying a pack (or receiving a free one) requests the word; the VRF coordinator answers with the word and a proof that it was generated correctly, and `PackSale` **only stores it**: the callback does nothing else, so its gas is small and fixed (60k + 30k per pack) and nothing a player does can make it fail.
+
+Opening then rolls the contents from the word, and every other input is fixed before the word exists, so the result is fully determined (anyone can check it with `previewVrfOpen`):
+
+- **Order:** a wallet's VRF packs open strictly oldest first (`OpenInOrder` otherwise; Collection labels later packs "open your older packs first"). The pity counter therefore advances in a fixed order: no choosing which pack takes the guaranteed Legendary.
+- **Duplicate protection** counts the copies a wallet has **pulled from VRF packs** (`pulled`), not what it currently holds, so moving cards to another wallet before opening changes nothing. Starter decks, crafted cards and blockhash packs don't count toward it.
+- **Separate counters:** VRF packs have their own pity counter (`vrfPacksSinceLegendary`). Old blockhash packs can be opened any time, so they touch neither that counter nor `pulled`; otherwise opening one first could steer a VRF pack whose word is already public.
+
+So no one (players, the block producer, the referee or the contract admin) can bias a word or steer what a pack holds.
+
+Robustness:
+
+- **Retry:** if a request goes unanswered for 500 blocks, the pack's owner can request again (Collection shows *Request again*). The old request stays valid and the first answer to arrive decides the pack, so a retry can never swap a known word.
+- **Switching sources:** each request is keyed by its coordinator and id, and only that coordinator's answer counts, even if the admin changes the coordinator later (two coordinators reusing an id can't collide). If VRF is switched off while a pack still waits, opening re-seals it to the blockhash source, but only once its request is 500 blocks old, so an answer already on its way can't be dodged; the queue moves on either way.
+- **Deploy checks:** the deploy refuses a coordinator without key hash and subscription; `CheckDeployment` confirms PackSale is a consumer of a funded subscription.
+
+Without VRF (testnets that haven't set it up), packs fall back to the commit/blockhash source: the purchase commits to a block two blocks ahead and opening reads its hash and rolls then, with duplicate protection on current holdings. That is fine for testnet, but a block producer could in principle withhold a block to re-roll, and holdings can be moved before opening, which is why mainnet requires VRF. The admin (`RANDOMNESS_ADMIN_ROLE`) switches sources with `setVrf`. Local Anvil deploys a mock coordinator that the referee server answers every two seconds, so local play exercises the same flow.
+
 ### Daily quests and free packs
 
 Every player (humans and agents) gets three quests a day, reset at 00:00 UTC: one **win** quest (win 2 matches, or win as a given race), one **play** quest (play matches, units or actions, deal Treasury damage, defeat units, play Rush units) and one **race** quest (correct predictions, Hold growth, Drones and Bonds, Ape plays). The set is picked from a hash of the address and the day, so it's the same on every device; one reroll a day swaps an unfinished quest for another from its group.

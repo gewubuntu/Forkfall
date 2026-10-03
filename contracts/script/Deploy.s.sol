@@ -8,6 +8,7 @@ import {StarterDecks} from "../src/StarterDecks.sol";
 import {PackSale} from "../src/PackSale.sol";
 import {Crafting} from "../src/Crafting.sol";
 import {QuestRewards} from "../src/QuestRewards.sol";
+import {VRFCoordinatorMock} from "../src/vrf/VRFCoordinatorMock.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {HumanRegistry} from "../src/HumanRegistry.sol";
 import {DeckRegistry} from "../src/DeckRegistry.sol";
@@ -30,6 +31,12 @@ import {Set1Cards} from "../src/generated/Set1Cards.sol";
 ///                       defaults to http://localhost:8787/metadata on Anvil
 ///      CARD_URI / CONTRACT_URI  override the derived <base>/cards/{id}.json and <base>/contract.json
 ///      PACK_PRICE_WEI   pack price in wei
+///      VRF_COORDINATOR, VRF_KEY_HASH, VRF_SUBSCRIPTION_ID  Chainlink VRF v2.5 for pack randomness (see Chainlink's
+///                       supported-networks page for the coordinator and key hash; create a subscription at
+///                       vrf.chain.link, fund it, and add PackSale as a consumer after deploying). Optional:
+///                       VRF_CONFIRMATIONS (default 3), VRF_NATIVE_PAYMENT (default false: pay in LINK).
+///                       Unset on a testnet: packs use the commit/blockhash source. On Anvil a mock coordinator
+///                       is deployed and the referee server fulfills its requests.
 contract Deploy is ForkfallScript {
     struct Deployed {
         CardRegistry cards;
@@ -45,6 +52,7 @@ contract Deploy is ForkfallScript {
         AgentLeague league;
         FaucetToken usdc;
         FaucetToken fall;
+        VRFCoordinatorMock vrfMock;
     }
 
     function run() external returns (Deployed memory d) {
@@ -75,10 +83,41 @@ contract Deploy is ForkfallScript {
         d = deployAll(deployer, referee, uri, packPrice);
         if (treasury != deployer) d.packs.setTreasury(treasury);
         if (bytes(contractUri).length > 0) d.cards.setContractURI(contractUri);
+        configureRandomness(d);
         vm.stopBroadcast();
 
         writeBook(d, deployer, referee, startBlock);
         logExplorer(d);
+    }
+
+    /// @dev Pack randomness: Chainlink VRF when configured, a local mock on Anvil, else commit/blockhash.
+    function configureRandomness(Deployed memory d) internal {
+        address coordinator = vm.envOr("VRF_COORDINATOR", address(0));
+        if (coordinator == address(0) && block.chainid == 31337) {
+            d.vrfMock = new VRFCoordinatorMock();
+            coordinator = address(d.vrfMock);
+        }
+        if (coordinator == address(0)) {
+            console2.log(
+                "  pack randomness: commit/blockhash (set VRF_COORDINATOR, VRF_KEY_HASH, VRF_SUBSCRIPTION_ID for Chainlink VRF)"
+            );
+            return;
+        }
+        d.packs
+            .setVrf(
+                PackSale.VrfConfig({
+                    coordinator: coordinator,
+                    keyHash: vm.envOr("VRF_KEY_HASH", bytes32(0)),
+                    subId: vm.envOr("VRF_SUBSCRIPTION_ID", uint256(0)),
+                    confirmations: uint16(vm.envOr("VRF_CONFIRMATIONS", uint256(3))),
+                    callbackGasPerPack: 30_000,
+                    nativePayment: vm.envOr("VRF_NATIVE_PAYMENT", false)
+                })
+            );
+        console2.log("  pack randomness: VRF via", coordinator);
+        if (address(d.vrfMock) == address(0)) {
+            console2.log("  -> add PackSale as a consumer of your VRF subscription:", address(d.packs));
+        }
     }
 
     function deployAll(address admin, address referee, string memory uri, uint256 packPrice)
@@ -134,6 +173,7 @@ contract Deploy is ForkfallScript {
         vm.serializeAddress(k, "PackSale", address(d.packs));
         vm.serializeAddress(k, "Crafting", address(d.crafting));
         vm.serializeAddress(k, "QuestRewards", address(d.quests));
+        if (address(d.vrfMock) != address(0)) vm.serializeAddress(k, "VRFCoordinatorMock", address(d.vrfMock));
         vm.serializeAddress(k, "AgentRegistry", address(d.agents));
         vm.serializeAddress(k, "HumanRegistry", address(d.humans));
         vm.serializeAddress(k, "DeckRegistry", address(d.decks));
