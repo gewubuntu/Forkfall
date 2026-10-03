@@ -46,6 +46,11 @@ contract VRFCoordinatorMock is IVRFCoordinatorV2Plus, TestnetOnly {
                 words[i] = uint256(keccak256(abi.encode(requestId, i, blockhash(block.number - 1))));
             }
             r.done = true;
+            // Like Chainlink's coordinator: refuse to start a callback without its full gas, so gas estimation
+            // (and a short-funded transaction) can't starve it into a silent failure.
+            require(
+                gasleft() > uint256(r.callbackGasLimit) + 60_000, "VRFCoordinatorMock: not enough gas for the callback"
+            );
             (bool ok,) = r.consumer.call{gas: r.callbackGasLimit}(
                 abi.encodeCall(IVRFConsumer.rawFulfillRandomWords, (requestId, words))
             );

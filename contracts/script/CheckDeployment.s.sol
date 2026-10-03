@@ -10,6 +10,7 @@ import {AgentLeague} from "../src/AgentLeague.sol";
 import {StarterDecks} from "../src/StarterDecks.sol";
 import {Crafting} from "../src/Crafting.sol";
 import {QuestRewards} from "../src/QuestRewards.sol";
+import {IVRFSubscriptionV2Plus} from "../src/vrf/VRFV2Plus.sol";
 import {Set1Cards} from "../src/generated/Set1Cards.sol";
 
 /// @notice Read-only health check of a deployed hub, using deployments/<chainId>.json.
@@ -65,12 +66,26 @@ contract CheckDeployment is ForkfallScript {
         check(packs.tokenPrice(addr("TestUSDC")) > 0, "pack tUSDC price set");
         check(StarterDecks(addr("StarterDecks")).starterList(1)[0] != 0, "starter lists readable");
 
-        (address coordinator,, uint256 subId,,,) = packs.vrf();
+        (address coordinator, bytes32 keyHash, uint256 subId,,,) = packs.vrf();
         if (coordinator == address(0)) {
             console2.log("  [note] pack randomness: commit/blockhash (Chainlink VRF required before mainnet)");
         } else {
             console2.log("  [ok]   pack randomness: Chainlink VRF, coordinator", coordinator);
-            if (block.chainid != 31337) check(subId != 0, "VRF subscription id set");
+            if (block.chainid != 31337) {
+                check(keyHash != bytes32(0) && subId != 0, "VRF key hash and subscription id set");
+                try IVRFSubscriptionV2Plus(coordinator).getSubscription(subId) returns (
+                    uint96 balance, uint96 nativeBalance, uint64, address, address[] memory consumers
+                ) {
+                    bool listed;
+                    for (uint256 i; i < consumers.length; ++i) {
+                        if (consumers[i] == address(packs)) listed = true;
+                    }
+                    check(listed, "PackSale is a consumer of the VRF subscription (add it at vrf.chain.link)");
+                    check(balance > 0 || nativeBalance > 0, "VRF subscription is funded");
+                } catch {
+                    check(false, "VRF subscription readable on the coordinator");
+                }
+            }
         }
         console2.log("season", ms.currentSeason());
         console2.log("pack price (wei)", packs.ethPrice());

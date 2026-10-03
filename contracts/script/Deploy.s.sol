@@ -110,7 +110,7 @@ contract Deploy is ForkfallScript {
                     keyHash: vm.envOr("VRF_KEY_HASH", bytes32(0)),
                     subId: vm.envOr("VRF_SUBSCRIPTION_ID", uint256(0)),
                     confirmations: uint16(vm.envOr("VRF_CONFIRMATIONS", uint256(3))),
-                    callbackGasPerPack: 30_000,
+                    callbackGasPerPack: 150_000,
                     nativePayment: vm.envOr("VRF_NATIVE_PAYMENT", false)
                 })
             );

@@ -29,6 +29,14 @@ interface IVRFCoordinatorV2Plus {
     function requestRandomWords(VRFV2PlusClient.RandomWordsRequest calldata req) external returns (uint256 requestId);
 }
 
+/// @notice From Chainlink's IVRFSubscriptionV2Plus: lets deployment checks confirm PackSale is a consumer.
+interface IVRFSubscriptionV2Plus {
+    function getSubscription(uint256 subId)
+        external
+        view
+        returns (uint96 balance, uint96 nativeBalance, uint64 reqCount, address owner, address[] memory consumers);
+}
+
 interface IVRFConsumer {
     function rawFulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) external;
 }

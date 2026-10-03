@@ -93,25 +93,34 @@ function CollectionLive({ chainId }: { chainId: number }) {
     contracts: packIds.flatMap((id) => [
       { address: c.PackSale, abi: packSaleAbi, functionName: 'packs', args: [id], chainId: cid } as const,
       { address: c.PackSale, abi: packSaleAbi, functionName: 'packReady', args: [id], chainId: cid } as const,
-      { address: c.PackSale, abi: packSaleAbi, functionName: 'vrfRequestOf', args: [id], chainId: cid } as const,
+      { address: c.PackSale, abi: packSaleAbi, functionName: 'retryableAt', args: [id], chainId: cid } as const,
     ]),
   });
   const { data: block } = useBlockNumber({ chainId: cid, watch: true });
-  const refetchPacks = packs.refetch;
-  useEffect(() => { refetchPacks(); }, [block, refetchPacks]); // readiness changes when VRF answers, not only per block
   const unopened = packIds
     .map((id, i) => ({
       id,
       p: packs.data?.[i * 3]?.result as readonly [Address, bigint, boolean, number] | undefined,
       ready: packs.data?.[i * 3 + 1]?.result as boolean | undefined,
-      vrf: ((packs.data?.[i * 3 + 2]?.result as bigint | undefined) ?? 0n) > 0n,
+      /** Waiting on Chainlink VRF; from this block its owner may request again (0n = not waiting). */
+      retryAt: (packs.data?.[i * 3 + 2]?.result as bigint | undefined) ?? 0n,
     }))
     .filter((x) => x.p && !x.p[2])
     .map((x) => ({
-      id: x.id, revealBlock: x.p![1], kind: Number(x.p![3] ?? 0) as 0 | 1, vrf: x.vrf,
+      id: x.id, revealBlock: x.p![1], kind: Number(x.p![3] ?? 0) as 0 | 1, vrf: x.retryAt > 0n, retryAt: x.retryAt,
       // Older PackSale deployments have no packReady: fall back to the reveal block.
       ready: x.ready ?? (block !== undefined && block > x.p![1]),
     }));
+  // While a pack waits for randomness, re-read on every new block and every 3 s (VRF answers in its own
+  // transaction, and block notifications can be missed); once everything is ready, stop.
+  const waiting = unopened.some((p) => !p.ready);
+  const refetchPacks = packs.refetch;
+  useEffect(() => { if (waiting) refetchPacks(); }, [block, waiting, refetchPacks]);
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(() => refetchPacks(), 3000);
+    return () => clearInterval(t);
+  }, [waiting, refetchPacks]);
   const eth = useBalance({ address: player, chainId: cid });
 
   // ─── UI state ─────────────────────────────────────────────────
@@ -177,9 +186,14 @@ function CollectionLive({ chainId }: { chainId: number }) {
       setReveal(null);
     }
     if (!opened && logs.some((l) => l.eventName === 'PackRecommitted')) {
-      setNotice(`Pack #${id} waited too long (over 256 blocks), so it was re-sealed to a new block. Open it again in a few seconds.`);
+      setNotice(`Pack #${id} was re-sealed to a new block (it waited too long, or its randomness source changed). Open it again in a few seconds.`);
     }
     refresh();
+  };
+
+  const retry = async (id: bigint) => {
+    const rc = await tx.run(`Request randomness again for pack #${id}`, { address: c.PackSale, abi: packSaleAbi, functionName: 'retryRandomness', args: [id] });
+    if (rc) refresh();
   };
 
   const extras = COLLECTIBLE.map((cd) => {
@@ -312,13 +326,16 @@ function CollectionLive({ chainId }: { chainId: number }) {
             {notice && <div className="alert info"><span>{notice}</span><button onClick={() => setNotice(null)} aria-label="Dismiss">✕</button></div>}
             {unopened.length === 0 ? <p className="muted">No sealed packs. Buy one to get started.</p> : (
               <ul className="pack-list">
-                {unopened.map(({ id, revealBlock, kind: k, ready, vrf }) => {
+                {unopened.map(({ id, revealBlock, kind: k, ready, vrf, retryAt }) => {
+                  const canRetry = vrf && !ready && block !== undefined && block >= retryAt;
                   const wait = block !== undefined ? Number(revealBlock - block + 1n) : null;
                   return (
                     <li key={String(id)} className="pack-row">
                       <div className={`pack-art kind-${k}`} aria-hidden><img src={k === 1 ? spriteSvg(48) : LOGO_MARK} alt="" /></div>
                       <div className="pr-text"><b>{KINDS[k]?.short ?? 'Set 1'} pack #{String(id)}</b><small className="muted">{ready ? 'Ready to open' : vrf ? 'Waiting for verifiable randomness (Chainlink VRF)…' : wait !== null && wait > 0 ? `Sealing… ${wait} block${wait === 1 ? '' : 's'}` : '…'}</small></div>
-                      <button className="btn btn-primary" disabled={!ready || tx.busy} onClick={() => open(id)}>Open</button>
+                      {canRetry
+                        ? <button className="btn" disabled={tx.busy} onClick={() => retry(id)} title="Chainlink hasn't answered for a while: ask again (the first answer to arrive counts)">Request again</button>
+                        : <button className="btn btn-primary" disabled={!ready || tx.busy} onClick={() => open(id)}>Open</button>}
                     </li>
                   );
                 })}
