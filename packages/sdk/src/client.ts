@@ -1,5 +1,6 @@
 import type { Action, CardDef, Equipped, GameEvent, PlayerView, Race } from '@forkfall/engine';
 import { randomHex32 } from '@forkfall/engine';
+import { LiveClient, type LiveClientOptions } from './live.ts';
 import type { Hex, LocalAccount, TypedDataDomain } from 'viem';
 import {
   actionHash, commitSeed, MOVE_TYPES, RESULT_TYPES, sessionProofMessage, type Delegation, type MatchResult, type Mode,
@@ -27,6 +28,8 @@ export interface ClientOptions {
   wallet?: Address;
   /** How the wallet signs results; defaults to `account`. */
   signResult?: ResultSigner;
+  /** Abort an API request that takes longer than this (default 20 s), so a stalled connection can't hang a caller. */
+  timeoutMs?: number;
 }
 
 export interface Me {
@@ -218,6 +221,52 @@ export class ForkfallClient {
 
   get address(): Address { return this.opts.wallet ?? this.account.address; }
 
+  private liveClient?: LiveClient;
+  private livePinned = false;
+  /** Borrowers per socket instance, so a closeLive() in between can't skew the next socket's count. */
+  private liveUsers = new WeakMap<LiveClient, number>();
+  /**
+   * The live-notice socket for this client (created on first use; signs in with this client's session). It stays
+   * open until `closeLive()` or `logout()`; in a Node script, call one of them when done or the process won't exit.
+   * `onReconnect` / `onStatus` are added as listeners on every call.
+   */
+  live(opts: Omit<LiveClientOptions, 'token'> = {}): LiveClient {
+    this.livePinned = true;
+    const live = this.ensureLive();
+    if (opts.onReconnect) live.onReconnected(opts.onReconnect);
+    if (opts.onStatus) live.onStatusChange(opts.onStatus);
+    return live;
+  }
+
+  /** Borrow the live socket for a while (as `runMatch` does): it closes again when the last borrower releases it, unless `live()` pinned it. */
+  retainLive(): { live: LiveClient; release: () => void } {
+    const live = this.ensureLive();
+    this.liveUsers.set(live, (this.liveUsers.get(live) ?? 0) + 1);
+    let done = false;
+    return {
+      live,
+      release: () => {
+        if (done) return;
+        done = true;
+        const n = (this.liveUsers.get(live) ?? 1) - 1;
+        this.liveUsers.set(live, n);
+        if (n === 0 && this.liveClient === live && !this.livePinned) this.closeLive();
+      },
+    };
+  }
+
+  /** Close the live socket (a later `live()` or `runMatch` opens a fresh one). */
+  closeLive() {
+    this.liveClient?.close();
+    this.liveClient = undefined;
+    this.livePinned = false;
+  }
+
+  private ensureLive(): LiveClient {
+    this.liveClient ??= new LiveClient(LiveClient.urlFor(this.baseUrl), { token: () => this.token });
+    return this.liveClient;
+  }
+
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(this.baseUrl + path, {
       method,
@@ -226,6 +275,7 @@ export class ForkfallClient {
         ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(this.opts.timeoutMs ?? 20_000),
     });
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};
@@ -241,6 +291,7 @@ export class ForkfallClient {
       address: this.address, message, signature, agent: !!opts.agent,
     });
     this.token = token;
+    this.liveClient?.reauth();
     return this.config;
   }
 
@@ -260,6 +311,7 @@ export class ForkfallClient {
     const proof = await this.account.signMessage({ message: sessionProofMessage(nonce) });
     const r = await this.req<{ token: string; expiresAt: number }>('POST', '/v1/auth/session', { delegation, nonce, proof });
     this.token = r.token;
+    this.liveClient?.reauth();
     return r;
   }
 
@@ -268,6 +320,7 @@ export class ForkfallClient {
   async logout() {
     if (this.token) await this.req('POST', '/v1/auth/logout').catch(() => {});
     this.token = undefined;
+    this.closeLive();
   }
 
   cards() { return this.req<CardDef[]>('GET', '/v1/cards'); }

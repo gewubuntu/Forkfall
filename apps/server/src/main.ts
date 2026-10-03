@@ -114,7 +114,12 @@ lobby.onChange = (m) => {
   if (m.phase !== 'ended') return;
   try {
     const f = finishedMatch(m);
-    if (f) quests.record(f);
+    if (f) {
+      const fresh = !quests.hasSeen(f.id);
+      quests.record(f);
+      // Notify once, when the match first counts (onChange also fires for every later signature/settlement step).
+      if (fresh && quests.hasSeen(f.id)) for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
+    }
   } catch (e) { console.error('quest tracking failed', e); }
   try {
     mkdirSync(archiveDir, { recursive: true });
@@ -147,6 +152,7 @@ if (settler) settleLoop();
 const questLoop = async () => {
   try {
     const r = await quests.payDue();
+    for (const p of [...r.paid, ...r.failed]) lobby.bus?.user(p.address, 'quests');
     for (const p of r.paid) console.log(`quest reward paid to ${p.address}: ${p.scrap ? `${p.scrap} Scrap` : `${p.packs} pack`} (${p.ref}) ${p.tx ?? ''}`);
     for (const p of r.failed) console.warn(`quest reward for ${p.address} (${p.ref}) will retry: ${p.error}`);
   } catch (e) { console.error('quest payout loop error', e); }
@@ -180,6 +186,7 @@ server.listen(port, () => {
   console.log(`  human verification: ${humans.verifiers.filter((v) => v.available).map((v) => v.id).join(', ') || 'none'}${chain.online ? '' : ' (off-chain: status only)'}`);
   console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
   if (vrfFulfill) console.log('  pack randomness: local mock VRF coordinator, fulfilled by this server every 2 s');
+  console.log('  live updates: WebSocket on /v1/live (clients fall back to polling without it)');
   console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);

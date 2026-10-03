@@ -2,6 +2,7 @@ import type { Action, GameEvent } from '@forkfall/engine';
 import type { ForkfallClient, MatchSnapshot } from '@forkfall/sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Hex } from 'viem';
+import { useLiveTopic } from '../lib/live.ts';
 
 export interface LogLine { id: number; text: string; event: GameEvent }
 
@@ -18,10 +19,13 @@ export interface MatchHook {
 }
 
 const POLL_MS = 700;
+/** While the live socket is up, moves arrive as pushes; this slow poll is only a safety net. */
+const SAFETY_POLL_MS = 10_000;
 
 /**
- * Live match state: polls the referee (no websockets yet), reveals the seed when the match starts,
- * submits session-key-signed moves and collects the event stream visible to this seat.
+ * Live match state: refreshes when the referee pushes a notice for this match (WebSocket), with a slow safety
+ * poll (or the old 700 ms poll while the socket is down); reveals the seed when the match starts, submits
+ * session-key-signed moves and collects the event stream visible to this seat.
  */
 export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook {
   const [snap, setSnap] = useState<MatchSnapshot | null>(null);
@@ -47,15 +51,23 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
     }
   }, []);
 
-  const pullEvents = useCallback(async () => {
+  const matchRef = useRef(matchId);
+  matchRef.current = matchId;
+
+  const pullEvents = useCallback(async (): Promise<void> => {
     if (!client) return;
-    const r = await client.events(matchId, cursor.current);
+    const from = cursor.current;
+    const r = await client.events(matchId, from);
+    if (matchId !== matchRef.current) return;
+    // Two overlapping fetches from the same cursor: only the first to land counts, so nothing is logged twice.
+    // If this one saw further than the one that won, fetch the rest from where that one stopped.
+    if (cursor.current !== from) { if (r.next > cursor.current) await pullEvents(); return; }
     cursor.current = r.next;
     ingest(r.events);
   }, [client, matchId, ingest]);
 
-  const refresh = useCallback(async () => {
-    if (!client || sendingRef.current) return;
+  const refreshOnce = useCallback(async () => {
+    if (!client) return;
     try {
       let s = await client.state(matchId);
       if (s.phase === 'reveal' && s.seat !== null && !revealed.current) {
@@ -65,7 +77,9 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
         });
         s = await client.state(matchId);
       }
-      setSnap(s);
+      if (matchId !== matchRef.current) return;
+      // Never step back: a slow response must not overwrite a newer snapshot.
+      setSnap((old) => (old && old.matchId === s.matchId && old.seq > s.seq ? old : s));
       await pullEvents();
     } catch (e) {
       const msg = String((e as Error).message);
@@ -73,15 +87,37 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
       else if (!msg.includes('429')) setError(msg.replace(/^.*?→ \d+: /, ''));
     }
   }, [client, matchId, pullEvents]);
+  const refreshOnceRef = useRef(refreshOnce);
+  refreshOnceRef.current = refreshOnce;
+
+  // Single-flight: notices that arrive while a refresh runs just schedule one more pass, so pushes a few ms
+  // apart never run side by side. The loop always uses the latest match's fetch.
+  const refreshing = useRef(false);
+  const dirty = useRef(false);
+  const refresh = useCallback(async () => {
+    if (sendingRef.current) return;
+    if (refreshing.current) { dirty.current = true; return; }
+    refreshing.current = true;
+    try {
+      do {
+        dirty.current = false;
+        await refreshOnceRef.current();
+      } while (dirty.current && !sendingRef.current);
+    } finally { refreshing.current = false; }
+  }, []);
 
   useEffect(() => {
     cursor.current = 0;
     revealed.current = false;
     setEvents([]); setSnap(null); setNotFound(false);
+  }, [matchId]);
+
+  const live = useLiveTopic(`match:${matchId.toLowerCase()}`, () => { refresh(); });
+  useEffect(() => {
     refresh();
-    const t = setInterval(refresh, POLL_MS);
+    const t = setInterval(refresh, live ? SAFETY_POLL_MS : POLL_MS);
     return () => clearInterval(t);
-  }, [refresh]);
+  }, [refresh, live, matchId]);
 
   const send = useCallback(async (a: Action) => {
     if (!client || !snap || sendingRef.current) return false;

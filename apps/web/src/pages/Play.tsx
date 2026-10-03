@@ -13,6 +13,7 @@ import { deckName } from '../lib/deckNames.ts';
 import { RACE_INFO, raceName } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { shortAddr } from '../lib/format.ts';
+import { useLiveTopic } from '../lib/live.ts';
 
 type Tab = 'practice' | Mode | 'friend';
 const TABS: { id: Tab; label: string; blurb: string }[] = [
@@ -70,34 +71,47 @@ export function Play() {
     return next;
   });
 
-  // Live matches (also used to find a match of mine that is still running).
-  useEffect(() => {
-    if (!client) return;
-    let alive = true;
-    const load = () => client.matches().then((r) => alive && setLive(r.matches as LiveMatch[])).catch(() => {});
-    load();
-    const t = setInterval(load, 5000);
-    return () => { alive = false; clearInterval(t); };
+  // Live matches (also used to find a match of mine that is still running). The referee pushes a 'lobby'
+  // notice when the list changes; the interval is only a safety net while the socket is up.
+  const loadLive = useCallback(() => {
+    client?.matches().then((r) => setLive(r.matches as LiveMatch[])).catch(() => {});
   }, [client]);
-
-  // Resume a queue that was running before a reload; jump in when matched.
+  const lobbyUp = useLiveTopic(client ? 'lobby' : null, loadLive);
   useEffect(() => {
     if (!client) return;
-    let alive = true;
-    const poll = async () => {
-      try {
-        const q = await client.queueStatus();
-        if (!alive) return;
-        if (q.status === 'matched' && q.matchId && searching) { navigate(`/match/${q.matchId}`); return; }
-        if (q.status === 'queued' && !searching) setSearching({ mode: pref.tab === 'practice' || pref.tab === 'friend' ? 'casual' : (pref.tab as Mode), since: Date.now() });
-        if (q.status === 'idle' && searching) setSearching(null);
-      } catch { /* transient */ }
-    };
-    poll();
-    const t = setInterval(poll, searching ? 1200 : 6000);
+    loadLive();
+    const t = setInterval(loadLive, lobbyUp ? 30_000 : 5000);
+    return () => clearInterval(t);
+  }, [client, loadLive, lobbyUp]);
+
+  // Resume a queue that was running before a reload; jump in when matched. A 'me' notice of kind 'match'
+  // arrives the moment the queue pairs us, so the poll can stay slow while the socket is up.
+  const searchingRef = useRef(searching);
+  searchingRef.current = searching;
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  const pollQueue = useCallback(async () => {
+    if (!client) return;
+    try {
+      const q = await client.queueStatus();
+      if (!mounted.current) return;
+      const s = searchingRef.current;
+      if (q.status === 'matched' && q.matchId && s) { navigate(`/match/${q.matchId}`); return; }
+      if (q.status === 'queued' && !s) setSearching({ mode: pref.tab === 'practice' || pref.tab === 'friend' ? 'casual' : (pref.tab as Mode), since: Date.now() });
+      if (q.status === 'idle' && s) setSearching(null);
+    } catch { /* transient */ }
+  }, [client, navigate, pref.tab]);
+  const meUp = useLiveTopic(client ? 'me' : null, (e) => {
+    if (e.kind === 'match' || e.kind === 'reconnect') pollQueue();
+    if (e.kind === 'match') loadLive();
+  });
+  useEffect(() => {
+    if (!client) return;
+    pollQueue();
+    const t = setInterval(pollQueue, searching ? (meUp ? 10_000 : 1200) : (meUp ? 60_000 : 6000));
     const clock = setInterval(() => tick((n) => n + 1), 1000);
-    return () => { alive = false; clearInterval(t); clearInterval(clock); };
-  }, [client, searching, navigate, pref.tab]);
+    return () => { clearInterval(t); clearInterval(clock); };
+  }, [client, searching, pollQueue, meUp]);
 
   const mine = live.find((m) => m.phase !== 'ended' && m.players.some((p) => p.address.toLowerCase() === me?.address.toLowerCase()));
 

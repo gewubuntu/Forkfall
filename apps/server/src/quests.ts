@@ -124,6 +124,9 @@ export class Quests {
     try { return await this.opts.eligible(address as Address); } catch { return null; }
   }
 
+  /** Whether this match was already counted. */
+  hasSeen(matchId: string): boolean { return this.data.seen.includes(matchId); }
+
   /** Counts a finished match for both players (house bots excluded). Idempotent per match id. */
   record(m: FinishedMatch): Payout[] {
     if (this.data.seen.includes(m.id) || !matchCounts(m)) return [];

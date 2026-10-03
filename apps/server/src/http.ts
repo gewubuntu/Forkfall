@@ -11,6 +11,7 @@ import type { HumanVerification } from './humans.ts';
 import type { Rewards } from './rewards.ts';
 import type { Profiles } from './profiles.ts';
 import type { Quests } from './quests.ts';
+import { Live } from './live.ts';
 import { serveMetadata } from './metadata.ts';
 import type { LeaguePayouts } from './league.ts';
 import type { Delegation } from '@forkfall/sdk';
@@ -63,9 +64,12 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
 
   function authSession(req: IncomingMessage): Session | null {
     const h = req.headers.authorization;
-    if (!h?.startsWith('Bearer ')) return null;
-    const s = sessions.get(h.slice(7));
-    if (s?.expiresAt && s.expiresAt < Date.now()) { sessions.delete(h.slice(7)); return null; }
+    return h?.startsWith('Bearer ') ? sessionFor(h.slice(7)) : null;
+  }
+
+  function sessionFor(token: string): Session | null {
+    const s = sessions.get(token);
+    if (s?.expiresAt && s.expiresAt < Date.now()) { sessions.delete(token); return null; }
     return s ?? null;
   }
 
@@ -154,7 +158,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       }
       case 'POST /auth/logout': {
         const h = req.headers.authorization;
-        if (h?.startsWith('Bearer ')) sessions.delete(h.slice(7));
+        if (h?.startsWith('Bearer ')) { sessions.delete(h.slice(7)); live.revoke(h.slice(7)); }
         return { ok: true };
       }
       case 'POST /queue': { const s = need(session); return lobby.enqueue(s.address, body, s.agent); }
@@ -257,7 +261,12 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
     }
   }
 
-  return { handler, server: createServer(handler) };
+  const server = createServer(handler);
+  // Live notices (WebSocket on /v1/live): the lobby pushes "something changed" so clients don't poll.
+  const live = new Live(server, { authenticate: (token) => sessionFor(token), trustProxy: process.env.TRUST_PROXY === '1' });
+  lobby.bus = live;
+  server.on('close', () => live.close());
+  return { handler, server, live };
 }
 
 function send(res: ServerResponse, status: number, body: unknown) {

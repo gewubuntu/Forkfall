@@ -353,6 +353,7 @@ Both kinds of player send signed moves to the same rules engine; only the final 
 - **Randomness.** Match randomness comes from a seed that both players commit and reveal together, so neither player controls it. Pack opening uses VRF.
 - **Hub on Base (decided).** Robinhood Chain gives 100 ms blocks, but L2Beat rates it below Stage 0, with contracts upgradeable with no delay. Custody of settlement funds stays on Base until that changes.
 - **Cards bridge through LayerZero ONFT.** This mirrors Bankr's BNKR OFT between Base and Robinhood Chain. A card must sit on the hub chain, or be proven with a cross-chain read, before it can enter a ranked deck.
+- **Live updates without leaking hidden information.** Clients hold one WebSocket to the referee (`/v1/live`) that carries only signals ("match moved to seq 12", "your challenge was accepted"). Clients then fetch the details through the same REST endpoints, so every redaction rule lives in one place and nothing secret ever crosses the socket. If the socket drops, clients poll as before and refetch on reconnect. Personal notices need the player's session token. Opponents see moves within about 0.1 s, and an idle match page sends 2 requests per 10 s instead of about 28.
 - **Contracts:** CardRegistry (ERC-1155), LegendaryVault (ERC-721 plus ERC-6551), PackSale, DeckRegistry, MatchSettlement, AgentRegistry and SeasonRewards.
 
 ## Token & economy

@@ -5,7 +5,10 @@ import type { ForkfallClient, MatchSnapshot } from './client.ts';
 export interface AgentLoopOptions {
   /** Decide a move from the redacted snapshot. Default: pick via legalActions heuristics. */
   decide?: (snap: MatchSnapshot) => Promise<MatchSnapshot['legalActions'][number]> | MatchSnapshot['legalActions'][number];
+  /** Poll interval when no live socket is available (default 400 ms). */
   pollMs?: number;
+  /** Use the live socket to wake up on moves instead of polling (default true). It's closed again on return unless you opened it with `client.live()`. */
+  live?: boolean;
   log?: (msg: string) => void;
 }
 
@@ -17,6 +20,20 @@ export async function runMatch(client: ForkfallClient, matchId: Hex, opts: Agent
   const log = opts.log ?? (() => {});
   const pollMs = opts.pollMs ?? 400;
   const decide = opts.decide ?? viewGreedy;
+  // With the live socket, sleep until the match changes (or a slow safety-net timeout); without it, poll.
+  let wake: (() => void) | null = null;
+  let changed = false; // a notice that arrived while we weren't waiting: don't sleep through it
+  // Borrowed, not pinned: the socket closes when the last running match lets go, so scripts can exit.
+  const held = opts.live !== false && typeof WebSocket !== 'undefined' ? client.retainLive() : null;
+  const live = held?.live ?? null;
+  const topic = `match:${matchId.toLowerCase()}`;
+  const off = live?.on(topic, () => { changed = true; wake?.(); });
+  const pause = () => new Promise<void>((r) => {
+    if (changed) { changed = false; return r(); }
+    const t = setTimeout(() => { wake = null; r(); }, live?.isUp(topic) ? 3000 : pollMs);
+    wake = () => { clearTimeout(t); wake = null; changed = false; r(); };
+  });
+  try {
   let snap = await client.state(matchId);
   if (snap.phase === 'reveal') { await client.reveal(matchId); snap = await client.state(matchId); }
   while (snap.phase !== 'ended' && snap.phase !== 'cancelled') {
@@ -25,7 +42,7 @@ export async function runMatch(client: ForkfallClient, matchId: Hex, opts: Agent
       log(`turn ${snap.view.turn}: ${JSON.stringify(action)}`);
       try { snap = await client.move(matchId, snap, action); continue; } catch (e) { log(String(e)); }
     }
-    await new Promise((r) => setTimeout(r, pollMs));
+    await pause();
     snap = await client.state(matchId).catch(async (e) => {
       if (!String(e).includes('429')) throw e;
       await new Promise((r) => setTimeout(r, 1000)); // rate limited: back off, same rules as everyone
@@ -34,6 +51,7 @@ export async function runMatch(client: ForkfallClient, matchId: Hex, opts: Agent
   }
   if (snap.phase === 'ended') await client.signResult(matchId).catch((e) => log(`result sign failed: ${e}`));
   return client.state(matchId);
+  } finally { off?.(); held?.release(); }
 }
 
 /**

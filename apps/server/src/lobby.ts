@@ -9,6 +9,7 @@ import {
 } from '@forkfall/sdk';
 import { recoverAddress, type Address, type Hex, type LocalAccount, type TypedDataDomain } from 'viem';
 import type { Chain, LeagueOps, RefereeSettler } from './chain.ts';
+import type { LiveBus } from './live.ts';
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -180,6 +181,8 @@ export class Lobby {
   readonly now: () => number;
   readonly domain: TypedDataDomain;
   onChange?: (m: Match) => void;
+  /** Live notices to connected clients (set by the API); everything works without it, just by polling. */
+  bus?: LiveBus;
 
   constructor(readonly opts: LobbyOptions) {
     this.turnMs = (opts.turnSeconds ?? 45) * 1000;
@@ -318,6 +321,7 @@ export class Lobby {
       to, rematchOf: body.rematchOf, createdAt: this.now(), expiresAt: this.now() + CHALLENGE_TTL_MS, state: 'open',
     };
     this.challenges.set(code, c);
+    if (to) this.bus?.user(to, 'challenge', { code });
     return this.challengeView(c, address);
   }
 
@@ -358,6 +362,7 @@ export class Lobby {
     c.state = 'accepted';
     c.matchId = m.id;
     c.closedAt = this.now();
+    this.bus?.user(c.from.address, 'challenge', { code: c.code, matchId: m.id });
     return { matchId: m.id, challenge: this.challengeView(c, address) };
   }
 
@@ -369,6 +374,8 @@ export class Lobby {
     else if (c.to && same(c.to, address)) c.state = 'declined';
     else throw new ApiError(403, 'only the challenger can cancel, or the challenged player decline');
     c.closedAt = this.now();
+    const other = c.state === 'cancelled' ? c.to : c.from.address;
+    if (other) this.bus?.user(other, 'challenge', { code: c.code });
     return this.challengeView(c, address);
   }
 
@@ -399,6 +406,7 @@ export class Lobby {
     c.matchId = undefined;
     c.closedAt = undefined;
     c.state = this.now() <= c.expiresAt ? 'open' : 'cancelled';
+    this.bus?.user(c.from.address, 'challenge', { code: c.code });
   }
 
   /** Casual match vs a house bot. The bot is badged as an agent and sees only its own view. */
@@ -425,6 +433,9 @@ export class Lobby {
     };
     this.matches.set(id, m);
     this.maybeStart(m);
+    // Both players hear about their new match at once (queue pairing, an accepted challenge, practice).
+    for (const p of players) if (!p.bot) this.bus?.user(p.address, 'match', { matchId: id });
+    this.bus?.lobby();
     return m;
   }
 
@@ -822,7 +833,11 @@ export class Lobby {
     return { season: s, rows: [...rows.values()].sort((a, b) => b.wins - a.wins || a.losses - b.losses) };
   }
 
-  private changed(m: Match) { this.onChange?.(m); }
+  private changed(m: Match) {
+    this.onChange?.(m);
+    this.bus?.match(m.id, { seq: m.moves.length, phase: m.phase });
+    if (m.phase === 'ended' || m.phase === 'cancelled') this.bus?.lobby();
+  }
 }
 
 function pickRandom(snap: MatchSnapshot): Action {
