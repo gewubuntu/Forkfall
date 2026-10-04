@@ -7,6 +7,7 @@ import { useHub } from '../chain/useHub.ts';
 import { useMyDecks, type MyDeck } from '../chain/useMyDecks.ts';
 import { ManaCurve } from '../components/ManaCurve.tsx';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
+import { copyText } from '../lib/clipboard.ts';
 import { deckName, setDeckName } from '../lib/deckNames.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { shortAddr } from '../lib/format.ts';
@@ -66,7 +67,7 @@ function DeckTile({ d, fresh }: { d: MyDeck; fresh: boolean }) {
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState<'id' | 'code' | null>(null);
   const copy = async (what: 'id' | 'code', text: string) => {
-    try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(null), 1200); } catch { /* clipboard blocked */ }
+    if (await copyText(text, what === 'id' ? 'Copy this deck id:' : undefined)) { setCopied(what); setTimeout(() => setCopied(null), 1200); }
   };
   const top = [...new Set(d.cardIds)].map(card).sort((a, b) => b.cost - a.cost).slice(0, 4);
   const status = !d.owned ? { cls: 'banned', text: 'Cards missing' } : d.rankedLegal ? { cls: 'human', text: 'Ranked-legal' } : { cls: '', text: 'Casual only' };

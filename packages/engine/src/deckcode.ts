@@ -11,6 +11,8 @@ import type { Race } from './types.ts';
  */
 export const DECK_CODE_VERSION = 1;
 const PREFIX = 'FF';
+/** Longer than any deck's code (30 cards at most 30 distinct ids, about 2 characters each, plus a little). */
+const MAX_CODE_LENGTH = 96;
 const RACE_CODE: Record<Race, number> = { agents: 1, prophets: 2, brokers: 3, degens: 4 };
 const RACE_OF = new Map(Object.entries(RACE_CODE).map(([r, n]) => [n, r as Race]));
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -28,7 +30,8 @@ export function encodeDeck(race: Race, cards: number[]): string {
   let prev = 0;
   for (const id of [...counts.keys()].sort((a, b) => a - b)) {
     const n = counts.get(id)!;
-    if (n > MAX_COPIES) throw new DeckCodeError(`${n} copies of card ${id}: a deck holds at most ${MAX_COPIES}`);
+    // The code has one bit for the copy count, so it holds 1 or 2: widen the format before MAX_COPIES ever grows.
+    if (n > Math.min(MAX_COPIES, 2)) throw new DeckCodeError(`${n} copies of card ${id}: a deck holds at most ${MAX_COPIES}`);
     varint(bytes, (id - prev) * 2 + (n - 1));
     prev = id;
   }
@@ -39,12 +42,23 @@ export function encodeDeck(race: Race, cards: number[]): string {
 
 /** The race and card list (ascending ids) of a deck code. Finds the code inside pasted text, e.g. a whole post. */
 export function decodeDeck(text: string): { race: Race; cards: number[] } {
-  // Every run starting with FF is a candidate ("OFFICIAL" holds one too); the first that decodes wins.
-  const candidates = [...text.matchAll(/FF[A-Za-z0-9_-]{4,}/g)].map((m) => m[0]);
+  // A code's characters can run into its neighbours ("OFF" before it, "_" or "-gl" after it), so every FF inside a
+  // run is a possible start, with trailing - and _ trimmed; the checksum tells the real code from the rest.
+  const candidates: string[] = [];
+  scan: for (const [run] of text.matchAll(/[A-Za-z0-9_-]+/g)) {
+    for (let i = run.indexOf('FF'); i >= 0; i = run.indexOf('FF', i + 1)) {
+      const code = run.slice(i, i + MAX_CODE_LENGTH);
+      candidates.push(code);
+      // Cut before each - or _ too ("FF…-gl", "FF…_"), but never mid-letters: fewer cuts, fewer chances for a typo
+      // to leave a shorter string that happens to pass the checksum.
+      for (let j = code.length - 1; j >= 6; j--) if (code[j] === '-' || code[j] === '_') candidates.push(code.slice(0, j));
+      if (candidates.length > 2000) break scan; // a pasted wall of text: enough tries
+    }
+  }
   if (!candidates.length) throw new DeckCodeError('that isn’t a Forkfall deck code (they start with FF)');
   let error: unknown;
   for (const code of candidates) {
-    try { return decodeOne(code); } catch (e) { error = e; }
+    try { return decodeOne(code); } catch (e) { error ??= e; }
   }
   throw error;
 }
@@ -118,6 +132,8 @@ function fromBase64Url(s: string): number[] | null {
       n = (n << 6) | v;
     }
     const bytes = chunk.length - 1; // 2 chars → 1 byte, 3 → 2, 4 → 3
+    // A short last chunk has unused low bits; the encoder writes them as 0, so anything else is a typo.
+    if (n & ((1 << (8 * (3 - bytes))) - 1)) return null;
     for (let k = 0; k < bytes; k++) out.push((n >> (16 - 8 * k)) & 0xff);
   }
   return out;

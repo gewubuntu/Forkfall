@@ -33,15 +33,30 @@ describe('deck codes', () => {
     expect(decodeDeck(`my ladder deck 👉 ${code} gl hf`).race).toBe('prophets');
     expect(decodeDeck(`  ${code}\n`).race).toBe('prophets');
     expect(decodeDeck(`OFFICIAL OFFSEASON list: ${code}`).race).toBe('prophets'); // other FF runs are skipped
+    // Next to characters a code could contain: Markdown italics, a dash, letters glued on.
+    for (const post of [`_${code}_`, `${code}-gl`, `${code}__`, `OFF${code}`, `**${code}**`]) expect(decodeDeck(post).race, post).toBe('prophets');
   });
 
   it('refuse a mistyped, truncated or foreign code instead of opening the wrong deck', () => {
-    const code = encodeDeck('agents', starterDeck('agents'));
-    const flip = (i: number) => code.slice(0, i) + (code[i] === 'A' ? 'B' : 'A') + code.slice(i + 1);
-    for (let i = 2; i < code.length; i++) expect(() => decodeDeck(flip(i)), `char ${i}`).toThrow(DeckCodeError);
-    for (let n = 3; n < code.length; n++) expect(() => decodeDeck(code.slice(0, n)), `length ${n}`).toThrow(DeckCodeError);
+    // Codes of every length mod 4, so the last character's unused bits are covered too.
+    const codes = RACES.flatMap((r) => [encodeDeck(r, starterDeck(r)), encodeDeck(r, withLegendary(r)), encodeDeck(r, starterDeck(r).slice(0, 7))]);
+    expect(new Set(codes.map((c) => (c.length - 2) % 4)).size).toBeGreaterThanOrEqual(2);
+    const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    for (const code of codes) {
+      for (let i = 2; i < code.length; i++) {
+        for (const ch of B64) {
+          if (ch === code[i]) continue;
+          expect(() => decodeDeck(code.slice(0, i) + ch + code.slice(i + 1)), `${code} char ${i} → ${ch}`).toThrow(DeckCodeError);
+        }
+      }
+      for (let n = 3; n < code.length; n++) expect(() => decodeDeck(code.slice(0, n)), `length ${n}`).toThrow(DeckCodeError);
+    }
     expect(() => decodeDeck('hello')).toThrow(/isn’t a Forkfall deck code/);
     expect(() => decodeDeck('FF!!!!')).toThrow(DeckCodeError);
+    const start = Date.now();
+    expect(() => decodeDeck('FF-'.repeat(200_000))).toThrow(DeckCodeError); // a pathological paste stays quick
+    expect(() => decodeDeck('FFAAAAAA '.repeat(200_000))).toThrow(DeckCodeError);
+    expect(Date.now() - start).toBeLessThan(2000);
   });
 
   it('refuse more than 2 copies, and decode no card outside the race', () => {

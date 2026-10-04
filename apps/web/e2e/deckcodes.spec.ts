@@ -36,6 +36,10 @@ test('a deck code opens in the builder, copies back out, and a damaged one is re
   await page.getByRole('button', { name: 'Open deck' }).click();
   await expect(page.getByRole('alert')).toContainText('damaged');
   await expect(page.getByRole('meter', { name: 'Cards' })).toHaveAttribute('aria-valuenow', '29');
+  // Closing the form clears the error; reopening it starts clean.
+  await page.getByRole('button', { name: 'Import code' }).click();
+  await expect(page.getByRole('alert')).toBeHidden();
+  await page.getByRole('button', { name: 'Import code' }).click();
 
   // A whole pasted post works: the code is found inside it.
   await page.getByLabel('Deck code').fill(`try my degens list ${encodeDeck('degens', starterDeck('degens'))} 🚀`);
@@ -43,4 +47,24 @@ test('a deck code opens in the builder, copies back out, and a damaged one is re
   await expect(page.getByRole('radio', { name: 'Degens' })).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('meter', { name: 'Cards' })).toHaveAttribute('aria-valuenow', '30');
   expect(errors).toEqual([]);
+});
+
+test('where the clipboard is blocked, the code is shown to copy by hand', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('blocked')) } });
+  });
+  const code = encodeDeck('brokers', starterDeck('brokers'));
+  await installTestWallet(page, privateKeyToAccount(generatePrivateKey()), 84532);
+  await page.goto('/play');
+  await page.getByRole('button', { name: 'Connect wallet' }).first().click();
+  await page.getByRole('button', { name: /Forkfall Test Wallet/ }).click();
+  await page.getByRole('button', { name: 'Sign in with wallet' }).click();
+  await expect(page.getByRole('button', { name: /vs bot/ })).toBeVisible();
+  await page.goto(`/decks/new?code=${code}`);
+  await expect(page.getByRole('meter', { name: 'Cards' })).toHaveAttribute('aria-valuenow', '30');
+  const shown: { type: string; value: string }[] = [];
+  page.on('dialog', (d) => { shown.push({ type: d.type(), value: d.defaultValue() }); void d.dismiss(); });
+  await page.getByRole('button', { name: 'Copy deck code' }).click();
+  await expect.poll(() => shown).toEqual([{ type: 'prompt', value: code }]);
+  await expect(page.getByRole('button', { name: 'Copy deck code' })).toBeVisible(); // not "copied"
 });

@@ -15,6 +15,7 @@ import { useOwned } from '../chain/useOwned.ts';
 import { GameCard } from '../components/GameCard.tsx';
 import { ManaCurve } from '../components/ManaCurve.tsx';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
+import { copyText } from '../lib/clipboard.ts';
 import { deckName, setDeckName } from '../lib/deckNames.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { useParticles } from '../lib/particles.ts';
@@ -180,7 +181,7 @@ export function DeckBuilder() {
             <input type="search" placeholder="Search cards…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search cards" />
             <button className="btn" onClick={() => setCounts(toCounts(starterDeck(race)))}>Load starter list</button>
             <button className="btn btn-ghost" onClick={() => setCounts(new Map())} disabled={size === 0}>Clear</button>
-            <button className="btn btn-ghost" onClick={() => setImporting((v) => !v)} aria-expanded={importing}>Import code</button>
+            <button className="btn btn-ghost" onClick={() => { setImporting((v) => !v); setCodeError(null); }} aria-expanded={importing}>Import code</button>
           </div>
           {importing && (
             <form className="code-import" onSubmit={(e) => { e.preventDefault(); if (importCode(codeText)) setImporting(false); }}>
@@ -189,7 +190,7 @@ export function DeckBuilder() {
               <button className="btn btn-primary" disabled={!codeText.trim()}>Open deck</button>
             </form>
           )}
-          {codeError && <div className="alert err" role="alert">{codeError}</div>}
+          {importing && codeError && <div className="alert err" role="alert">{codeError}</div>}
           <div className="pool-grid">
             {pool.map((c) => {
               const inDeck = counts.get(c.id) ?? 0;
@@ -238,7 +239,7 @@ export function DeckBuilder() {
             ))}
           </ol>
           <button className="btn btn-block" disabled={size === 0} onClick={async () => {
-            try { await navigator.clipboard.writeText(encodeDeck(race, list)); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
+            if (await copyText(encodeDeck(race, list))) { setCopied(true); setTimeout(() => setCopied(false), 1500); }
           }}>{copied ? 'Deck code copied ✓' : 'Copy deck code'}</button>
           {existing ? (
             <div className="alert info"><span>This exact deck is already registered as “{deckName(existing.id, existing.race)}”.</span></div>
