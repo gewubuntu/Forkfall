@@ -1,8 +1,11 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { COLLECTIBLE } from '@forkfall/engine';
-import { agentLeagueAbi, cardRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, vrfCoordinatorMockAbi, type MatchResult } from '@forkfall/sdk';
 import {
-  BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http, parseAbi,
+  agentLeagueAbi, agentRegistryAbi, cardRegistryAbi, deckRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, vrfCoordinatorMockAbi,
+  type MatchResult,
+} from '@forkfall/sdk';
+import {
+  BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http,
   type Address, type Hex, type LocalAccount, type PublicClient,
 } from 'viem';
 
@@ -34,22 +37,6 @@ export interface AddressBook {
   CardRegistry?: Address;
   [k: string]: unknown;
 }
-
-const deckAbi = parseAbi([
-  'function isValidFor(bytes32 deckId, address player, bool ranked) view returns (bool)',
-  'function getDeck(bytes32 deckId) view returns ((address owner, uint8 race, uint16 rarityPoints, uint8 legendaries, uint16[] cardIds))',
-]);
-const agentAbi = parseAbi([
-  'function isAgent(address) view returns (bool)',
-  'function agentOf(address) view returns (uint256)',
-  'function bannedFromRanked(address) view returns (bool)',
-]);
-const humanAbi = parseAbi(['function isVerifiedHuman(address) view returns (bool)']);
-const settlementAbi = parseAbi([
-  'function currentSeason() view returns (uint32)',
-  'function REFEREE_ROLE() view returns (bytes32)',
-  'function hasRole(bytes32 role, address account) view returns (bool)',
-]);
 
 export interface Preflight { ok: boolean; errors: string[]; warnings: string[]; notes: string[] }
 
@@ -100,8 +87,8 @@ export class Chain {
     const code = await this.client.getCode({ address: this.book.MatchSettlement }).catch(() => undefined);
     if (!code || code === '0x') r.errors.push(`no contract at MatchSettlement ${this.book.MatchSettlement} (wrong address book?)`);
     else {
-      const role = await this.client.readContract({ address: this.book.MatchSettlement, abi: settlementAbi, functionName: 'REFEREE_ROLE' });
-      const isRef = await this.client.readContract({ address: this.book.MatchSettlement, abi: settlementAbi, functionName: 'hasRole', args: [role, referee] });
+      const role = await this.client.readContract({ address: this.book.MatchSettlement, abi: matchSettlementAbi, functionName: 'REFEREE_ROLE' });
+      const isRef = await this.client.readContract({ address: this.book.MatchSettlement, abi: matchSettlementAbi, functionName: 'hasRole', args: [role, referee] });
       if (!isRef) r.errors.push(`referee ${referee} lacks REFEREE_ROLE: ranked results could not settle. Use the REFEREE_ADDRESS key from deployment as HOUSE_PRIVATE_KEY.`);
       const season = await this.season();
       r.notes.push(`season ${season}`);
@@ -115,16 +102,16 @@ export class Chain {
 
   async isAgent(a: Address) {
     if (!this.client) return false;
-    return this.client.readContract({ address: this.book!.AgentRegistry, abi: agentAbi, functionName: 'isAgent', args: [a] });
+    return this.client.readContract({ address: this.book!.AgentRegistry, abi: agentRegistryAbi, functionName: 'isAgent', args: [a] });
   }
   async isBanned(a: Address) {
     if (!this.client) return false;
-    return this.client.readContract({ address: this.book!.AgentRegistry, abi: agentAbi, functionName: 'bannedFromRanked', args: [a] });
+    return this.client.readContract({ address: this.book!.AgentRegistry, abi: agentRegistryAbi, functionName: 'bannedFromRanked', args: [a] });
   }
   /** Agent id this wallet plays as (0 = not an agent). */
   async agentOf(a: Address): Promise<number> {
     if (!this.client) return 0;
-    return Number(await this.client.readContract({ address: this.book!.AgentRegistry, abi: agentAbi, functionName: 'agentOf', args: [a] }));
+    return Number(await this.client.readContract({ address: this.book!.AgentRegistry, abi: agentRegistryAbi, functionName: 'agentOf', args: [a] }));
   }
   async humanVerification(a: Address): Promise<{ method: Hex; verifiedAt: number; expiresAt: number } | null> {
     if (!this.client) return null;
@@ -133,11 +120,11 @@ export class Chain {
   }
   async isHuman(a: Address) {
     if (!this.client) return false;
-    return this.client.readContract({ address: this.book!.HumanRegistry, abi: humanAbi, functionName: 'isVerifiedHuman', args: [a] });
+    return this.client.readContract({ address: this.book!.HumanRegistry, abi: humanRegistryAbi, functionName: 'isVerifiedHuman', args: [a] });
   }
   async season(): Promise<number> {
     if (!this.client) return 1;
-    return Number(await this.client.readContract({ address: this.book!.MatchSettlement, abi: settlementAbi, functionName: 'currentSeason' }));
+    return Number(await this.client.readContract({ address: this.book!.MatchSettlement, abi: matchSettlementAbi, functionName: 'currentSeason' }));
   }
   /** Copies of each collectible card the player owns (tradeable + soulbound starter + foil), or null off-chain. */
   async ownedCounts(player: Address): Promise<Map<number, number> | null> {
@@ -152,9 +139,9 @@ export class Chain {
 
   async deck(deckId: Hex, player: Address, ranked: boolean): Promise<{ race: number; cardIds: number[] } | null> {
     if (!this.client) return null;
-    const ok = await this.client.readContract({ address: this.book!.DeckRegistry, abi: deckAbi, functionName: 'isValidFor', args: [deckId, player, ranked] });
+    const ok = await this.client.readContract({ address: this.book!.DeckRegistry, abi: deckRegistryAbi, functionName: 'isValidFor', args: [deckId, player, ranked] });
     if (!ok) return null;
-    const d = await this.client.readContract({ address: this.book!.DeckRegistry, abi: deckAbi, functionName: 'getDeck', args: [deckId] });
+    const d = await this.client.readContract({ address: this.book!.DeckRegistry, abi: deckRegistryAbi, functionName: 'getDeck', args: [deckId] });
     return { race: d.race, cardIds: d.cardIds.map(Number) };
   }
 }

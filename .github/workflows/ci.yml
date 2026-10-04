@@ -30,6 +30,14 @@ jobs:
       - run: forge fmt --check
       - run: forge build --sizes
       - run: forge test -vv
+      # SDK ABIs against the contracts just built (packages/sdk/test/abi-sync.test.ts).
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm test:abi
+        working-directory: .
 
   docker:
     runs-on: ubuntu-latest
