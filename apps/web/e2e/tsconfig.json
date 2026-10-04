@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true, "emitDeclarationOnly": true, "noEmit": false,
+    "outDir": "../../../node_modules/.tsbuild/web-e2e",
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"],
+    "rootDir": ".."
+  },
+  "include": [".", "../playwright.config.ts"]
+}

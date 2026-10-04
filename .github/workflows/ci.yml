@@ -18,6 +18,25 @@ jobs:
       - run: pnpm sim 200
       - run: pnpm web:build
 
+  web-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm web:build
+      - run: pnpm exec playwright install --with-deps chromium   # the browser matching the pinned @playwright/test
+      - run: pnpm test:e2e                                        # apps/web/e2e against an off-chain referee
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            apps/web/test-results
+
   contracts:
     runs-on: ubuntu-latest
     defaults:
