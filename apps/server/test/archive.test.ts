@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { Chain } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
-import { Lobby, type ArchivedMatch } from '../src/lobby.ts';
+import { Lobby, type ArchivedMatch, type LobbyOptions } from '../src/lobby.ts';
 
 const dirs: string[] = [];
 const servers: { close(): void }[] = [];
@@ -18,11 +18,11 @@ afterAll(() => {
 });
 
 /** A referee that archives finished matches to `dir` (as main.ts does) and reads them back on demand. */
-async function referee(dir: string, clock: { t: number }) {
+async function referee(dir: string, clock: { t: number }, opts: Partial<LobbyOptions> = {}) {
   const file = (id: Hex) => join(dir, `${id}.json`);
   const loads: Hex[] = [];
   const lobby = new Lobby({
-    chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => clock.t, unloadAfterSeconds: 60,
+    chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => clock.t, unloadAfterSeconds: 60, ...opts,
     archive: { load(id) { loads.push(id); try { return JSON.parse(readFileSync(file(id), 'utf8')) as ArchivedMatch; } catch { return null; } } },
   });
   lobby.onChange = (m) => {
@@ -42,6 +42,32 @@ async function finishedMatch(url: string) {
   const id = await b.acceptChallenge((await a.createChallenge({ race: 'brokers' })).code, { race: 'degens' });
   await Promise.all([runMatch(a, id, { pollMs: 2, live: false }), runMatch(b, id, { pollMs: 2, live: false })]);
   return { a, b, id };
+}
+
+/** a concedes to b; only b (the winner) signs, so the referee may settle it right away. */
+async function concededMatch(url: string) {
+  const a = new ForkfallClient(url, privateKeyToAccount(generatePrivateKey()));
+  const b = new ForkfallClient(url, privateKeyToAccount(generatePrivateKey()));
+  await a.connect(); await b.connect();
+  await a.queue({ mode: 'casual', race: 'agents' });
+  const { matchId } = await b.queue({ mode: 'casual', race: 'degens' });
+  await a.reveal(matchId!); await b.reveal(matchId!);
+  await a.move(matchId!, await a.state(matchId!), { type: 'concede' });
+  await b.signResult(matchId!);
+  return { a, b, id: matchId! };
+}
+
+/** A settler that records what it was asked to submit. */
+function fakeSettler() {
+  const submitted: Hex[] = [];
+  return {
+    submitted,
+    settler: {
+      isSettled: async () => false,
+      settleByReferee: async (r: { matchId: Hex }) => { submitted.push(r.matchId); return ('0x' + 'ab'.repeat(32)) as Hex; },
+      settle: async (r: { matchId: Hex }) => { submitted.push(r.matchId); return ('0x' + 'cd'.repeat(32)) as Hex; },
+    },
+  };
 }
 
 const dropNow = <T extends { now?: number }>(s: T) => ({ ...s, now: undefined });
@@ -132,5 +158,55 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     rmSync(join(dir, `${id}.json`));
     await expect(a.state(id)).rejects.toThrow(/500|could not be loaded/);
     expect((await a.matches()).matches.some((x) => x.matchId === id)).toBe(true);
+  }, 30_000);
+
+  it('never auto-settles a restored match whose archive does not replay to its result', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const { id } = await concededMatch(first.url);
+    // Edited on disk: the result no longer matches the moves.
+    const rec = JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8')) as ArchivedMatch;
+    rec.log.result.turns += 5;
+    writeFileSync(join(dir, `${id}.json`), JSON.stringify(rec));
+
+    const { settler, submitted } = fakeSettler();
+    const second = await referee(dir, clock, { settler });
+    expect(second.lobby.restore(rec)).toBe(true);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const r = await second.lobby.settleDue();
+    err.mockRestore();
+    expect(submitted).toEqual([]);
+    expect(r.failed).toEqual([{ matchId: id, error: expect.stringMatching(/could not be loaded and verified/) }]);
+    expect(second.lobby.get(id).referee).toMatchObject({ state: 'failed', attempts: 3 });
+    // Given up for good: not retried on every pass.
+    expect((await second.lobby.settleDue()).failed).toEqual([]);
+  }, 30_000);
+
+  it('auto-settles an unloaded match once it reloads and verifies, and saves the outcome', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const { settler, submitted } = fakeSettler();
+    const { lobby, url } = await referee(dir, clock, { settler, resultGraceSeconds: 600 });
+    const { id } = await concededMatch(url);
+    clock.t += 61_000;
+    lobby.tick();
+    expect(lobby.get(id).cold).toBeDefined();
+    expect((await lobby.settleDue()).settled).toEqual([id]);
+    expect(submitted).toEqual([id]);
+    const onDisk = JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8')) as ArchivedMatch;
+    expect(onDisk.referee).toMatchObject({ state: 'settled' });
+  }, 30_000);
+
+  it('refuses a result signature for a match it cannot load, instead of keeping it only in memory', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const { lobby, url } = await referee(dir, clock);
+    const { a, id } = await concededMatch(url);
+    clock.t += 61_000;
+    lobby.tick();
+    rmSync(join(dir, `${id}.json`));
+    await expect(a.signResult(id)).rejects.toThrow(/500|could not be loaded/);
+    expect(lobby.get(id).players[0].resultSig).toBeUndefined();
   }, 30_000);
 });

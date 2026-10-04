@@ -725,7 +725,8 @@ export class Lobby {
   }
 
   async submitResultSig(address: Address, matchId: Hex, signature: Hex) {
-    const m = this.get(matchId);
+    // Loaded (and verified) first: a signature that can't be archived must fail now, not be lost at the next restart.
+    const m = this.full(this.get(matchId));
     const seat = this.seatOf(m, address);
     if (seat === null) throw new ApiError(403, 'not a player in this match');
     if (!m.result) throw new ApiError(409, 'match not finished');
@@ -823,7 +824,7 @@ export class Lobby {
     if (!m.cold) return m;
     const rec = this.opts.archive?.load(m.id);
     const replay = rec && rec.log.matchId === m.id ? replayLog(rec.log) : null;
-    if (!rec || !replay?.ok) throw new ApiError(500, `archived match ${m.id} could not be loaded`);
+    if (!rec || !replay?.ok) throw new ApiError(500, `archived match ${m.id} could not be loaded and verified`);
     rec.log.players.forEach((p, i) => {
       Object.assign(m.players[i], { deck: p.deck, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations });
     });
@@ -884,6 +885,13 @@ export class Lobby {
       try { s = this.settlement(m.id); } catch { continue; } // still waiting for the winner's signature
       // Fully signed: players settle it themselves, except league matches, which the referee submits.
       if (!('winnerSig' in s) && m.mode !== 'league') continue;
+      // Never submit a result whose archive doesn't load and replay to it (an unloaded match isn't verified yet).
+      try { this.full(m); } catch (e) {
+        const error = (e as Error).message;
+        m.referee = { state: 'failed', attempts: maxAttempts, error };
+        out.failed.push({ matchId: m.id, error });
+        continue;
+      }
       m.referee = { state: 'submitting', attempts: (r?.attempts ?? 0) + 1 };
       this.changed(m);
       try {
