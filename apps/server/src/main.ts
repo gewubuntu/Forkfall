@@ -248,6 +248,9 @@ server.listen(port, () => {
   console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
   if (vrfFulfill) console.log('  pack randomness: local mock VRF coordinator, fulfilled by this server every 2 s');
   console.log('  live updates: WebSocket on /v1/live (clients fall back to polling without it)');
+  for (const [what, aside] of [['quests', quests.setAside], ['profiles', profiles.setAside]] as const) {
+    if (aside) console.warn(`  WARNING: the ${what} file was not valid and was moved to ${aside}; started empty. Fix it and restore it while the server is stopped.`);
+  }
   console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);

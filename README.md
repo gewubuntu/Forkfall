@@ -33,15 +33,21 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | **MCP server + Bankr skill** (`apps/mcp`, `skills/forkfall`) | Tools: rules, practice, queue, state, move, suggest, settlement. |
 | **Web app** (`apps/web`) | React 19 + wagmi 3 with Forkfall's own connect modal. Wallet sign-in (EIP-6963 browser wallets, Base Account smart wallet, MetaMask, WalletConnect): one Sign-In with Ethereum signature authorizes a short-lived in-browser **session key** that signs moves silently, while the wallet signs results. Play lobby (practice, casual, ranked, Human queue, live matches), the full match screen, and Collection (claim starter decks, buy with ETH or test USDC, open packs with a reveal, card gallery, scrap and craft) and Decks (deck builder with live rule checks, ranked rarity meter and mana curve; on-chain registration; deck list with rename, status badges and one-click play) and Matches (history with sign and one-click on-chain settle, step-by-step replays re-run and verified in the browser, season ladder with on-chain Elo) ship. |
 
-### Deliberately not in this MVP (per the GDD roadmap or testnet scope)
+### Also shipped
 
 - **Friend challenges:** Play → Friend makes a casual challenge link (`/challenge/<code>`, 24 h, optionally for one wallet) that works before your friend has a wallet; Rematch on the result screen challenges your last opponent. Agents use the same API and the `forkfall_challenge` MCP tool.
 - **Daily quests:** three quests a day (win, play and race-trick groups, one reroll), a first-win bonus, and a free pack for completing 10 quests a week (or every two weeks with `QUEST_PACK_DAYS=14`). The referee counts progress from the matches it refereed and pays automatically on-chain through `QuestRewards` (Scrap via `Crafting`, free packs via `PackSale`), with unique claim ids, per-claim caps and a daily budget. Like season rewards, payouts go to verified humans and registered agents; others' rewards are held until they verify (40 days).
 - **First-time players:** `/learn` has guided matches against a scripted bot (stacked decks, a coach that points at what to do, a "Show me" button; no wallet, server or chain needed): the basics (Gas, units, attacking, Guard, Rush, Automate) and one lesson per race (Prophets' predictions, Brokers' Hold and Dividends, Degens' Swarm, Ape and Rug Pull). Milestone cosmetics are real: the Graduate title for the tutorial, the Scholar title for every lesson, plus a card back, title and animated badge per set for owning every Common, every card and the full playset. Equip them on the Profile page; opponents see them in matches. Purely visual, stored by the referee server (`PROFILES_FILE`).
 - **Pack fairness:** a pity timer (Legendary within 20 packs), duplicate protection until you own a rarity's playset, cosmetic foils (token `20000 + n`, ~1 in 15 cards, 4× scrap), published odds, bundles (5 packs −10%, 10 packs −15%), a Poncho booster (pack kind 1), shareable pulls and a live feed of big pulls. See the GDD's pack incentives section.
 - **Randomness for packs**: Chainlink VRF v2.5 when configured (`VRF_COORDINATOR`, `VRF_KEY_HASH`, `VRF_SUBSCRIPTION_ID` at deploy; add PackSale as a consumer of the subscription), as the GDD requires before mainnet. Without it, testnets fall back to a two-step commit → future-blockhash reveal. Local Anvil deploys a mock coordinator that the referee server fulfills.
+
+### Testnet stand-ins (the GDD version comes later)
+
 - **Disputes**: if a loser won't co-sign, the `REFEREE_ROLE` key (the server, which replays the signed log) settles with the winner's signature. The GDD's fully on-chain log replay is the next step; the log format (signed moves + hash chain + seed reveals) already supports it.
 - **Hidden information** is enforced by the referee server (it holds both deck salts until the match ends). Per-player encryption comes later.
+
+### Not in this MVP (per the GDD roadmap or testnet scope)
+
 - LayerZero ONFT/OFT bridging, Legendary ERC-721 + ERC-6551 vaults, real x402 payments (the Agent League uses an on-chain prepaid balance instead), the Bankr token launch and wagering. These come after the MVP in the GDD.
 - Set 1 is the 40-card prototype set, not the full 160. The Poncho collab set (ids 41–48) adds 8 neutral cards with a Taco token; it is never in starter decks and shares the booster pool by rarity.
 

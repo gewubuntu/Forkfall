@@ -1,7 +1,7 @@
 import { cosmetic, lessonById, NO_COSMETICS, unlockedCosmetics, type Equipped } from '@forkfall/engine';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import type { Address } from 'viem';
+import { readJsonOrSetAside, writeFileAtomic } from './state.ts';
 
 export interface Profile extends Equipped {
   /** Finished the basics lesson (the tutorial). */
@@ -19,8 +19,10 @@ export const profilesFile = (root: string, chainId: number) => join(root, 'apps/
  */
 export class Profiles {
   private data: Record<string, Profile>;
+  /** Where an unusable profiles file was moved at startup (null if it loaded). */
+  readonly setAside: string | null;
   constructor(private file?: string, private owned?: (a: Address) => Promise<Map<number, number> | null>) {
-    this.data = file && existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+    ({ data: this.data, setAside: this.setAside } = file ? readJsonOrSetAside<Record<string, Profile>>(file, () => ({})) : { data: {}, setAside: null });
   }
 
   get(address: string): Profile {
@@ -68,10 +70,7 @@ export class Profiles {
 
   private save(address: string, p: Profile): Profile {
     this.data[address.toLowerCase()] = p;
-    if (this.file) {
-      mkdirSync(dirname(this.file), { recursive: true });
-      writeFileSync(this.file, JSON.stringify(this.data, null, 2));
-    }
+    if (this.file) writeFileAtomic(this.file, JSON.stringify(this.data, null, 2));
     return p;
   }
 }
