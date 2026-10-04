@@ -71,6 +71,15 @@ export interface Match {
   challenge?: string;
   /** Time the referee was down while this match waited for its reveals (doesn't count against the reveal window). */
   pausedMs?: number;
+  /**
+   * Finished and unloaded to save memory: `state`, `events` and `moves` are empty and live in the archive until
+   * someone opens the match (`full`). What's kept is what lists, settlement and the leaderboard need.
+   */
+  cold?: { endReason?: GameState['endReason']; seq: number };
+  /** Last time the full match was used (ms): finished matches idle for a while are unloaded. */
+  usedAt?: number;
+  /** The latest change to this finished match is in the archive, so it may be unloaded. */
+  archived?: boolean;
 }
 
 /** A running (not yet finished) match on disk: everything but the game state, which is rebuilt by replaying the moves. */
@@ -124,6 +133,13 @@ export interface LobbyOptions {
   leagueRecheckMs?: number;
   /** Where running matches, the queue and challenges survive a restart (absent = memory only). */
   store?: StateStore | null;
+  /**
+   * Reads a finished match back from the archive. With it, finished matches are restored without replaying
+   * them, and unloaded after `unloadAfterSeconds` idle; they are replayed again when someone opens one.
+   */
+  archive?: { load(matchId: Hex): ArchivedMatch | null } | null;
+  /** Idle time before a finished, archived match is unloaded (default 600 s). */
+  unloadAfterSeconds?: number;
 }
 
 /** What the server keeps on disk for a finished match: the public log plus the collected signatures. */
@@ -610,6 +626,7 @@ export class Lobby {
   private finish(m: Match) {
     m.phase = 'ended';
     m.endedAt = this.now();
+    m.usedAt = m.endedAt;
     const s = m.state!;
     const [a, b] = m.players;
     m.result = {
@@ -627,6 +644,7 @@ export class Lobby {
     this.pruneQueue();
     this.pruneChallenges();
     this.pruneTickets();
+    this.unloadIdle(now);
     for (const m of this.matches.values()) {
       if (m.phase === 'reveal' && m.league?.state === 'charging' && m.league.retryAt !== undefined && now >= m.league.retryAt) {
         this.chargeLeague(m);
@@ -671,7 +689,11 @@ export class Lobby {
   async stepBots(): Promise<boolean> {
     let moved = false;
     for (const m of this.matches.values()) {
-      if (m.phase === 'ended') { await this.houseSignResult(m); continue; }
+      // Finished: only a backstop for a missing house signature (finish() normally signs). Saved, so it's archived.
+      if (m.phase === 'ended') {
+        if (this.needsHouseSig(m)) { await this.houseSignResult(m); this.changed(m); }
+        continue;
+      }
       if (m.phase !== 'active') continue;
       const seat = m.state!.active;
       const p = m.players[seat];
@@ -686,6 +708,11 @@ export class Lobby {
       moved = true;
     }
     return moved;
+  }
+
+  /** The house still owes a signature on this result: the referee's, or a house bot's. */
+  private needsHouseSig(m: Match): boolean {
+    return !!m.result && (!m.refereeSig || m.players.some((p) => p.bot && !p.resultSig));
   }
 
   private async houseSignResult(m: Match) {
@@ -707,7 +734,8 @@ export class Lobby {
   }
 
   async submitResultSig(address: Address, matchId: Hex, signature: Hex) {
-    const m = this.get(matchId);
+    // Loaded (and verified) first: a signature that can't be archived must fail now, not be lost at the next restart.
+    const m = this.full(this.get(matchId));
     const seat = this.seatOf(m, address);
     if (seat === null) throw new ApiError(403, 'not a player in this match');
     if (!m.result) throw new ApiError(409, 'match not finished');
@@ -744,6 +772,7 @@ export class Lobby {
   log(matchId: Hex): MatchLog {
     const m = this.get(matchId);
     if (m.phase !== 'ended') throw new ApiError(409, 'full log (with seed reveals) is public after the match ends');
+    this.full(m);
     return {
       matchId: m.id, mode: m.mode, season: m.season, createdAt: m.createdAt, endedAt: m.endedAt, endReason: m.state?.endReason,
       domain: { ...this.domain, chainId: Number(this.domain.chainId) },
@@ -764,19 +793,28 @@ export class Lobby {
     };
   }
 
-  /** Re-load an archived match by replaying its log. Returns false if it belongs to another deployment or fails to replay. */
+  /**
+   * Re-load an archived match. Returns false if it belongs to another deployment or fails to replay. With an
+   * archive loader it isn't replayed now: it comes back unloaded, and is replayed when someone opens it.
+   */
   restore(rec: ArchivedMatch): boolean {
     const { log } = rec;
     if (this.matches.has(log.matchId)) return true;
     const d = log.domain;
     if (Number(d.chainId) !== Number(this.domain.chainId) || String(d.verifyingContract).toLowerCase() !== String(this.domain.verifyingContract).toLowerCase()) return false;
+    if (this.opts.archive) {
+      this.matches.set(log.matchId, {
+        id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
+        phase: 'ended', players: archivedSeats(rec, false), events: [], moves: [], head: log.head,
+        clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
+        result: log.result, refereeSig: rec.refereeSig, referee: rec.referee,
+        cold: { endReason: log.endReason, seq: log.moves.length }, archived: true, usedAt: 0,
+      });
+      return true;
+    }
     const replay = replayLog(log);
     if (!replay.ok) return false;
-    const players = log.players.map((p, i) => ({
-      address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent,
-      seedCommit: p.seedCommit, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations,
-      resultSig: rec.resultSigs[i] ?? undefined, bot: rec.bots[i] ?? undefined,
-    })) as [Seatholder, Seatholder];
+    const players = archivedSeats(rec, true);
     this.matches.set(log.matchId, {
       id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
       phase: 'ended', players, state: replay.final, events: replay.frames.flatMap((f) => f.events),
@@ -787,12 +825,50 @@ export class Lobby {
   }
 
   /**
+   * The whole match, reloaded from the archive if it was unloaded (replayed once, then kept until it is idle
+   * again). Signatures and settlement state stay those in memory: they are at least as new as the file.
+   */
+  private full(m: Match): Match {
+    m.usedAt = this.now();
+    if (!m.cold) return m;
+    const rec = this.opts.archive?.load(m.id);
+    const replay = rec && rec.log.matchId === m.id ? replayLog(rec.log) : null;
+    if (!rec || !replay?.ok) throw new ApiError(500, `archived match ${m.id} could not be loaded and verified`);
+    rec.log.players.forEach((p, i) => {
+      Object.assign(m.players[i], { deck: p.deck, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations });
+    });
+    m.state = replay.final;
+    m.events = replay.frames.flatMap((f) => f.events);
+    m.moves = rec.log.moves;
+    m.head = rec.log.head;
+    m.cold = undefined;
+    return m;
+  }
+
+  /** Unload finished matches nobody has opened for a while (only once their latest change is archived). */
+  private unloadIdle(now: number) {
+    if (!this.opts.archive) return;
+    const idleMs = (this.opts.unloadAfterSeconds ?? 600) * 1000;
+    for (const m of this.matches.values()) {
+      if (m.phase !== 'ended' || m.cold || !m.archived || now - (m.usedAt ?? 0) < idleMs) continue;
+      m.cold = { endReason: m.state?.endReason, seq: m.moves.length };
+      m.state = undefined;
+      m.events = [];
+      m.moves = [];
+      for (const p of m.players) { p.deck = []; p.delegations = undefined; }
+    }
+  }
+
+  private endReason(m: Match) { return m.cold ? m.cold.endReason : m.state?.endReason; }
+
+  /**
    * When the referee may settle with the winner's signature alone: right away after a timeout or
    * concede, otherwise once the loser's grace period is over. Null for draws (both must sign).
    */
   refereeOpensAt(m: Match): number | null {
     if (!m.result || m.result.winner === ZERO_ADDRESS || m.endedAt === undefined) return null;
-    const instant = m.state?.endReason === 'timeout' || m.state?.endReason === 'concede';
+    const endReason = this.endReason(m);
+    const instant = endReason === 'timeout' || endReason === 'concede';
     return instant ? m.endedAt : m.endedAt + this.graceMs;
   }
 
@@ -818,6 +894,13 @@ export class Lobby {
       try { s = this.settlement(m.id); } catch { continue; } // still waiting for the winner's signature
       // Fully signed: players settle it themselves, except league matches, which the referee submits.
       if (!('winnerSig' in s) && m.mode !== 'league') continue;
+      // Never submit a result whose archive doesn't load and replay to it (an unloaded match isn't verified yet).
+      try { this.full(m); } catch (e) {
+        const error = (e as Error).message;
+        m.referee = { state: 'failed', attempts: maxAttempts, error };
+        out.failed.push({ matchId: m.id, error });
+        continue;
+      }
       m.referee = { state: 'submitting', attempts: (r?.attempts ?? 0) + 1 };
       this.changed(m);
       try {
@@ -861,6 +944,7 @@ export class Lobby {
   }
 
   snapshot(m: Match, address: Address | null): MatchSnapshot {
+    this.full(m);
     const seat = this.seatOf(m, address);
     const s = m.state;
     return {
@@ -896,6 +980,7 @@ export class Lobby {
   }
 
   eventsSince(m: Match, address: Address | null, since: number) {
+    this.full(m);
     const seat = this.seatOf(m, address);
     const slice = m.events.slice(since);
     return { events: eventsFor(slice, seat), next: m.events.length };
@@ -909,8 +994,8 @@ export class Lobby {
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, player ? 500 : 50)
       .map((m) => ({
-        matchId: m.id, mode: m.mode, phase: m.phase, turn: m.state?.turn ?? 0, season: m.season,
-        createdAt: m.createdAt, endedAt: m.endedAt, endReason: m.state?.endReason,
+        matchId: m.id, mode: m.mode, phase: m.phase, turn: m.state?.turn ?? m.result?.turns ?? 0, season: m.season,
+        createdAt: m.createdAt, endedAt: m.endedAt, endReason: this.endReason(m),
         practice: m.players.some((p) => !!p.bot),
         players: m.players.map((p) => ({ address: p.address, race: p.race, agent: p.agent, deckId: p.deckId })),
         winner: m.result?.winner,
@@ -1034,8 +1119,12 @@ export class Lobby {
   }
 
   private changed(m: Match) {
+    if (m.cold) {
+      try { this.full(m); } catch (e) { console.error(`could not reload match ${m.id} to save a change`, e); return; }
+    }
     // onChange archives a finished match first; its running-match file is only dropped if that worked.
     const archived = this.onChange?.(m) !== false;
+    if (m.phase === 'ended') m.archived = archived;
     this.save(m, !archived);
     this.bus?.match(m.id, { seq: m.moves.length, phase: m.phase });
     if (m.phase === 'ended' || m.phase === 'cancelled') this.bus?.lobby();
@@ -1061,4 +1150,13 @@ function challengeCode(): string {
   let out = '';
   for (let i = 0; i < 10; i++) out += alphabet[parseInt(bytes.slice(i * 2, i * 2 + 2), 16) % alphabet.length];
   return out;
+}
+
+/** The seats of an archived match; `secrets` keeps decks, seed reveals and delegations (needed only to replay it). */
+function archivedSeats(rec: ArchivedMatch, secrets: boolean): [Seatholder, Seatholder] {
+  return rec.log.players.map((p, i) => ({
+    address: p.address, race: p.race, deck: secrets ? p.deck : [], deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit,
+    ...(secrets ? { seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations } : {}),
+    resultSig: rec.resultSigs[i] ?? undefined, bot: rec.bots[i] ?? undefined,
+  })) as [Seatholder, Seatholder];
 }

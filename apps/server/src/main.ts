@@ -102,6 +102,13 @@ const lobby = new Lobby({
   bankSeconds: Number(env.BANK_SECONDS || 60),
   resultGraceSeconds: Number(env.RESULT_GRACE_SECONDS || 600),
   store,
+  // Finished matches are kept small in memory and replayed from their archive file when someone opens one.
+  archive: {
+    load(id) {
+      try { return JSON.parse(readFileSync(join(archiveDir, `${id}.json`), 'utf8')) as ArchivedMatch; } catch { return null; }
+    },
+  },
+  unloadAfterSeconds: env.UNLOAD_AFTER_SECONDS ? Number(env.UNLOAD_AFTER_SECONDS) : undefined,
 });
 
 // Archive finished matches and export a Foundry-ready settlement file as soon as a match has enough signatures.
