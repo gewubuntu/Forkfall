@@ -47,14 +47,16 @@ export function writeFileAtomic(path: string, text: string, mode = 0o644) {
 }
 
 /**
- * Read a JSON file the server can't start without parsing. Missing → `fallback`. Unreadable or not JSON (a crash
- * mid-write, a bad manual edit) → the file is moved aside as `<file>.corrupt-<time>` for a human to look at, and
- * the server starts from `fallback` instead of refusing to boot.
+ * Read a JSON file the server can't start without parsing. Missing → `fallback`. Not JSON (a crash mid-write, a
+ * bad manual edit) → the file is moved aside as `<file>.corrupt-<time>` for a human to look at, and the server
+ * starts from `fallback` instead of refusing to boot. A file that can't be read at all (permissions, I/O) still
+ * throws: the data may be fine, so starting empty would hide it.
  */
 export function readJsonOrSetAside<T>(path: string, fallback: () => T, now = Date.now): T {
   if (!existsSync(path)) return fallback();
+  const text = readFileSync(path, 'utf8');
   try {
-    return JSON.parse(readFileSync(path, 'utf8')) as T;
+    return JSON.parse(text) as T;
   } catch (e) {
     const aside = `${path}.corrupt-${now()}`;
     renameSync(path, aside);

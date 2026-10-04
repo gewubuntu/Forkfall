@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -25,6 +25,13 @@ describe('JSON stores survive a bad file', () => {
     err.mockRestore();
     expect(existsSync(file)).toBe(false);
     expect(readFileSync(`${file}.corrupt-123`, 'utf8')).toBe('{"0xabc": {"title": ');
+  });
+
+  it('throws and leaves the file in place when it cannot be read', () => {
+    const path = tmp('dir.json');
+    mkdirSync(path); // readFileSync fails with EISDIR, like EACCES on a file restored with the wrong owner
+    expect(() => readJsonOrSetAside(path, () => ({}))).toThrow(/EISDIR/);
+    expect(readdirSync(join(path, '..'))).toEqual(['dir.json']);
   });
 
   it('profiles and quests start (and save) over a corrupt file', () => {
