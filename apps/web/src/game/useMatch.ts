@@ -133,10 +133,20 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
     setSending(true);
     setError(null);
     try {
-      const next = await client.move(matchId, snap, a);
+      let next = await client.move(matchId, snap, a).catch(async (e) => {
+        // A concede is legal at any point, even in the opponent's turn, so if the board moved on since this view
+        // (the bot played meanwhile), sign it again against the latest position instead of failing with "stale seq".
+        if (a.type !== 'concede' || !String((e as Error).message).includes('stale seq')) throw e;
+        return null;
+      });
+      for (let tries = 0; !next && tries < 3; tries++) {
+        next = await client.move(matchId, await client.state(matchId), a).catch((e) => {
+          if (!String((e as Error).message).includes('stale seq')) throw e;
+          return null;
+        });
+      }
+      if (!next) throw new Error('The board kept changing: try conceding again.');
       setSnap(next);
-      await pullEvents();
-      return true;
     } catch (e) {
       if (isNetworkError(e)) { setOffline(true); setError('Lost the connection to the referee: that move may not have gone through. The board updates once it’s back.'); }
       else setError(String((e as Error).message).replace(/^.*?→ \d+: /, ''));
@@ -148,6 +158,10 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
       sendingRef.current = false;
       setSending(false);
     }
+    // The move is in, so the next one may go now: the event log catches up behind it (pullEvents is overlap-safe).
+    // Awaiting it inside the lock dropped any click made meanwhile, such as a concede, without a word.
+    pullEvents().catch(() => { /* the next refresh fetches them */ });
+    return true;
   }, [client, snap, matchId, pullEvents, refresh]);
 
   return { snap, events, error, notFound, offline, sending, hits, send, clearError: () => setError(null) };
