@@ -7,6 +7,7 @@
   "scripts": {
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:abi": "ABI_SYNC=1 vitest run packages/sdk/test/abi-sync.test.ts",
     "sim": "tsx packages/engine/scripts/simulate.ts",
     "gen:cards": "tsx packages/engine/scripts/gen-solidity.ts",
     "server": "sh scripts/with-env.sh tsx apps/server/src/main.ts",

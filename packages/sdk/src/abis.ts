@@ -150,6 +150,8 @@ export const matchSettlementAbi = parseAbi([
   'function settleByReferee(MatchResult r, bytes winnerSig)',
   'function settled(bytes32 matchId) view returns (bool)',
   'function currentSeason() view returns (uint32)',
+  'function REFEREE_ROLE() view returns (bytes32)',
+  'function hasRole(bytes32 role, address account) view returns (bool)',
   'function startSeason(uint32 season)',
   'function stats(uint32 season, address player) view returns ((uint32 wins, uint32 losses, uint32 draws, uint32 rating))',
   'function expectedScore(uint256 ra, uint256 rb) view returns (uint256)',
