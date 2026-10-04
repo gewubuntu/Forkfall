@@ -126,6 +126,12 @@ export class Chain {
     if (!this.client) return 1;
     return Number(await this.client.readContract({ address: this.book!.MatchSettlement, abi: matchSettlementAbi, functionName: 'currentSeason' }));
   }
+  /** The player's ranked rating this season, or null off-chain (the contract reports START_RATING before any game). */
+  async rating(season: number, player: Address): Promise<number | null> {
+    if (!this.client) return null;
+    const s = await this.client.readContract({ address: this.book!.MatchSettlement, abi: matchSettlementAbi, functionName: 'stats', args: [season, player] });
+    return s.rating;
+  }
   /** Copies of each collectible card the player owns (tradeable + soulbound starter + foil), or null off-chain. */
   async ownedCounts(player: Address): Promise<Map<number, number> | null> {
     if (!this.client || !this.book?.CardRegistry) return null;
@@ -225,6 +231,8 @@ export interface LeagueOps {
   currentWeek(): Promise<number>;
   balanceOf(agent: Address): Promise<bigint>;
   operatorOf(agent: Address): Promise<Address>;
+  /** The agent's league rating this week (START_RATING before its first rated game); used for pairing. */
+  rating?(week: number, agent: Address): Promise<number>;
   start(matchId: Hex, a: Address, b: Address): Promise<Hex>;
   /** Whether the league already charged this match (started on-chain). */
   started(matchId: Hex): Promise<boolean>;
@@ -258,6 +266,7 @@ export function leagueOps(chain: Chain, referee: LocalAccount): LeagueOps | null
     currentWeek: async () => Number(await read<number>('currentWeek')),
     balanceOf: (agent) => read<bigint>('balanceOf', [agent]),
     operatorOf: (agent) => read<Address>('operatorOf', [agent]),
+    rating: async (week, agent) => (await read<{ rating: number }>('standing', [week, agent])).rating,
     start: (matchId, a, b) => send(address, agentLeagueAbi, 'startMatch', [matchId, a, b]),
     cancel: (matchId) => send(address, agentLeagueAbi, 'cancelMatch', [matchId]),
     // matches(id).state: 0 = None (never charged); anything else means startMatch went through.
