@@ -10,3 +10,6 @@ apps/server/data/
 contracts/deployments/31337.json
 contracts/settlements/0x*.json
 metadata-export/
+test-results/
+playwright-report/
+apps/web/test-results/

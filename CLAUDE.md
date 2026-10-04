@@ -21,8 +21,9 @@ Any change to what a player sees (`apps/web`, card art in `packages/art`, styles
 affected screen, at desktop (1280 px wide) and phone (390 px wide) width.
 
 - Take them with Playwright against `pnpm web:build` served by `pnpm server:offchain`, or `pnpm web` for pages
-  that don't need the referee. Pages behind a wallet need a test wallet or a stubbed session; say so if a
-  screen couldn't be reached.
+  that don't need the referee. For pages behind a wallet, sign in with the test wallet in
+  `apps/web/e2e/wallet.ts` (`installTestWallet`), as `apps/web/e2e/smoke.spec.ts` does; say so if a screen
+  still couldn't be reached (on-chain pages need a deployment).
 - Before and after when the change alters an existing screen.
 - Send them to the user and list what each one shows in the PR description. Don't commit screenshots to the
   repository.

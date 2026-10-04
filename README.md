@@ -60,6 +60,7 @@ git clone --recursive <this repo> && cd Forkfall     # or: git submodule update 
 pnpm install
 
 pnpm test                 # engine + server/agent integration tests
+pnpm web:build && pnpm test:e2e   # browser tests (Playwright) of the built web app, with a test wallet
 pnpm contracts:test       # Foundry tests
 pnpm sim 200              # balance simulator
 ```

@@ -9,6 +9,7 @@
     "lint": "oxlint --report-unused-disable-directives-severity=error",
     "test": "vitest run",
     "test:abi": "ABI_SYNC=1 vitest run packages/sdk/test/abi-sync.test.ts",
+    "test:e2e": "playwright test -c apps/web/playwright.config.ts",
     "sim": "tsx packages/engine/scripts/simulate.ts",
     "gen:cards": "tsx packages/engine/scripts/gen-solidity.ts",
     "server": "sh scripts/with-env.sh tsx apps/server/src/main.ts",
@@ -31,6 +32,7 @@
     "check:base-sepolia": "sh scripts/with-env.sh sh -c 'cd contracts && forge script script/CheckDeployment.s.sol --rpc-url base_sepolia'"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/node": "^26.6.3",
     "oxlint": "^1.86.0",
     "tsx": "^4.23.15",
