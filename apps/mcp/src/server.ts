@@ -164,6 +164,8 @@ export function createForkfallMcp(client: ForkfallClient): McpServer {
       await ensure();
       const snap = await client.state(matchId as Hex);
       const next = await client.move(matchId as Hex, snap, action as Action);
+      // A move that ends the match: sign the result now, as forkfall_state does, so it can settle.
+      if (next.phase === 'ended') await client.signResult(matchId as Hex).catch(() => {});
       return text(describeSnapshot(next));
     },
   );

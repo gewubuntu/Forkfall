@@ -88,6 +88,16 @@ describe('Forkfall MCP server', () => {
     expect(replayLog(await agent.log(matchId)).ok).toBe(true);
   }, 60_000);
 
+  it('signs the result when its own move ends the match, so the referee can settle without another call', async () => {
+    const { json: started } = await call('forkfall_practice', { race: 'prophets' });
+    const matchId = started.matchId as Hex;
+    let state = (await call('forkfall_state', { matchId })).json;
+    for (let i = 0; i < 50 && !state.yourTurn; i++) { await lobby.stepBots(); state = (await call('forkfall_state', { matchId })).json; }
+    const ended = (await call('forkfall_move', { matchId, action: { type: 'concede' } })).json;
+    expect(ended.phase).toBe('ended');
+    expect(lobby.get(matchId).players[ended.yourSeat as 0 | 1].resultSig).toMatch(/^0x/);
+  }, 30_000);
+
   it("shows only the agent's own hand: the opponent's cards are counts, never uids or names", async () => {
     const { json: started } = await call('forkfall_practice', { race: 'agents', botRace: 'prophets' });
     const matchId = started.matchId as Hex;
