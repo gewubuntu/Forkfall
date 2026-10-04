@@ -1,5 +1,5 @@
 import {
-  card, COLLECTIBLE, DECK_SIZE, MAX_COPIES, MAX_LEGENDARIES_RANKED, MAX_LEGENDARY_COPIES, RACES,
+  card, COLLECTIBLE, decodeDeck, DECK_SIZE, encodeDeck, MAX_COPIES, MAX_LEGENDARIES_RANKED, MAX_LEGENDARY_COPIES, RACES,
   RANKED_RARITY_CAP, RARITY_POINTS, starterDeck, validateDeck, type CardDef, type Race,
 } from '@forkfall/engine';
 import { deckRegistryAbi } from '@forkfall/sdk';
@@ -48,12 +48,36 @@ export function DeckBuilder() {
   const flyFrom = useRef<HTMLElement | null>(null);
   const { ref: confettiRef, burst } = useParticles();
   const [seeded, setSeeded] = useState(false);
+  const [importing, setImporting] = useState(() => params.has('import'));
+  const [codeText, setCodeText] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  // Start from an existing deck (?from=<deckId>) or a starter list (?starter=1).
+  /** Open a shared deck code: its race and cards replace the current list. */
+  const importCode = (text: string): boolean => {
+    try {
+      const d = decodeDeck(text);
+      setRace(d.race);
+      setCounts(toCounts(d.cards));
+      setName(`Imported ${RACE_INFO[d.race].name} deck`);
+      setCodeError(null);
+      return true;
+    } catch (e) {
+      setCodeError((e as Error).message);
+      return false;
+    }
+  };
+
+  // Start from an existing deck (?from=<deckId>), a shared deck code (?code=FF…) or a starter list (?starter=1).
   const from = params.get('from');
   useEffect(() => {
     if (seeded) return;
-    if (from) {
+    const code = params.get('code');
+    if (code) {
+      if (!importCode(code)) setImporting(true);
+      setCodeText(code);
+      setSeeded(true);
+    } else if (from) {
       const d = decks.find((x) => x.id.toLowerCase() === from.toLowerCase());
       if (!d) return;
       setRace(d.race);
@@ -156,7 +180,16 @@ export function DeckBuilder() {
             <input type="search" placeholder="Search cards…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search cards" />
             <button className="btn" onClick={() => setCounts(toCounts(starterDeck(race)))}>Load starter list</button>
             <button className="btn btn-ghost" onClick={() => setCounts(new Map())} disabled={size === 0}>Clear</button>
+            <button className="btn btn-ghost" onClick={() => setImporting((v) => !v)} aria-expanded={importing}>Import code</button>
           </div>
+          {importing && (
+            <form className="code-import" onSubmit={(e) => { e.preventDefault(); if (importCode(codeText)) setImporting(false); }}>
+              <input value={codeText} onChange={(e) => { setCodeText(e.target.value); setCodeError(null); }} placeholder="Paste a deck code (FF…)"
+                aria-label="Deck code" aria-invalid={!!codeError} autoFocus spellCheck={false} />
+              <button className="btn btn-primary" disabled={!codeText.trim()}>Open deck</button>
+            </form>
+          )}
+          {codeError && <div className="alert err" role="alert">{codeError}</div>}
           <div className="pool-grid">
             {pool.map((c) => {
               const inDeck = counts.get(c.id) ?? 0;
@@ -204,6 +237,9 @@ export function DeckBuilder() {
               </li>
             ))}
           </ol>
+          <button className="btn btn-block" disabled={size === 0} onClick={async () => {
+            try { await navigator.clipboard.writeText(encodeDeck(race, list)); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
+          }}>{copied ? 'Deck code copied ✓' : 'Copy deck code'}</button>
           {existing ? (
             <div className="alert info"><span>This exact deck is already registered as “{deckName(existing.id, existing.race)}”.</span></div>
           ) : (

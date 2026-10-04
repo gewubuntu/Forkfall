@@ -42,6 +42,9 @@
 .builder-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 .pool-tools { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .pool-tools input { flex: 1; min-width: 180px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 8px 12px; }
+.code-import { display: flex; gap: 8px; margin: -4px 0 14px; flex-wrap: wrap; }
+.code-import input { flex: 1; min-width: 200px; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 8px 12px; }
+.code-import input[aria-invalid="true"] { border-color: #ff5d73; }
 .pool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 16px 12px; }
 .pool-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
 .pool-cell .gcard { width: 100%; max-width: 146px; }
