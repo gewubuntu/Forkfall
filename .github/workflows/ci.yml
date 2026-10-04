@@ -20,6 +20,7 @@ jobs:
 
   web-e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15   # a hung browser install or server fails fast instead of holding the runner for hours
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -27,7 +28,9 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm web:build
-      - run: pnpm exec playwright install --with-deps chromium   # the browser matching the pinned @playwright/test
+      # The Chromium matching the pinned @playwright/test. No --with-deps: the runner image already has Chrome's
+      # system libraries, and installing them through apt hung this job.
+      - run: pnpm exec playwright install chromium
       - run: pnpm test:e2e                                        # apps/web/e2e against an off-chain referee
       - if: failure()
         uses: actions/upload-artifact@v4
