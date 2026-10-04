@@ -28,7 +28,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...devices['Desktop Chrome'],
-    // Use the preinstalled Chromium when one is provided (cloud dev containers); CI installs its own.
+    // CI drives the runner's own Google Chrome (PLAYWRIGHT_CHANNEL=chrome) instead of downloading a browser;
+    // PLAYWRIGHT_CHROMIUM points at a specific Chromium binary. Neither set: Playwright's bundled Chromium.
+    ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}),
     ...(process.env.PLAYWRIGHT_CHROMIUM ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM } } : {}),
   },
   webServer: {

@@ -28,10 +28,11 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm web:build
-      # The Chromium matching the pinned @playwright/test. No --with-deps: the runner image already has Chrome's
-      # system libraries, and installing them through apt hung this job.
-      - run: pnpm exec playwright install chromium
+      # Drive the Google Chrome preinstalled on the runner. `playwright install` downloaded its Chromium in a second
+      # and then hung until the job timed out, so this job installs no browser at all.
+      - run: google-chrome --version
       - run: pnpm test:e2e                                        # apps/web/e2e against an off-chain referee
+        env: { PLAYWRIGHT_CHANNEL: chrome }
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
