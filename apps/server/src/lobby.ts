@@ -1013,7 +1013,7 @@ export class Lobby {
           state = out.state;
           events.push(...out.events);
         }
-        if (state.status === 'ended' !== (m.phase === 'ended')) return false;
+        if ((state.status === 'ended') !== (m.phase === 'ended')) return false;
         m.state = state;
         m.events = events;
       } catch { return false; }

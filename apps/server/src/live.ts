@@ -121,7 +121,8 @@ export class Live implements LiveBus {
     if (!set?.size) return;
     const msg = JSON.stringify({ type: 'event', topic: shownAs, ...data });
     const personal = topic.startsWith('me:');
-    for (const c of [...set]) {
+    // A copy: stillAuthed() can unsubscribe c from this set while we loop.
+    for (const c of [...set]) { // oxlint-disable-line unicorn/no-useless-spread
       if (personal && !this.stillAuthed(c)) continue; // logged out or expired since it subscribed
       this.send(c, msg);
     }

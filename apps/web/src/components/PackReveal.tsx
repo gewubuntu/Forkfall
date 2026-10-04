@@ -62,7 +62,7 @@ export function PackReveal({ ids, fresh, packId, kind = 0, back, onClose, next }
     if (reduced) { setPhase('dealt'); return; }
     setPhase('ready');
     sfx.charge(tier);
-  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps -- only a new pack restarts the reveal: tier comes from ids, and flipping reduced motion mid-reveal shouldn't reset it
 
   const center = (el: Element | null) => {
     const r = el?.getBoundingClientRect();

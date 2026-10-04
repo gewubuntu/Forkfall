@@ -37,7 +37,7 @@ export function DeckBuilder() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const tx = useTx();
-  const { owned, total, isLoading: ownedLoading } = useOwned(player);
+  const { total, isLoading: ownedLoading } = useOwned(player);
   const { decks } = useMyDecks(player);
 
   const [race, setRace] = useState<Race>((params.get('race') as Race) || 'agents');

@@ -74,7 +74,7 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
   const s = steps[step];
 
   const myTurn = g.status === 'active' && g.active === 0;
-  const legal = myTurn ? legalActions(g, 0) : [];
+  const legal = useMemo(() => (myTurn ? legalActions(g, 0) : []), [g, myTurn]);
 
   const act = (seat: 0 | 1, a: Action) => {
     if (seat === 0) {
@@ -98,7 +98,7 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
     if (g.status !== 'active' || g.active !== 1) return;
     const t = setTimeout(() => act(1, tutorialBotMove(g)), BOT_STEP_MS);
     return () => clearTimeout(t);
-  }); // eslint-disable-line react-hooks/exhaustive-deps
+  });
 
   useEffect(() => { if (g.status === 'ended' && g.winner === 0) markLessonDone(lesson.id); }, [g.status, g.winner, lesson.id]);
 
@@ -114,7 +114,7 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
     matchId: '0x' + '0'.repeat(64) as `0x${string}`, phase: g.status === 'ended' ? 'ended' : 'active', mode: 'casual', seat: 0,
     players: g.players.map((p, i) => ({ address: p.address, race: p.race, agent: i === 1 })),
     view: viewFor(g, 0), legalActions: legal, seq: 0, head: '0x' as `0x${string}`, clock: null, eventCount: 0,
-  }), [g]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [g, legal]);
 
   const sel = selected;
   const selActs = sel ? legal.filter((a) => (sel.kind === 'hand' ? a.type === 'play' && a.uid === sel.uid && !!a.ape === !!sel.ape : a.type === 'attack' && a.attacker === sel.uid)) : [];

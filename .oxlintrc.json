@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "error",
+    // React Compiler rules. The app doesn't use the compiler, and these flag patterns that are fine without it
+    // (Date.now() for countdowns, callbacks that refer to each other). Turn on if the compiler is adopted.
+    "react/purity": "off",
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "react/immutability": "off"
+  },
+  "ignorePatterns": ["**/dist/**", "contracts/**", "metadata-export/**"]
+}

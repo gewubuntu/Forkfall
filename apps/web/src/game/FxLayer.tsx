@@ -51,7 +51,7 @@ export function FxLayer({ events, seat, arena, races, skip }: {
     const batch = events.slice(processed.current);
     processed.current = events.length;
     if (batch.length) play(batch);
-  }); // eslint-disable-line react-hooks/exhaustive-deps
+  });
 
   const at = (ms: number, f: () => void) => { timers.current.push(setTimeout(f, ms)); };
   const unitEl = (uid: number) => document.querySelector<HTMLElement>(`.match [data-uid="${uid}"]`);

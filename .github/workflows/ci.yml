@@ -13,6 +13,7 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm }   # Node 26
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck                  # TypeScript 7
+      - run: pnpm lint                       # oxlint (.oxlintrc.json)
       - run: pnpm test
       - run: pnpm sim 200
       - run: pnpm web:build

@@ -126,7 +126,8 @@ function CollectionLive({ chainId }: { chainId: number }) {
   // While a pack waits for randomness, re-read on every new block and every 3 s (VRF answers in its own
   // transaction, and block notifications can be missed); once everything is ready, stop.
   const waiting = unopened.some((p) => !p.ready);
-  const refetchPacks = useCallback(() => { packs.refetch(); words.refetch(); nextVrfRead.refetch(); }, [packs.refetch, words.refetch, nextVrfRead.refetch]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { refetch: refetchOwned } = packs, { refetch: refetchWords } = words, { refetch: refetchNextVrf } = nextVrfRead;
+  const refetchPacks = useCallback(() => { refetchOwned(); refetchWords(); refetchNextVrf(); }, [refetchOwned, refetchWords, refetchNextVrf]);
   useEffect(() => { if (waiting) refetchPacks(); }, [block, waiting, refetchPacks]);
   useEffect(() => {
     if (!waiting) return;
