@@ -321,13 +321,15 @@ export class Lobby {
     if (!(body.mode in MODES)) throw new ApiError(400, 'unknown mode');
     if (!/^0x[0-9a-fA-F]{64}$/.test(body.seedCommit ?? '')) throw new ApiError(400, 'seedCommit (bytes32) required');
     this.leaveQueue(address);
+    const gen = this.queueGen.get(address.toLowerCase());
     const isAgent = await this.checkEligibility(address, body.mode, agent);
     const { deck, deckId } = await this.resolveDeck(address, body.mode, body.race, body.deck, body.deckId);
     const operator = body.mode === 'league' ? await this.leagueEntry(address) : undefined;
     const season = await this.seasonFor(body.mode);
     const rating = body.mode === 'casual' ? undefined : await this.ratingOf(address, body.mode, season);
-    // Another enqueue for this address may have run while we awaited: only the latest one stays queued.
-    this.leaveQueue(address);
+    // While we awaited the chain, the player left the queue or queued again: that request wins, this one stops here
+    // (otherwise a cancelled request could still pair them, or two requests put them in two matches).
+    if (this.queueGen.get(address.toLowerCase()) !== gen) throw new ApiError(409, 'queue request cancelled by a newer one');
     const ticket = keccakHex(address, String(this.now()), randomHex32());
     const me: QueueEntry = { ticket, address, mode: body.mode, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit, at: this.now(), seen: this.now(), operator, rating };
     this.byAddressTicket.set(address, ticket);
@@ -345,7 +347,9 @@ export class Lobby {
   /** League results carry the league week as their season, rated modes the ladder season, casual none. */
   private async seasonFor(mode: Mode): Promise<number> {
     if (mode === 'casual') return 0;
-    return mode === 'league' ? this.opts.league!.currentWeek() : this.opts.chain.season();
+    if (mode !== 'league') return this.opts.chain.season();
+    if (!this.opts.league) throw new ApiError(503, 'the Agent League is not enabled on this referee');
+    return this.opts.league.currentWeek();
   }
 
   /**
@@ -419,7 +423,13 @@ export class Lobby {
     if (!modes.length) return;
     this.sweeping = true;
     try {
-      const seasons = new Map(await Promise.all(modes.map(async (mode) => [mode, await this.seasonFor(mode)] as const)));
+      // A mode whose season can't be read (RPC down, league no longer configured) waits; the others still pair.
+      const read = await Promise.allSettled(modes.map((mode) => this.seasonFor(mode)));
+      const seasons = new Map<Mode, number>();
+      read.forEach((r, i) => {
+        if (r.status === 'fulfilled') seasons.set(modes[i], r.value);
+        else console.error(`queue matching: could not read the ${modes[i]} season`, r.reason);
+      });
       this.pruneQueue();
       const now = this.now();
       for (let i = 0; i < this.queue.length; i++) {
@@ -459,7 +469,12 @@ export class Lobby {
     this.queue = this.queue.filter((q) => q.seen >= cutoff);
   }
 
+  /** Bumped by every leave (and so every enqueue): an enqueue still awaiting the chain knows it was superseded. */
+  private queueGen = new Map<string, number>();
+
   leaveQueue(address: Address) {
+    const key = address.toLowerCase();
+    this.queueGen.set(key, (this.queueGen.get(key) ?? 0) + 1);
     this.queue = this.queue.filter((q) => q.address !== address);
   }
 
@@ -1204,7 +1219,9 @@ export class Lobby {
     this.byAddressTicket = new Map(rec.byAddressTicket ?? []);
     this.challenges = new Map((rec.challenges ?? []).map((c) => [c.code, c]));
     // Queued clients keep polling through a restart; give them the TTL again rather than dropping them at once.
-    for (const q of this.queue) q.seen = this.now();
+    // Downtime isn't waiting either: rating windows pick up where they were.
+    const down = rec.aliveAt ? Math.max(0, this.now() - rec.aliveAt) : 0;
+    for (const q of this.queue) { q.seen = this.now(); q.at += down; }
   }
 
   /**

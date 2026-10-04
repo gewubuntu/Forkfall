@@ -177,3 +177,80 @@ describe('Agent League pairing', () => {
     expect(lobby.queueStatus(b).status).toBe('queued');
   });
 });
+
+describe('queue races and failures', () => {
+  /** A chain whose rating reads wait until `open()`, so a test can act while an enqueue is in flight. */
+  function gated(ratings: Record<string, number>) {
+    const chain = rated(ratings);
+    let open!: () => void;
+    const gate = new Promise<void>((r) => { open = r; });
+    const inner = chain.rating.bind(chain);
+    let held = false;
+    chain.rating = async (s, a) => { if (held) await gate; return inner(s, a); };
+    return { chain, hold: () => { held = true; }, open: () => open() };
+  }
+
+  it('a season read failing for one mode doesn’t stop the others pairing', async () => {
+    const [a, b, x, y] = [addr(), addr(), addr(), addr()];
+    let weekDown = false;
+    const lg: LeagueOps = {
+      entryFee: async () => 500_000n, currentWeek: async () => { if (weekDown) throw new Error('rpc down'); return 7; },
+      balanceOf: async () => 5_000_000n, operatorOf: async (q: Address) => q, rating: async (_w, q) => (q === x ? 1000 : 1800),
+      start: async () => ('0x' + 'ee'.repeat(32)) as Hex, started: async () => false,
+      cancel: async () => ('0x' + '00'.repeat(32)) as Hex, info: async () => ({ enabled: true }) as never,
+    };
+    const { lobby, join, after } = setup({ chain: rated({ [a]: 1000, [b]: 1500 }), league: lg });
+    await join(a); await join(b); await join(x, 'league'); await join(y, 'league');
+    weekDown = true;
+    after(RATING_WINDOW.anyoneAfterMs); await lobby.matchQueue();
+    expect(lobby.queueStatus(a).status).toBe('matched');
+    expect(lobby.queueStatus(x).status).toBe('queued');
+    weekDown = false;
+    await lobby.matchQueue();
+    expect(lobby.queueStatus(x).status).toBe('matched');
+  });
+
+  it('leaving the queue while an enqueue still waits on the chain cancels it', async () => {
+    const [a, b] = [addr(), addr()];
+    const g = gated({ [a]: 1200, [b]: 1210 });
+    const { lobby, join } = setup({ chain: g.chain });
+    await join(b);
+    g.hold();
+    const pending = join(a);
+    await new Promise((r) => setTimeout(r, 5));
+    lobby.leaveQueue(a);
+    g.open();
+    await expect(pending).rejects.toThrow(/cancelled/);
+    expect(lobby.queueStatus(b).status).toBe('queued');
+    expect(lobby.matches.size).toBe(0);
+  });
+
+  it('two enqueues in flight for one player put them in one match at most', async () => {
+    const [a, b, c] = [addr(), addr(), addr()];
+    const g = gated({ [a]: 1200, [b]: 1200, [c]: 1200 });
+    const { lobby, join } = setup({ chain: g.chain });
+    await join(b, 'ranked'); await join(c, 'human');
+    g.hold();
+    const both = Promise.allSettled([join(a, 'ranked'), join(a, 'human')]);
+    await new Promise((r) => setTimeout(r, 5));
+    g.open();
+    const [first, second] = await both;
+    expect(first.status).toBe('rejected');
+    expect(second).toMatchObject({ status: 'fulfilled', value: { status: 'matched' } });
+    expect([...lobby.matches.values()].filter((m) => m.players.some((p) => p.address === a))).toHaveLength(1);
+  });
+
+  it('a restart doesn’t count its downtime as waiting', async () => {
+    const [a, b] = [addr(), addr()];
+    const chain = rated({ [a]: 1000, [b]: 1500 });
+    const first = setup({ chain });
+    await first.join(a);
+    const saved = first.lobby.saveLobby();
+    const second = setup({ chain });
+    second.clock.t = first.clock.t + 10 * 60_000; // down for 10 minutes
+    second.lobby.restoreLobby(JSON.parse(JSON.stringify(saved)));
+    expect(await second.join(b)).toMatchObject({ status: 'queued' }); // a has waited 0 s, not 10 min
+    second.after(RATING_WINDOW.anyoneAfterMs); await second.lobby.matchQueue();
+    expect(second.lobby.queueStatus(a).status).toBe('matched');
+  });
+});
