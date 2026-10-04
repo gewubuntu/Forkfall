@@ -1,4 +1,4 @@
-import { card, RACES } from '@forkfall/engine';
+import { card, encodeDeck, RACES } from '@forkfall/engine';
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import type { Address } from 'viem';
@@ -7,6 +7,7 @@ import { useHub } from '../chain/useHub.ts';
 import { useMyDecks, type MyDeck } from '../chain/useMyDecks.ts';
 import { ManaCurve } from '../components/ManaCurve.tsx';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
+import { copyText } from '../lib/clipboard.ts';
 import { deckName, setDeckName } from '../lib/deckNames.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { shortAddr } from '../lib/format.ts';
@@ -41,6 +42,7 @@ export function Decks() {
               <img src={spriteSvg(RACE_INFO[r].sprite)} alt="" className="btn-sprite" />New {RACE_INFO[r].name}
             </Link>
           ))}
+          <Link className="btn btn-ghost" to="/decks/new?import=1">Import code</Link>
         </div>
       </div>
       {error && <div className="alert err">Couldn’t read your decks: {error.message.split('\n')[0]}</div>}
@@ -63,7 +65,10 @@ function DeckTile({ d, fresh }: { d: MyDeck; fresh: boolean }) {
   const navigate = useNavigate();
   const [name, setName] = useState(() => deckName(d.id, d.race));
   const [editing, setEditing] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'id' | 'code' | null>(null);
+  const copy = async (what: 'id' | 'code', text: string) => {
+    if (await copyText(text, what === 'id' ? 'Copy this deck id:' : undefined)) { setCopied(what); setTimeout(() => setCopied(null), 1200); }
+  };
   const top = [...new Set(d.cardIds)].map(card).sort((a, b) => b.cost - a.cost).slice(0, 4);
   const status = !d.owned ? { cls: 'banned', text: 'Cards missing' } : d.rankedLegal ? { cls: 'human', text: 'Ranked-legal' } : { cls: '', text: 'Casual only' };
   const save = () => { setDeckName(d.id, name); setEditing(false); setName(deckName(d.id, d.race)); };
@@ -90,8 +95,11 @@ function DeckTile({ d, fresh }: { d: MyDeck; fresh: boolean }) {
       <div className="dt-actions">
         <button className="btn btn-primary" disabled={!d.owned} onClick={() => navigate(`/play?deck=${d.id}`)}>Play</button>
         <Link className="btn" to={`/decks/new?from=${d.id}`}>Edit as new</Link>
-        <button className="btn btn-ghost" onClick={async () => { try { await navigator.clipboard.writeText(d.id); setCopied(true); setTimeout(() => setCopied(false), 1200); } catch { /* ignore */ } }}>
-          {copied ? 'Copied ✓' : `ID ${shortAddr(d.id)}`}
+        <button className="btn btn-ghost" onClick={() => copy('code', encodeDeck(d.race, d.cardIds))} title="A short code anyone can open in the deck builder">
+          {copied === 'code' ? 'Copied ✓' : 'Share code'}
+        </button>
+        <button className="btn btn-ghost" onClick={() => copy('id', d.id)} title="The on-chain deck id, for the API and agents">
+          {copied === 'id' ? 'Copied ✓' : `ID ${shortAddr(d.id)}`}
         </button>
       </div>
     </article>
