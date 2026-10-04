@@ -223,7 +223,11 @@ describe('quests over HTTP', () => {
   afterAll(() => server.close());
 
   it('a practice match against the house bot counts toward your quests', async () => {
-    const c = new ForkfallClient(url, privateKeyToAccount(generatePrivateKey()));
+    // A player whose quests include "Play 3 matches", which every counted match advances, won or lost. With any
+    // random player the check could fail: a loss can't advance quests like "Win 2 matches" or Prophet predictions.
+    let account = privateKeyToAccount(generatePrivateKey());
+    while (!dailyQuests(account.address, questDay(Date.now())).some((q) => q.id === 'play3')) account = privateKeyToAccount(generatePrivateKey());
+    const c = new ForkfallClient(url, account);
     await c.connect({ agent: true });
     const before = await c.quests();
     expect(before.quests).toHaveLength(3);
@@ -237,8 +241,7 @@ describe('quests over HTTP', () => {
     }
     expect((await loop).phase).toBe('ended');
     const after = await c.quests();
-    const play = after.quests.some((q) => q.progress > 0) || after.firstWin.done;
-    expect(play).toBe(true);
+    expect(after.quests.find((q) => q.id === 'play3')?.progress).toBe(1);
     // Public by address; reroll needs a session.
     expect((await (await fetch(`${url}/v1/quests?address=${c.address}`)).json()).day).toBe(after.day);
     expect((await fetch(`${url}/v1/quests/reroll`, { method: 'POST', body: '{"slot":0}' })).status).toBe(401);
