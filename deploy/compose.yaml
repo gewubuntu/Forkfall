@@ -1,0 +1,50 @@
+# Forkfall on one server: the referee (game server + web app) behind Caddy (automatic HTTPS, WebSockets).
+# Run from this folder:  docker compose up -d --build
+name: forkfall
+
+services:
+  referee:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VITE_BASE_SEPOLIA_RPC_URL: ${VITE_BASE_SEPOLIA_RPC_URL:-}
+        VITE_WALLETCONNECT_PROJECT_ID: ${VITE_WALLETCONNECT_PROJECT_ID:-}
+    image: forkfall-referee
+    env_file: .env
+    environment:
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN in deploy/.env}
+      TRUST_PROXY: "1"          # Caddy sets X-Forwarded-For to the real client IP
+    volumes:
+      - forkfall-data:/data      # matches, running state, sessions, quests, profiles, settlements
+    expose: ["8787"]             # only Caddy talks to it
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s       # the server drains requests for up to 5 s, then saves and exits
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "5" }
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on: [referee]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data         # certificates: keep this volume
+      - caddy-config:/config
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+volumes:
+  forkfall-data:
+  caddy-data:
+  caddy-config:
