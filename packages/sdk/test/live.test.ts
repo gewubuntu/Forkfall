@@ -39,3 +39,25 @@ describe('LiveClient', () => {
     }
   });
 });
+
+describe('LiveClient.close()', () => {
+  it('while still connecting neither crashes nor reconnects', async () => {
+    const crashes: unknown[] = [];
+    const onCrash = (e: unknown) => { crashes.push(e); };
+    process.on('uncaughtException', onCrash);
+    const port = await deadPort();
+    let attempts = 0;
+    const listener = createServer((sock) => { attempts++; sock.destroy(); });
+    try {
+      const live = new LiveClient(`ws://127.0.0.1:${port}/v1/live`, { maxBackoffMs: 50 });
+      live.close(); // in Node, this fired 'error' inside close() and recursed too
+      await new Promise<void>((r) => listener.listen(port, '127.0.0.1', () => r()));
+      await new Promise((r) => setTimeout(r, 300));
+      expect(crashes).toEqual([]);
+      expect(attempts).toBe(0); // closed means closed
+    } finally {
+      listener.close();
+      process.off('uncaughtException', onCrash);
+    }
+  });
+});
