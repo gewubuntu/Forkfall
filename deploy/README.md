@@ -32,6 +32,30 @@ Create DNS records for the name players will use, e.g. `play.example.com`:
 
 Caddy can only get a certificate once this resolves.
 
+### No SSH key yet?
+
+If Hetzner only gave you a password, create a key on your own computer first. The setup script only turns off password
+login once a key works, so you can't lock yourself out.
+
+```bash
+ssh-keygen -t ed25519 -C "forkfall"        # Enter for the default path, then pick a passphrase
+ssh-copy-id root@<server-ip>               # Mac/Linux: asks for the server password one last time
+```
+
+On Windows (PowerShell), instead of `ssh-copy-id`:
+
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh root@<server-ip> "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+Then `ssh root@<server-ip>` must log you in without the server password. Change the emailed root password (`passwd`),
+and back up `~/.ssh/id_ed25519` (your password manager is a good place): without it you'd need Hetzner's web console to
+get back in.
+
+If your login is a sudo user rather than `root`, copy the key to root as well before running the script:
+`sudo mkdir -p /root/.ssh && sudo cp ~/.ssh/authorized_keys /root/.ssh/ && sudo chmod 600 /root/.ssh/authorized_keys`,
+then run it with `sudo bash setup-server.sh forkfall`.
+
 ## 3. Harden the server (once)
 
 ```bash
