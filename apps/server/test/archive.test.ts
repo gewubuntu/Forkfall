@@ -209,4 +209,36 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     await expect(a.signResult(id)).rejects.toThrow(/500|could not be loaded/);
     expect(lobby.get(id).players[0].resultSig).toBeUndefined();
   }, 30_000);
+
+  it('the bot loop only signs finished matches that are missing a house signature, and archives what it signs', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const house = privateKeyToAccount(generatePrivateKey());
+    let signed = 0;
+    const counting = { ...house, signTypedData: (async (args: Parameters<typeof house.signTypedData>[0]) => { signed++; return house.signTypedData(args); }) as typeof house.signTypedData };
+    const first = await referee(dir, clock, { house: counting });
+    const { id } = await concededMatch(first.url);
+    await new Promise((r) => setTimeout(r, 20)); // finish() signs asynchronously
+    expect(first.lobby.get(id).refereeSig).toBeDefined();
+
+    // Already signed: the loop does nothing, however many finished matches there are.
+    signed = 0;
+    await first.lobby.stepBots();
+    expect(signed).toBe(0);
+
+    // An archive without the referee signature (as if signing never happened): restored, signed by the loop, archived.
+    const rec = JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8')) as ArchivedMatch;
+    delete rec.refereeSig;
+    writeFileSync(join(dir, `${id}.json`), JSON.stringify(rec));
+    const second = await referee(dir, clock, { house: counting });
+    expect(second.lobby.restore(rec)).toBe(true);
+    signed = 0;
+    await second.lobby.stepBots();
+    expect(signed).toBe(1);
+    const onDisk = JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8')) as ArchivedMatch;
+    expect(onDisk.refereeSig).toBe(second.lobby.get(id).refereeSig);
+    expect(onDisk.refereeSig).toBeDefined();
+    await second.lobby.stepBots();
+    expect(signed).toBe(1);
+  }, 30_000);
 });

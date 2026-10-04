@@ -689,7 +689,11 @@ export class Lobby {
   async stepBots(): Promise<boolean> {
     let moved = false;
     for (const m of this.matches.values()) {
-      if (m.phase === 'ended') { await this.houseSignResult(m); continue; }
+      // Finished: only a backstop for a missing house signature (finish() normally signs). Saved, so it's archived.
+      if (m.phase === 'ended') {
+        if (this.needsHouseSig(m)) { await this.houseSignResult(m); this.changed(m); }
+        continue;
+      }
       if (m.phase !== 'active') continue;
       const seat = m.state!.active;
       const p = m.players[seat];
@@ -704,6 +708,11 @@ export class Lobby {
       moved = true;
     }
     return moved;
+  }
+
+  /** The house still owes a signature on this result: the referee's, or a house bot's. */
+  private needsHouseSig(m: Match): boolean {
+    return !!m.result && (!m.refereeSig || m.players.some((p) => p.bot && !p.resultSig));
   }
 
   private async houseSignResult(m: Match) {
