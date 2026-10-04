@@ -19,7 +19,8 @@ export interface ChallengesHost {
   matches: Map<Hex, Match>;
   /** Set by the API after the lobby is built, so read it when needed. */
   bus: () => LiveBus | undefined;
-  profiles?: { equipped(address: string): Equipped };
+  /** Read when needed, like `bus`: the lobby's options, not a copy taken when it was built. */
+  profiles: () => { equipped(address: string): Equipped } | undefined;
   seatOf(m: Match, address: Address | null): Seat | null;
   checkEligibility(address: Address, mode: Mode, declaredAgent: boolean): Promise<boolean>;
   resolveDeck(address: Address, mode: Mode, race: Race, deck?: number[], deckId?: Hex): Promise<{ deck: number[]; deckId: Hex }>;
@@ -84,7 +85,7 @@ export class Challenges {
     const player = viewer && (same(c.from.address, viewer) || (c.matchId && h.matches.get(c.matchId)?.players.some((p) => same(p.address, viewer))));
     return {
       code: c.code,
-      from: { address: c.from.address, agent: c.from.agent, ...(h.profiles ? { cosmetics: h.profiles.equipped(c.from.address) } : {}) },
+      from: { address: c.from.address, agent: c.from.agent, ...(h.profiles() ? { cosmetics: h.profiles()!.equipped(c.from.address) } : {}) },
       to: c.to ?? null, rematchOf: c.rematchOf ?? null,
       state: expired ? 'expired' : c.state, createdAt: c.createdAt, expiresAt: c.expiresAt,
       ...(player && c.matchId ? { matchId: c.matchId, matchPhase: h.matches.get(c.matchId)?.phase } : {}),

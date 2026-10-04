@@ -131,3 +131,15 @@ describe('friend challenges', () => {
     await fail(a.createChallenge({ race: 'agents', rematchOf: practice }), 400, /house bot/);
   });
 });
+
+describe('challenge views', () => {
+  it('show the challenger’s cosmetics from the lobby’s current profiles, like match snapshots do', async () => {
+    const l = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => clock });
+    const me = privateKeyToAccount(generatePrivateKey()).address;
+    const c = await l.createChallenge(me, { race: 'agents', seedCommit: ('0x' + '11'.repeat(32)) as `0x${string}` }, false);
+    expect(c.from.cosmetics).toBeUndefined();
+    const equipped = { title: 'graduate', cardBack: null, badge: null } as never;
+    (l.opts as { profiles?: unknown }).profiles = { equipped: () => equipped };
+    expect(l.challengeView(l.challenge(c.code), me).from.cosmetics).toBe(equipped);
+  });
+});

@@ -69,7 +69,7 @@ export class Lobby {
       checkEligibility, resolveDeck, newMatch, leagueEntry: (a) => this.league.entry(a),
     });
     this.challenges = new Challenges({
-      now: this.now, matches: this.matches, bus: () => this.bus, profiles: opts.profiles,
+      now: this.now, matches: this.matches, bus: () => this.bus, profiles: () => this.opts.profiles,
       seatOf: (m, a) => this.seatOf(m, a), checkEligibility, resolveDeck, newMatch,
     });
   }
