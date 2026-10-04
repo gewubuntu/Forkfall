@@ -12,19 +12,33 @@ const tmp = (name: string) => join(mkdtempSync(join(tmpdir(), 'ff-state-')), nam
 describe('JSON stores survive a bad file', () => {
   it('reads a good file, falls back for a missing one', () => {
     const file = tmp('ok.json');
-    expect(readJsonOrSetAside(file, () => ({ empty: true }))).toEqual({ empty: true });
+    expect(readJsonOrSetAside(file, () => ({ empty: true }))).toEqual({ data: { empty: true }, setAside: null });
     writeFileSync(file, '{"a":1}');
-    expect(readJsonOrSetAside(file, () => ({}))).toEqual({ a: 1 });
+    expect(readJsonOrSetAside(file, () => ({}))).toEqual({ data: { a: 1 }, setAside: null });
   });
 
   it('moves a half-written file aside and starts empty', () => {
     const file = tmp('bad.json');
     writeFileSync(file, '{"0xabc": {"title": ');
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(readJsonOrSetAside(file, () => ({}), () => 123)).toEqual({});
+    expect(readJsonOrSetAside(file, () => ({}), { now: () => 123 })).toEqual({ data: {}, setAside: `${file}.corrupt-123` });
     err.mockRestore();
     expect(existsSync(file)).toBe(false);
     expect(readFileSync(`${file}.corrupt-123`, 'utf8')).toBe('{"0xabc": {"title": ');
+  });
+
+  it('sets aside valid JSON of the wrong shape', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const text of ['null', '[]', '7', '"x"']) {
+      const file = tmp('shape.json');
+      writeFileSync(file, text);
+      expect(readJsonOrSetAside(file, () => ({})).setAside).toMatch(/\.corrupt-\d+$/);
+      expect(existsSync(file)).toBe(false);
+    }
+    const file = tmp('quests.json');
+    writeFileSync(file, '{"players":{},"payouts":{}}');
+    expect(readJsonOrSetAside(file, () => ({}), { valid: (x) => Array.isArray(x.payouts) }).setAside).not.toBeNull();
+    err.mockRestore();
   });
 
   it('throws and leaves the file in place when it cannot be read', () => {
@@ -39,14 +53,17 @@ describe('JSON stores survive a bad file', () => {
     const profilesFile = tmp('profiles.json');
     writeFileSync(profilesFile, '{"truncated');
     const profiles = new Profiles(profilesFile);
+    expect(profiles.setAside).toMatch(/profiles\.json\.corrupt-\d+$/);
     expect(profiles.completeLesson(ALICE).tutorial).toBe(true);
     expect(JSON.parse(readFileSync(profilesFile, 'utf8'))[ALICE].tutorial).toBe(true);
 
     const questsFile = tmp('quests.json');
-    writeFileSync(questsFile, '');
+    writeFileSync(questsFile, '{"players":{},"payouts":[]}'); // valid JSON, but "seen" is missing
     const quests = new Quests({ chainId: 31337, file: questsFile });
+    expect(quests.setAside).toMatch(/quests\.json\.corrupt-\d+$/);
     expect(quests.hasSeen('0x01')).toBe(false);
     err.mockRestore();
+    expect(new Quests({ chainId: 31337, file: tmp('fresh.json') }).setAside).toBeNull();
     for (const f of [profilesFile, questsFile]) {
       expect(readdirSync(join(f, '..')).some((x) => x.includes('.corrupt-'))).toBe(true);
     }

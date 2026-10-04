@@ -93,6 +93,11 @@ const HOLD_RECHECK_MS = 5 * 60_000;
  */
 export class Quests {
   private data: Store;
+  /**
+   * Where an unusable quests file was moved at startup (null if it loaded). Progress and unpaid rewards in it are
+   * not loaded; rewards already paid stay claimed on-chain (claim ids are deterministic), so nothing is paid twice.
+   */
+  readonly setAside: string | null;
   private busy = false;
   readonly periodDays: number;
   readonly packGoal: number;
@@ -101,7 +106,9 @@ export class Quests {
 
   constructor(private opts: QuestOptions) {
     const empty = (): Store => ({ players: {}, payouts: [], seen: [] });
-    this.data = opts.file ? readJsonOrSetAside(opts.file, empty) : empty();
+    const valid = (x: Record<string, unknown>) =>
+      typeof x.players === 'object' && x.players !== null && !Array.isArray(x.players) && Array.isArray(x.payouts) && Array.isArray(x.seen);
+    ({ data: this.data, setAside: this.setAside } = opts.file ? readJsonOrSetAside(opts.file, empty, { valid }) : { data: empty(), setAside: null });
     this.periodDays = opts.periodDays ?? PACK_PERIOD_DAYS;
     this.packGoal = opts.packGoal ?? Math.round((PACK_GOAL * this.periodDays) / PACK_PERIOD_DAYS);
     this.packKind = opts.packKind ?? 0;

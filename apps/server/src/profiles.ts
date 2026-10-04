@@ -19,8 +19,10 @@ export const profilesFile = (root: string, chainId: number) => join(root, 'apps/
  */
 export class Profiles {
   private data: Record<string, Profile>;
+  /** Where an unusable profiles file was moved at startup (null if it loaded). */
+  readonly setAside: string | null;
   constructor(private file?: string, private owned?: (a: Address) => Promise<Map<number, number> | null>) {
-    this.data = file ? readJsonOrSetAside(file, () => ({})) : {};
+    ({ data: this.data, setAside: this.setAside } = file ? readJsonOrSetAside<Record<string, Profile>>(file, () => ({})) : { data: {}, setAside: null });
   }
 
   get(address: string): Profile {
