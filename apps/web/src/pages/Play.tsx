@@ -63,7 +63,7 @@ export function Play() {
     appliedDeck.current = wantDeck;
     update({ race: d.race, deckId: d.id, tab: d.rankedLegal ? 'ranked' : 'casual' });
     setParams({}, { replace: true });
-  }, [wantDeck, decks]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wantDeck, decks, setParams]);
 
   const update = (p: Partial<typeof pref>) => setPref((old) => {
     const next = { ...old, ...p };
