@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -10,6 +10,10 @@ import { join, resolve } from 'node:path';
 const PORT = 4317;
 const data = mkdtempSync(join(tmpdir(), 'forkfall-e2e-'));
 const root = resolve(import.meta.dirname, '../..');
+// The referee serves apps/web/dist; without it every page is missing and the tests only time out.
+if (!existsSync(join(root, 'apps/web/dist/index.html'))) {
+  throw new Error('apps/web/dist is missing: run `pnpm web:build` before `pnpm test:e2e`.');
+}
 
 export default defineConfig({
   testDir: './e2e',
