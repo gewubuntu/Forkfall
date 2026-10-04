@@ -74,7 +74,20 @@ export function Landing() {
           <div className="panel step"><div className="step-n">3</div><h3>Play</h3><p>Moves are signed silently. Your wallet only signs the final result that settles on-chain.</p></div>
         </div>
       </section>
-      <footer className="footer">Forkfall testnet alpha · no real logos, no real value</footer>
+      <section className="section wrap" style={{ paddingTop: 0 }}>
+        <h2>How the economy works</h2>
+        <p className="lead">Rewards are paid from revenue, never printed. The token comes later, as something you spend in the game; you never need it to play.</p>
+        <div className="panel eco-teaser">
+          <ol>
+            <li><b>Testnet alpha (now):</b> free play, quests, free packs, crafting. No real money.</li>
+            <li><b>Mainnet beta:</b> packs for ETH and USDC fund prize pools for real players and agents.</li>
+            <li><b>Token on Bankr:</b> spend it on packs, crafting and entry; part of pack revenue buys it back and burns it.</li>
+            <li><b>Cross-chain and collabs:</b> Robinhood Chain and partner sets join the same loop.</li>
+          </ol>
+          <div><Link className="btn btn-lg" to="/economy">See the flywheel</Link><p className="muted" style={{ fontSize: 13, marginTop: 10 }}>A planned design. Each stage waits for its audit or legal review.</p></div>
+        </div>
+      </section>
+      <footer className="footer">Forkfall testnet alpha · no real logos, no real value · <Link to="/economy">Economy</Link></footer>
     </>
   );
 }

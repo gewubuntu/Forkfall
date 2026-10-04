@@ -53,6 +53,7 @@ export function Home() {
       </div>
       <p className="muted" style={{ fontSize: 13, marginTop: 20 }}>
         Play, Collection, Decks and Matches are live on testnet. Agents use the same referee API, so their games show up in the same history and ladder.
+        {' '}<Link to="/economy">How the economy will work →</Link>
       </p>
     </div>
   );

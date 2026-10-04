@@ -370,6 +370,42 @@ The game token launches through Bankr, and its 95% share of the 0.7% swap fee fu
 | Players | Ranked rewards, tournament prizes | Packs, crafting with Scrap, entry fees |
 | Token | Buybacks from pack revenue | Burns on crafting and on Legendary upgrades |
 
+### Token flywheel
+
+**Principle: rewards are paid from revenue, never printed.** Play-to-earn tokens that paid players in fresh emissions all failed the same way: players sold, the price fell, rewards lost their value and players left. In Forkfall every token that goes out as a reward was first bought or earned by real revenue (packs, fees, swap volume), and the token is spent and burned inside the game. Gameplay never requires it.
+
+**The loop:** play free → want better cards → buy packs (ETH, USDC or the token) → pack revenue funds prize pools and buys back the token on its Bankr pool → the token is spent in game (Legendary crafting, tournament entry, collab drops) and burned → buy pressure and trading volume on the Bankr pool → the creator share of swap fees tops up prize pools and agent compute → bigger prizes and shareable pulls bring more players and agents → back to the start.
+
+| Part | In | Out | Role in the loop |
+| --- | --- | --- | --- |
+| Packs | ETH, USDC, or the token at about 10% off | Ops, prize pools, buyback | Turns real revenue into buy pressure |
+| Crafting and Legendary upgrades | Token + Scrap | Token burned | A sink tied to what players want most |
+| Ranked seasons | Pack share + swap fees | Season pool for verified humans and registered agents | Prizes are funded, not printed; the sybil gate already exists (`HumanRegistry`, `AgentRegistry`, `SeasonRewards`) |
+| Agent League | x402 entry fees in USDC (80% pot, 10% buyback, 10% ops) | Weekly pot | Bots pay to play: volume most game tokens never get |
+| Collab sets | Partner communities buy their booster | Buyback share; token-only first editions | Every collab brings a new community to the pool |
+| Marketplace | 5% royalty | Treasury → buyback | Trading volume feeds the loop |
+| Swap fees | The creator share of the token's Bankr pool | Prize pools and agent compute | The token's own volume pays rewards |
+
+**Starting splits (to tune in playtests):** pack revenue 50% operations and development, 30% prize pools, 20% token buyback, of which half is burned and half goes to the season pool. Swap fees: 100% to prize pools and agent compute. Agent League: as in the table below.
+
+**Stages.** The loop is switched on in parts, each behind a gate:
+
+| Stage | What runs | Money in | Money out | Gate to the next stage |
+| --- | --- | --- | --- | --- |
+| 1. Testnet alpha (now) | Free play, quests, free packs, Scrap and crafting, cosmetics, shareable pulls, Agent League with test USDC | Nothing real | Nothing real | Fun without money: retention in the alpha, balance gate, audit |
+| 2. Mainnet beta | Packs for ETH and USDC, ranked season pools, Agent League fees via x402, marketplace royalty | Pack sales, league fees, royalties | Season pools, league pots, ops | Legal review of paid entry and prize pools; steady pack revenue |
+| 3. Token on Bankr | Token launch via Bankr on Base (WETH pair), token pack discount, burns on Legendary crafting and tournament entry, pack-revenue buybacks, swap fees to prize pools, the Forkfall Bankr skill | Plus swap fees and token spend | Plus buyback and burn | Legal review of the token (MiCA in the EU); liquidity plan |
+| 4. Cross-chain and collabs | Token and cards bridged to Robinhood Chain (LayerZero OFT and ONFT), collab sets with buyback shares, Legendary vaults, tournaments | Plus collab boosters and cross-chain volume | Plus collab buybacks | Robinhood Chain security review |
+
+**Design rules:**
+- Never require the token to play: free starter decks stay, and packs always sell for ETH and USDC too.
+- No staking yield and no revenue share for holders. Utility (discounts, crafting, entry, drops) instead of yield, so the token doesn't look like an investment product.
+- No emissions for playing: fixed supply at launch, deflationary through burns; rewards only from pools revenue filled.
+- Rewards only to verified humans and registered agents (already enforced on-chain).
+- All splits live in contracts and are public.
+
+**Launch recommendation:** launch on Base, where settlement, packs and the ladder live, paired with WETH, then bridge to Robinhood Chain with Bankr's OFT skill. A HAS stock-token pair would block US, Canadian, UK and Swiss players from the pool. Before stage 3: a legal review covering MiCA, the prize pools and the buybacks.
+
 ### Agent League economics (testnet prototype)
 
 Agents play agents for a small entry fee paid from a prepaid balance (the on-chain stand-in for x402 micro-payments). The fees fund a weekly prize pot, token buybacks and operations, so agents have a direct reason to keep playing, and the pot rewards being good rather than playing a lot.
