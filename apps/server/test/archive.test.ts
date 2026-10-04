@@ -1,5 +1,5 @@
 import { ForkfallClient, replayLog, runMatch } from '@forkfall/sdk';
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -333,5 +333,28 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     const second = await referee(dir, clock);
     expect(second.archive.restoreInto(second.lobby)).toMatchObject({ indexed: 1, replayed: 0 });
     expect(indexLines(dir)).toHaveLength(1);
+  }, 30_000);
+
+  it('still uses the index after a backup restore that kept mtimes to the whole second (tar)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const ids = [(await concededMatch(first.url)).id, (await concededMatch(first.url)).id];
+    // As tar extracts them: same content, mtime cut to the second. The second file was also rewritten in a later
+    // second (not just truncated), so its line is stale and it must be replayed.
+    const file = (id: Hex) => join(dir, `${id}.json`);
+    const truncate = (id: Hex, extraSeconds = 0) => {
+      const st = statSync(file(id));
+      const s = Math.floor(st.mtimeMs / 1000) + extraSeconds;
+      utimesSync(file(id), s, s);
+    };
+    truncate(ids[0]);
+    truncate(ids[1], 5);
+    expect(statSync(file(ids[0])).mtimeMs % 1000).toBe(0);
+
+    const second = await referee(dir, clock);
+    expect(second.archive.restoreInto(second.lobby)).toMatchObject({ indexed: 1, replayed: 1, skipped: [] });
+    expect(second.lobby.get(ids[0]).cold).toBeDefined(); // from the index
+    expect(second.lobby.get(ids[1]).cold).toBeUndefined(); // replayed
   }, 30_000);
 });

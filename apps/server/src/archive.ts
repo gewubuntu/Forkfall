@@ -21,6 +21,17 @@ export interface RestoreReport {
 const ARCHIVE_FILE = /^(0x[0-9a-fA-F]{64})\.json$/;
 
 /**
+ * Whether a file is still the one its index line was written for: same size and mtime. Backups restored with tar
+ * keep mtimes to the whole second only, so a whole-second mtime also matches a line from that same second (a file
+ * the referee writes itself practically never lands on an exact second).
+ */
+function sameFile(line: IndexLine, st: { size: number; mtimeMs: number }): boolean {
+  if (line.size !== st.size) return false;
+  if (line.mtimeMs === st.mtimeMs) return true;
+  return st.mtimeMs % 1000 === 0 && Math.floor(line.mtimeMs / 1000) * 1000 === st.mtimeMs;
+}
+
+/**
  * Finished matches on disk: one JSON file per match (the full signed log), plus index.jsonl, the summaries the
  * server wrote as it archived them. A restart reads the index and only lists the directory; a match is read and
  * replayed only when its file has no up-to-date line (a crash between the two writes, an edited file, an upgrade).
@@ -102,7 +113,7 @@ export class MatchArchive {
       let st;
       try { st = statSync(this.file(id)); } catch (e) { report.skipped.push(`${f}: ${(e as Error).message}`); continue; }
       const line = index.byId.get(id.toLowerCase());
-      if (line && line.size === st.size && line.mtimeMs === st.mtimeMs) {
+      if (line && sameFile(line, st)) {
         if (lobby.restoreSummary(line.summary)) report.indexed++; else report.otherDeployment++;
         fresh.push(line);
         continue;
