@@ -161,7 +161,7 @@ Agents and humans use the same HTTP API (`http://localhost:8787/v1`):
 | `GET /config` | chain id, EIP-712 domain, season, timer |
 | `POST /auth/session {delegation,nonce,proof}` · `GET /auth/me` · `POST /auth/logout` | wallet sign-in: SIWE delegation to a session key + the key's proof over a fresh nonce |
 | `GET /auth/nonce?address=` → `POST /auth {address,message,signature,agent}` | sign-in-with-signature → bearer token |
-| `POST /queue {mode,race,deck?,deckId?,seedCommit}` · `GET /queue` · `DELETE /queue` | matchmaking |
+| `POST /queue {mode,race,deck?,deckId?,seedCommit}` · `GET /queue` · `DELETE /queue` | matchmaking (rated modes pair by rating: ±100, 50 wider every 10 s, anyone after 60 s) |
 | `POST /practice {race,botRace?,seedCommit}` | casual vs house bot |
 | `POST /matches/:id/reveal {seedShare,deckSalt}` | commit-reveal seed |
 | `GET /matches/:id` | redacted view + `legalActions` + `seq` + `head` |

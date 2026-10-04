@@ -4,7 +4,7 @@ import {
   type Action, type Equipped, type GameEvent, type GameState, type Race, type Seat,
 } from '@forkfall/engine';
 import {
-  actionHash, commitSeed, MODES, MOVE_TYPES, RESULT_TYPES, moveDigest, nextHead, replayLog, resultDigest, viewGreedy, ZERO32, ZERO_ADDRESS,
+  actionHash, commitSeed, eloUpdate, MODES, START_RATING, MOVE_TYPES, RESULT_TYPES, moveDigest, nextHead, replayLog, resultDigest, viewGreedy, ZERO32, ZERO_ADDRESS,
   type Delegation, type MatchLog, type MatchResult, type MatchSnapshot, type MatchSummary, type Mode,
 } from '@forkfall/sdk';
 import { recoverAddress, type Address, type Hex, type LocalAccount, type TypedDataDomain } from 'viem';
@@ -213,6 +213,16 @@ export const CHALLENGE_REVEAL_MS = 3 * 60_000;
 /** Answered or expired challenges are forgotten after this. */
 const CHALLENGE_KEEP_MS = 3600_000;
 
+/**
+ * Rated queues pair players whose ratings are close: within ±100 at first, 50 wider every 10 s of waiting, and
+ * anyone in the queue after a minute, so a thin queue never leaves someone waiting for a perfect match.
+ */
+export const RATING_WINDOW = { start: 100, step: 50, everyMs: 10_000, anyoneAfterMs: 60_000 } as const;
+export function ratingWindow(waitedMs: number): number {
+  if (waitedMs >= RATING_WINDOW.anyoneAfterMs) return Infinity;
+  return RATING_WINDOW.start + RATING_WINDOW.step * Math.floor(Math.max(0, waitedMs) / RATING_WINDOW.everyMs);
+}
+
 interface QueueEntry {
   ticket: string;
   address: Address;
@@ -227,6 +237,8 @@ interface QueueEntry {
   seen: number;
   /** League: the agent's operator (owner of its ERC-8004 identity); never paired with the same operator. */
   operator?: Address;
+  /** Rated modes: the player's rating when they joined (season stats, or the league week's standing). */
+  rating?: number;
 }
 
 /**
@@ -312,24 +324,118 @@ export class Lobby {
     const isAgent = await this.checkEligibility(address, body.mode, agent);
     const { deck, deckId } = await this.resolveDeck(address, body.mode, body.race, body.deck, body.deckId);
     const operator = body.mode === 'league' ? await this.leagueEntry(address) : undefined;
+    const season = await this.seasonFor(body.mode);
+    const rating = body.mode === 'casual' ? undefined : await this.ratingOf(address, body.mode, season);
+    // Another enqueue for this address may have run while we awaited: only the latest one stays queued.
+    this.leaveQueue(address);
     const ticket = keccakHex(address, String(this.now()), randomHex32());
-    const me: QueueEntry = { ticket, address, mode: body.mode, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit, at: this.now(), seen: this.now(), operator };
+    const me: QueueEntry = { ticket, address, mode: body.mode, race: body.race, deck, deckId, agent: isAgent, seedCommit: body.seedCommit, at: this.now(), seen: this.now(), operator, rating };
     this.byAddressTicket.set(address, ticket);
     this.pruneQueue();
-    // League: agents of the same operator are never paired (no farming your own pot).
-    const idx = this.queue.findIndex((q) => q.mode === me.mode && q.address !== address
-      && (me.mode !== 'league' || q.operator?.toLowerCase() !== operator?.toLowerCase()));
+    const idx = this.opponentFor(me, this.now());
     if (idx < 0) {
       this.queue.push(me);
       return { status: 'queued' as const, ticket };
     }
     const [opp] = this.queue.splice(idx, 1);
-    // League results carry the league week as their season; rated modes the ladder season.
-    const season = me.mode === 'league' ? await this.opts.league!.currentWeek() : await this.opts.chain.season();
-    const m = this.newMatch(me.mode, season, [this.seatFrom(opp), this.seatFrom(me)]);
-    this.matchedTickets.set(opp.ticket, m.id);
-    this.matchedTickets.set(ticket, m.id);
+    const m = this.pair(opp, me, season);
     return { status: 'matched' as const, ticket, matchId: m.id };
+  }
+
+  /** League results carry the league week as their season, rated modes the ladder season, casual none. */
+  private async seasonFor(mode: Mode): Promise<number> {
+    if (mode === 'casual') return 0;
+    return mode === 'league' ? this.opts.league!.currentWeek() : this.opts.chain.season();
+  }
+
+  /**
+   * A rated player's rating for pairing. Ranked and the Human queue share the season's on-chain Elo; off-chain the
+   * referee replays the same Elo over the rated matches it refereed. League agents use their weekly standing.
+   */
+  private async ratingOf(address: Address, mode: Mode, season: number): Promise<number> {
+    if (mode === 'league') {
+      try { return (await this.opts.league?.rating?.(season, address)) ?? START_RATING; } catch { return START_RATING; }
+    }
+    try {
+      const onChain = await this.opts.chain.rating(season, address);
+      if (onChain !== null) return onChain;
+    } catch (e) { console.error(`could not read the rating of ${address}; estimating it from refereed matches`, e); }
+    return this.localRating(season, address);
+  }
+
+  /** The season's Elo as MatchSettlement computes it, replayed over the ranked and Human queue matches refereed here. */
+  localRating(season: number, address: Address): number {
+    const ended = [...this.matches.values()]
+      .filter((m) => m.phase === 'ended' && m.result && m.season === season && m.mode !== 'casual' && m.mode !== 'league')
+      .sort((a, b) => (a.endedAt ?? 0) - (b.endedAt ?? 0));
+    const ratings = new Map<string, number>();
+    const get = (a: Address) => ratings.get(a.toLowerCase()) ?? START_RATING;
+    for (const m of ended) {
+      const [a, b] = m.players.map((p) => p.address);
+      const w = m.result!.winner;
+      const [na, nb] = eloUpdate(get(a), get(b), w === ZERO_ADDRESS ? 500 : same(w, a) ? 1000 : 0);
+      ratings.set(a.toLowerCase(), na);
+      ratings.set(b.toLowerCase(), nb);
+    }
+    return get(address);
+  }
+
+  /**
+   * The queue entry `me` should play: same mode, not themselves, never two agents of one operator in the league
+   * (no farming your own pot), and in rated modes within either player's rating window. Closest rating first, then
+   * whoever has waited longest. -1 when nobody fits yet.
+   */
+  private opponentFor(me: QueueEntry, now: number): number {
+    let best = -1;
+    let bestGap = Infinity;
+    this.queue.forEach((q, i) => {
+      if (q === me || q.mode !== me.mode || same(q.address, me.address)) return;
+      if (me.mode === 'league' && q.operator?.toLowerCase() === me.operator?.toLowerCase()) return;
+      const gap = me.mode === 'casual' ? 0 : Math.abs((q.rating ?? START_RATING) - (me.rating ?? START_RATING));
+      if (gap > Math.max(ratingWindow(now - me.at), ratingWindow(now - q.at))) return;
+      if (gap < bestGap) { best = i; bestGap = gap; } // the queue is in arrival order, so ties go to the longest wait
+    });
+    return best;
+  }
+
+  private pair(first: QueueEntry, second: QueueEntry, season: number): Match {
+    const m = this.newMatch(first.mode, season, [this.seatFrom(first), this.seatFrom(second)]);
+    this.matchedTickets.set(first.ticket, m.id);
+    this.matchedTickets.set(second.ticket, m.id);
+    return m;
+  }
+
+  private sweeping = false;
+  /**
+   * Pair waiting players whose rating windows have widened enough to meet (an arrival pairs at once if it can;
+   * this catches the ones who waited). Runs every tick; the oldest waiter picks first.
+   */
+  async matchQueue(): Promise<void> {
+    if (this.sweeping) return;
+    this.pruneQueue();
+    const due = this.now();
+    // Only modes where someone can be paired right now, so a waiting queue costs no season reads.
+    const modes = [...new Set(this.queue.filter((q) => this.opponentFor(q, due) >= 0).map((q) => q.mode))];
+    if (!modes.length) return;
+    this.sweeping = true;
+    try {
+      const seasons = new Map(await Promise.all(modes.map(async (mode) => [mode, await this.seasonFor(mode)] as const)));
+      this.pruneQueue();
+      const now = this.now();
+      for (let i = 0; i < this.queue.length; i++) {
+        const me = this.queue[i];
+        const season = seasons.get(me.mode);
+        if (season === undefined) continue;
+        const j = this.opponentFor(me, now);
+        if (j < 0) continue;
+        const opp = this.queue[j];
+        this.queue = this.queue.filter((q) => q !== me && q !== opp);
+        this.pair(me, opp, season);
+        i = -1; // the queue changed: start again from the longest waiter
+      }
+    } finally {
+      this.sweeping = false;
+    }
   }
 
   private seatFrom(q: QueueEntry): Seatholder {
@@ -664,6 +770,7 @@ export class Lobby {
   tick() {
     const now = this.now();
     this.pruneQueue();
+    this.matchQueue().catch((e) => console.error('queue matching failed', e));
     this.pruneChallenges();
     this.pruneTickets();
     this.unloadIdle(now);

@@ -131,7 +131,7 @@ export function createForkfallMcp(client: ForkfallClient): McpServer {
   server.registerTool(
     'forkfall_queue',
     {
-      description: 'Queue for casual or ranked play against humans/agents, or the Agent League (agents only, 0.50 tUSDC entry per match from your prepaid league balance; weekly pot paid to the best agents\' operators). Ranked and league need a deckId registered in DeckRegistry. Poll again with the same call until matched.',
+      description: 'Queue for casual or ranked play against humans/agents, or the Agent League (agents only, 0.50 tUSDC entry per match from your prepaid league balance; weekly pot paid to the best agents\' operators). Ranked and league need a deckId registered in DeckRegistry, and pair close ratings first (the window widens until anyone after a minute). Poll again with the same call until matched.',
       inputSchema: { mode: z.enum(['casual', 'ranked', 'league']), race: raceSchema, deckId: z.string().optional() },
     },
     async ({ mode, race, deckId }) => {
