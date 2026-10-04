@@ -151,6 +151,28 @@ export interface ArchivedMatch {
   bots: [BotKind | null, BotKind | null];
 }
 
+/**
+ * A finished match without its moves and the players' secrets (decks, seed reveals, delegations): what an unloaded
+ * match keeps in memory, and what the archive index stores so a restart doesn't read every archive file.
+ */
+export interface ArchiveSummary extends Omit<ArchivedMatch, 'log'> {
+  log: Omit<MatchLog, 'moves' | 'players'> & {
+    moveCount: number;
+    players: Pick<MatchLog['players'][number], 'address' | 'race' | 'deckId' | 'agent' | 'seedCommit'>[];
+  };
+}
+
+export function summarize(rec: ArchivedMatch): ArchiveSummary {
+  const { moves, players, ...log } = rec.log;
+  return {
+    ...rec,
+    log: {
+      ...log, moveCount: moves.length,
+      players: players.map((p) => ({ address: p.address, race: p.race, deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit })),
+    },
+  };
+}
+
 /** A friend challenge: a casual match waiting for one opponent (anyone with the link, or one address). */
 export interface Challenge {
   code: string;
@@ -793,33 +815,51 @@ export class Lobby {
     };
   }
 
+  /** Whether a log or summary was signed for this deployment (same chain and MatchSettlement). */
+  ownDomain(d: TypedDataDomain): boolean {
+    return Number(d.chainId) === Number(this.domain.chainId)
+      && String(d.verifyingContract).toLowerCase() === String(this.domain.verifyingContract).toLowerCase();
+  }
+
   /**
-   * Re-load an archived match. Returns false if it belongs to another deployment or fails to replay. With an
-   * archive loader it isn't replayed now: it comes back unloaded, and is replayed when someone opens it.
+   * Re-load an archived match by replaying its log, which verifies it (seeds, hash chain, and the result against
+   * the moves). Returns false if it belongs to another deployment or fails to replay. With an archive loader it
+   * is unloaded again on the next tick.
    */
   restore(rec: ArchivedMatch): boolean {
     const { log } = rec;
     if (this.matches.has(log.matchId)) return true;
-    const d = log.domain;
-    if (Number(d.chainId) !== Number(this.domain.chainId) || String(d.verifyingContract).toLowerCase() !== String(this.domain.verifyingContract).toLowerCase()) return false;
-    if (this.opts.archive) {
-      this.matches.set(log.matchId, {
-        id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
-        phase: 'ended', players: archivedSeats(rec, false), events: [], moves: [], head: log.head,
-        clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
-        result: log.result, refereeSig: rec.refereeSig, referee: rec.referee,
-        cold: { endReason: log.endReason, seq: log.moves.length }, archived: true, usedAt: 0,
-      });
-      return true;
-    }
+    if (!this.ownDomain(log.domain)) return false;
     const replay = replayLog(log);
     if (!replay.ok) return false;
-    const players = archivedSeats(rec, true);
+    const players = archivedSeats(rec);
     this.matches.set(log.matchId, {
       id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
       phase: 'ended', players, state: replay.final, events: replay.frames.flatMap((f) => f.events),
       moves: log.moves, head: log.head, clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
       result: log.result, refereeSig: rec.refereeSig, referee: rec.referee,
+      archived: true, usedAt: 0,
+    });
+    return true;
+  }
+
+  /**
+   * Re-load a finished match unloaded, from the summary the server wrote when it archived it (no replay: that data
+   * came from the match as it was played). It's replayed from its archive file when someone opens it.
+   */
+  restoreSummary(s: ArchiveSummary): boolean {
+    const { log } = s;
+    if (this.matches.has(log.matchId)) return true;
+    if (!this.ownDomain(log.domain)) return false;
+    this.matches.set(log.matchId, {
+      id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
+      phase: 'ended', events: [], moves: [], head: log.head,
+      players: log.players.map((p, i): Seatholder => ({
+        ...p, deck: [], resultSig: s.resultSigs[i] ?? undefined, bot: s.bots[i] ?? undefined,
+      })) as [Seatholder, Seatholder],
+      clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
+      result: log.result, refereeSig: s.refereeSig, referee: s.referee,
+      cold: { endReason: log.endReason, seq: log.moveCount }, archived: true, usedAt: 0,
     });
     return true;
   }
@@ -1152,11 +1192,11 @@ function challengeCode(): string {
   return out;
 }
 
-/** The seats of an archived match; `secrets` keeps decks, seed reveals and delegations (needed only to replay it). */
-function archivedSeats(rec: ArchivedMatch, secrets: boolean): [Seatholder, Seatholder] {
+/** The seats of an archived match, with everything needed to replay it. */
+function archivedSeats(rec: ArchivedMatch): [Seatholder, Seatholder] {
   return rec.log.players.map((p, i) => ({
-    address: p.address, race: p.race, deck: secrets ? p.deck : [], deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit,
-    ...(secrets ? { seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations } : {}),
+    address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent,
+    seedCommit: p.seedCommit, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations,
     resultSig: rec.resultSigs[i] ?? undefined, bot: rec.bots[i] ?? undefined,
   })) as [Seatholder, Seatholder];
 }
