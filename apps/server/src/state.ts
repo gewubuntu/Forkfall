@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
@@ -44,4 +44,31 @@ export function writeFileAtomic(path: string, text: string, mode = 0o644) {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, text, { mode });
   renameSync(tmp, path);
+}
+
+/** A store file as loaded: its data, and where it was moved if it couldn't be used (null when it was fine or missing). */
+export interface Loaded<T> { data: T; setAside: string | null }
+
+/**
+ * Read a JSON file the server can't start without parsing. Missing → `fallback`. Not a JSON object, or failing
+ * `valid` (a crash mid-write, a bad manual edit) → the file is moved aside as `<file>.corrupt-<time>` for a human
+ * to look at, and the server starts from `fallback` instead of refusing to boot. A file that can't be read at all
+ * (permissions, I/O) still throws: the data may be fine, so starting empty would hide it.
+ */
+export function readJsonOrSetAside<T>(path: string, fallback: () => T, opts: { valid?: (x: Record<string, unknown>) => boolean; now?: () => number } = {}): Loaded<T> {
+  if (!existsSync(path)) return { data: fallback(), setAside: null };
+  const text = readFileSync(path, 'utf8');
+  let problem: string;
+  try {
+    const x: unknown = JSON.parse(text);
+    if (typeof x !== 'object' || x === null || Array.isArray(x)) problem = 'not a JSON object';
+    else if (opts.valid && !opts.valid(x as Record<string, unknown>)) problem = 'unexpected shape';
+    else return { data: x as T, setAside: null };
+  } catch (e) {
+    problem = (e as Error).message;
+  }
+  const aside = `${path}.corrupt-${(opts.now ?? Date.now)()}`;
+  renameSync(path, aside);
+  console.error(`could not read ${path} (${problem}): moved it to ${aside} and started empty`);
+  return { data: fallback(), setAside: aside };
 }
