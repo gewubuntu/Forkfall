@@ -82,3 +82,21 @@ test('a session survives a reload without asking the wallet again', async ({ pag
   await expect(page.getByRole('button', { name: /vs bot/ })).toBeVisible();
   expect(wallet.signed).toEqual(['personal_sign']);
 });
+
+test('a concede lands even when the page lags behind the bot', async ({ page }) => {
+  const account = privateKeyToAccount(generatePrivateKey());
+  await installTestWallet(page, account, HUB_CHAIN);
+  await page.goto('/play');
+  await signIn(page);
+  await page.getByRole('button', { name: /vs bot/ }).click();
+  await page.waitForURL(/\/match\/0x[0-9a-f]{64}/);
+  // A slow connection: the event log arrives 1.5 s late, so the board view trails the bot's moves.
+  await page.route(/\/events/, async (r) => { await new Promise((x) => setTimeout(x, 1500)); await r.continue(); });
+  const end = page.getByRole('button', { name: 'End turn' });
+  await end.click();
+  await expect(end).toBeHidden();
+  // Concede in the bot's turn, before this page has caught up with its moves.
+  await page.getByRole('button', { name: 'Concede', exact: true }).first().click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Concede', exact: true }).click();
+  await expect(page.getByText('Conceded')).toBeVisible();
+});

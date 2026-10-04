@@ -260,7 +260,7 @@ function MatchView() {
           <p className="muted">The match ends now as a loss.</p>
           <div className="row-end">
             <button className="btn" onClick={() => setModal(null)}>Keep playing</button>
-            <button className="btn btn-danger-solid" onClick={() => send({ type: 'concede' })}>Concede</button>
+            <button className="btn btn-danger-solid" disabled={m.sending} onClick={() => send({ type: 'concede' })}>Concede</button>
           </div>
         </Dialog>
       )}
