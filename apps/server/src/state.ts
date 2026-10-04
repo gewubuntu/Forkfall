@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
@@ -44,4 +44,21 @@ export function writeFileAtomic(path: string, text: string, mode = 0o644) {
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, text, { mode });
   renameSync(tmp, path);
+}
+
+/**
+ * Read a JSON file the server can't start without parsing. Missing → `fallback`. Unreadable or not JSON (a crash
+ * mid-write, a bad manual edit) → the file is moved aside as `<file>.corrupt-<time>` for a human to look at, and
+ * the server starts from `fallback` instead of refusing to boot.
+ */
+export function readJsonOrSetAside<T>(path: string, fallback: () => T, now = Date.now): T {
+  if (!existsSync(path)) return fallback();
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as T;
+  } catch (e) {
+    const aside = `${path}.corrupt-${now()}`;
+    renameSync(path, aside);
+    console.error(`could not read ${path} (${(e as Error).message}): moved it to ${aside} and started empty`);
+    return fallback();
+  }
 }

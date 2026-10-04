@@ -3,11 +3,11 @@ import {
   type GameEvent, type Race,
 } from '@forkfall/engine';
 import type { QuestStatus } from '@forkfall/sdk';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { keccak256, toHex, type Address, type Hex } from 'viem';
 import type { QuestRewarder } from './chain.ts';
 import type { Match } from './lobby.ts';
+import { readJsonOrSetAside, writeFileAtomic } from './state.ts';
 
 /** Where quest progress and payouts are kept: apps/server/data/quests/<chainId>.json. */
 export const questsFile = (root: string, chainId: number) => join(root, 'apps/server/data/quests', `${chainId}.json`);
@@ -100,7 +100,8 @@ export class Quests {
   private now: () => number;
 
   constructor(private opts: QuestOptions) {
-    this.data = opts.file && existsSync(opts.file) ? JSON.parse(readFileSync(opts.file, 'utf8')) : { players: {}, payouts: [], seen: [] };
+    const empty = (): Store => ({ players: {}, payouts: [], seen: [] });
+    this.data = opts.file ? readJsonOrSetAside(opts.file, empty) : empty();
     this.periodDays = opts.periodDays ?? PACK_PERIOD_DAYS;
     this.packGoal = opts.packGoal ?? Math.round((PACK_GOAL * this.periodDays) / PACK_PERIOD_DAYS);
     this.packKind = opts.packKind ?? 0;
@@ -268,11 +269,7 @@ export class Quests {
   private save() {
     this.prune();
     if (!this.opts.file) return;
-    mkdirSync(dirname(this.opts.file), { recursive: true });
-    // Write then rename, so a crash mid-write never leaves a half-written file behind.
-    const tmp = `${this.opts.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.data));
-    renameSync(tmp, this.opts.file);
+    writeFileAtomic(this.opts.file, JSON.stringify(this.data));
   }
 
   /** Drops settled payouts and pack-period counts nobody can see any more. */
