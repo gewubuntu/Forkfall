@@ -149,7 +149,16 @@ export class LiveClient {
       (this.timer as { unref?: () => void }).unref?.(); // never keep a Node process alive just to reconnect
     };
     ws.addEventListener('close', down);
-    ws.addEventListener('error', () => ws.close());
+    // An error means down, whatever follows: Node's WebSocket fires no 'close' after a refused connection, so waiting
+    // for one stopped the reconnects for good. Handle it once only: closing a socket that never connected fires
+    // 'error' again from inside close(), which recursed until the stack overflowed and crashed the agent's process.
+    let failed = false;
+    ws.addEventListener('error', () => {
+      if (failed) return;
+      failed = true;
+      down();
+      try { ws.close(); } catch { /* already closing */ }
+    });
   }
 
   private send(m: object) {
