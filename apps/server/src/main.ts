@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
@@ -10,7 +10,8 @@ import { Rewards, rewardsDir } from './rewards.ts';
 import { Profiles, profilesFile } from './profiles.ts';
 import { finishedMatch, Quests, questsFile } from './quests.ts';
 import { createApi } from './http.ts';
-import { Lobby, type ArchivedMatch, type SavedLobby, type SavedMatch } from './lobby.ts';
+import { MatchArchive } from './archive.ts';
+import { Lobby, type SavedLobby, type SavedMatch } from './lobby.ts';
 import { StateStore, writeFileAtomic } from './state.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -92,6 +93,7 @@ try {
   });
 } catch (e) { fail([(e as Error).message, 'Check QUEST_PACK_DAYS, QUEST_PACK_GOAL and QUEST_PACK_KIND.']); }
 
+const archive = new MatchArchive(archiveDir);
 const lobby = new Lobby({
   chain,
   profiles,
@@ -103,11 +105,7 @@ const lobby = new Lobby({
   resultGraceSeconds: Number(env.RESULT_GRACE_SECONDS || 600),
   store,
   // Finished matches are kept small in memory and replayed from their archive file when someone opens one.
-  archive: {
-    load(id) {
-      try { return JSON.parse(readFileSync(join(archiveDir, `${id}.json`), 'utf8')) as ArchivedMatch; } catch { return null; }
-    },
-  },
+  archive,
   unloadAfterSeconds: env.UNLOAD_AFTER_SECONDS ? Number(env.UNLOAD_AFTER_SECONDS) : undefined,
 });
 
@@ -126,7 +124,7 @@ lobby.onChange = (m) => {
   } catch (e) { console.error('quest tracking failed', e); }
   let archived = true;
   try {
-    writeFileAtomic(join(archiveDir, `${m.id}.json`), JSON.stringify(lobby.archive(m.id)));
+    archive.save(lobby.archive(m.id));
   } catch (e) {
     // Keep the running-match file (return false) so the match is archived at the next start instead of lost.
     console.error('archive failed', e);
@@ -138,15 +136,10 @@ lobby.onChange = (m) => {
   return archived;
 };
 
-// Finished matches (log + signatures) are archived so history, replays and settlement survive a restart.
-let restored = 0;
-if (existsSync(archiveDir)) {
-  for (const f of readdirSync(archiveDir).filter((x) => x.endsWith('.json'))) {
-    try { if (lobby.restore(JSON.parse(readFileSync(join(archiveDir, f), 'utf8')) as ArchivedMatch)) restored++; } catch (e) {
-      console.warn(`  skipping archived match ${f}: ${(e as Error).message}`);
-    }
-  }
-}
+// Finished matches (log + signatures) are archived so history, replays and settlement survive a restart: from
+// the archive index, reading and replaying only files without an up-to-date index line.
+const archived = archive.restoreInto(lobby);
+for (const s of archived.skipped) console.warn(`  skipping archived match ${s}`);
 
 // Then everything that was still running: matches (replayed move by move), the queue and challenges.
 let resumed = 0;
@@ -261,6 +254,6 @@ server.listen(port, () => {
   console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);
-  console.log(`  match archive → ${archiveDir} (${restored} restored)`);
+  console.log(`  match archive → ${archiveDir} (${archived.indexed + archived.replayed} restored: ${archived.indexed} from the index, ${archived.replayed} replayed${archived.otherDeployment ? `; ${archived.otherDeployment} from another deployment left on disk` : ''})`);
   console.log(store ? `  running state → ${stateDir} (${resumed} running match${resumed === 1 ? '' : 'es'} resumed)` : '  running state: memory only (PERSIST_STATE=0)');
 });

@@ -1,11 +1,12 @@
 import { ForkfallClient, replayLog, runMatch } from '@forkfall/sdk';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { MatchArchive } from '../src/archive.ts';
 import { Chain } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
 import { Lobby, type ArchivedMatch, type LobbyOptions } from '../src/lobby.ts';
@@ -17,23 +18,31 @@ afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
-/** A referee that archives finished matches to `dir` (as main.ts does) and reads them back on demand. */
+/** A referee that archives finished matches to `dir` through MatchArchive (as main.ts does), counting reloads. */
 async function referee(dir: string, clock: { t: number }, opts: Partial<LobbyOptions> = {}) {
-  const file = (id: Hex) => join(dir, `${id}.json`);
+  const archive = new MatchArchive(dir);
   const loads: Hex[] = [];
   const lobby = new Lobby({
     chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => clock.t, unloadAfterSeconds: 60, ...opts,
-    archive: { load(id) { loads.push(id); try { return JSON.parse(readFileSync(file(id), 'utf8')) as ArchivedMatch; } catch { return null; } } },
+    archive: { load(id) { loads.push(id); return archive.load(id); } },
   });
   lobby.onChange = (m) => {
-    if (m.phase === 'ended') writeFileSync(file(m.id), JSON.stringify(lobby.archive(m.id)));
+    if (m.phase === 'ended') archive.save(lobby.archive(m.id));
     return true;
   };
   const { server } = createApi(lobby, { ratePerSec: 10_000 });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  return { lobby, loads, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
+  return { lobby, archive, loads, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
 }
+
+const indexLines = (dir: string) => readFileSync(join(dir, 'index.jsonl'), 'utf8').split('\n').filter(Boolean);
+/** Rewrite an archive file (new mtime) without touching the index, as a crash between the two writes would leave it. */
+const rewriteArchive = (dir: string, id: Hex, edit: (rec: ArchivedMatch) => void = () => {}) => {
+  const rec = JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8')) as ArchivedMatch;
+  edit(rec);
+  writeFileSync(join(dir, `${id}.json`), JSON.stringify(rec) + ' ');
+};
 
 async function finishedMatch(url: string) {
   const a = new ForkfallClient(url, privateKeyToAccount(generatePrivateKey()));
@@ -131,7 +140,7 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     expect(replayLog(onDisk.log).ok).toBe(true);
   }, 30_000);
 
-  it('restores archived matches at startup without replaying them', async () => {
+  it('restarts from the archive index, without reading or replaying archive files', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
     const clock = { t: Date.now() };
     const first = await referee(dir, clock);
@@ -140,7 +149,7 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     const summary = (await a.matches()).matches.find((x) => x.matchId === id)!;
 
     const second = await referee(dir, clock);
-    expect(second.lobby.restore(JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8')))).toBe(true);
+    expect(second.archive.restoreInto(second.lobby)).toEqual({ indexed: 1, replayed: 0, otherDeployment: 0, skipped: [] });
     expect(second.lobby.get(id).cold).toBeDefined();
     expect(second.lobby.list().find((x) => x.matchId === id)).toEqual(summary);
     expect(second.loads).toEqual([]);
@@ -160,19 +169,17 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     expect((await a.matches()).matches.some((x) => x.matchId === id)).toBe(true);
   }, 30_000);
 
-  it('never auto-settles a restored match whose archive does not replay to its result', async () => {
+  it('never auto-settles a match whose archive file stopped replaying after the restart', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
     const clock = { t: Date.now() };
     const first = await referee(dir, clock);
     const { id } = await concededMatch(first.url);
-    // Edited on disk: the result no longer matches the moves.
-    const rec = JSON.parse(readFileSync(join(dir, `${id}.json`), 'utf8')) as ArchivedMatch;
-    rec.log.result.turns += 5;
-    writeFileSync(join(dir, `${id}.json`), JSON.stringify(rec));
 
     const { settler, submitted } = fakeSettler();
     const second = await referee(dir, clock, { settler });
-    expect(second.lobby.restore(rec)).toBe(true);
+    expect(second.archive.restoreInto(second.lobby).indexed).toBe(1);
+    // Edited on disk while the referee runs: the result no longer matches the moves.
+    rewriteArchive(dir, id, (rec) => { rec.log.result.turns += 5; });
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const r = await second.lobby.settleDue();
     err.mockRestore();
@@ -240,5 +247,114 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     expect(onDisk.refereeSig).toBeDefined();
     await second.lobby.stepBots();
     expect(signed).toBe(1);
+  }, 30_000);
+
+  it('does not restore an archive file edited before the restart so it no longer replays', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const { id } = await concededMatch(first.url);
+    const kept = await concededMatch(first.url);
+    rewriteArchive(dir, id, (rec) => { rec.log.result.turns += 5; });
+
+    const second = await referee(dir, clock);
+    const report = second.archive.restoreInto(second.lobby);
+    expect(report).toMatchObject({ indexed: 1, replayed: 0, skipped: [`${id}.json: does not replay to its signed result`] });
+    expect(() => second.lobby.get(id)).toThrow(/no such match/);
+    expect(second.lobby.list().map((x) => x.matchId)).toEqual([kept.id]);
+  }, 30_000);
+
+  it('migrates an archive without an index: replays every file once, then restarts from the index', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const ids = [(await finishedMatch(first.url)).id, (await concededMatch(first.url)).id];
+    rmSync(join(dir, 'index.jsonl')); // as archived by a referee from before the index
+
+    const second = await referee(dir, clock);
+    expect(second.archive.restoreInto(second.lobby)).toMatchObject({ indexed: 0, replayed: 2 });
+    expect(second.lobby.get(ids[0]).cold).toBeUndefined(); // replayed: loaded until the next tick unloads it
+    clock.t += 1;
+    second.lobby.tick();
+    expect(ids.map((id) => !!second.lobby.get(id).cold)).toEqual([true, true]);
+    expect(indexLines(dir)).toHaveLength(2);
+
+    const third = await referee(dir, clock);
+    expect(third.archive.restoreInto(third.lobby)).toMatchObject({ indexed: 2, replayed: 0 });
+    expect(third.lobby.list()).toEqual(second.lobby.list());
+  }, 30_000);
+
+  it('replays a file that changed after its index line (a crash between the two writes), and indexes it again', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const { id } = await concededMatch(first.url);
+    const other = await concededMatch(first.url);
+    // The loser's signature reached the archive file, but the referee died before writing its index line.
+    const loserSig = await other.a.signResult(other.id).then(() => first.lobby.get(other.id).players[0].resultSig!);
+    rewriteArchive(dir, other.id, (rec) => { rec.resultSigs[0] = loserSig; });
+    const lines = indexLines(dir);
+    writeFileSync(join(dir, 'index.jsonl'), lines.filter((l) => !(l.includes(other.id) && l.includes(loserSig))).join('\n') + '\n');
+
+    const second = await referee(dir, clock);
+    expect(second.archive.restoreInto(second.lobby)).toMatchObject({ indexed: 1, replayed: 1 });
+    expect(second.lobby.get(other.id).players[0].resultSig).toBe(loserSig);
+    expect(second.lobby.get(id).cold).toBeDefined();
+    const third = await referee(dir, clock);
+    expect(third.archive.restoreInto(third.lobby)).toMatchObject({ indexed: 2, replayed: 0 });
+    expect(third.lobby.get(other.id).players[0].resultSig).toBe(loserSig);
+  }, 30_000);
+
+  it('ignores a damaged index line, drops lines for deleted files, and keeps one line per match', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const { id } = await concededMatch(first.url);
+    const gone = await concededMatch(first.url);
+    await gone.a.signResult(gone.id); // a second line for this match
+    rmSync(join(dir, `${gone.id}.json`));
+    appendFileSync(join(dir, 'index.jsonl'), '{"v":1,"summary":{"log":{"matchId":"0x'); // cut short by a crash
+    expect(indexLines(dir).length).toBeGreaterThan(2);
+
+    const second = await referee(dir, clock);
+    expect(second.archive.restoreInto(second.lobby)).toEqual({ indexed: 1, replayed: 0, otherDeployment: 0, skipped: [] });
+    expect(second.lobby.list().map((x) => x.matchId)).toEqual([id]);
+    expect(indexLines(dir).map((l) => JSON.parse(l).summary.log.matchId)).toEqual([id]);
+  }, 30_000);
+
+  it('compacts the index while running, so it stays proportional to the number of matches', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const { id } = await concededMatch(first.url);
+    const rec = first.lobby.archive(id);
+    for (let i = 0; i < 300; i++) first.archive.save(rec);
+    expect(indexLines(dir).length).toBeLessThanOrEqual(2 * 1 + 101);
+    const second = await referee(dir, clock);
+    expect(second.archive.restoreInto(second.lobby)).toMatchObject({ indexed: 1, replayed: 0 });
+    expect(indexLines(dir)).toHaveLength(1);
+  }, 30_000);
+
+  it('still uses the index after a backup restore that kept mtimes to the whole second (tar)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const ids = [(await concededMatch(first.url)).id, (await concededMatch(first.url)).id];
+    // As tar extracts them: same content, mtime cut to the second. The second file was also rewritten in a later
+    // second (not just truncated), so its line is stale and it must be replayed.
+    const file = (id: Hex) => join(dir, `${id}.json`);
+    const truncate = (id: Hex, extraSeconds = 0) => {
+      const st = statSync(file(id));
+      const s = Math.floor(st.mtimeMs / 1000) + extraSeconds;
+      utimesSync(file(id), s, s);
+    };
+    truncate(ids[0]);
+    truncate(ids[1], 5);
+    expect(statSync(file(ids[0])).mtimeMs % 1000).toBe(0);
+
+    const second = await referee(dir, clock);
+    expect(second.archive.restoreInto(second.lobby)).toMatchObject({ indexed: 1, replayed: 1, skipped: [] });
+    expect(second.lobby.get(ids[0]).cold).toBeDefined(); // from the index
+    expect(second.lobby.get(ids[1]).cold).toBeUndefined(); // replayed
   }, 30_000);
 });
