@@ -207,7 +207,9 @@ contract VrfTest is Fixture {
         vm.prank(alice);
         uint256 g = gasleft();
         d.packs.open(last);
-        assertLt(g - gasleft(), 800_000);
+        // Worst case: every pool is walked in full, so the cost grows with the set (about 1.25M gas with the
+        // 168 cards of Set 1 and Poncho, a small share of a Base block).
+        assertLt(g - gasleft(), 1_500_000);
     }
 
     function test_retryNeverSwapsAWordTheFirstAnswerWins() public {

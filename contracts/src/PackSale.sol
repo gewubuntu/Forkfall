@@ -453,9 +453,10 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
         returns (uint256[5] memory ids)
     {
         uint256[] memory legendaries = kindCards(kind, 3);
+        uint256[] memory commons = kindCards(kind, 0);
         uint256[5] memory got; // base ids already in this pack, for duplicate protection within the pack
         for (uint256 i; i < 3; ++i) {
-            got[i] = _pick(kindCards(kind, 0), uint256(keccak256(abi.encode(rand, i))), opener, got, 2, fromPulls);
+            got[i] = _pick(commons, uint256(keccak256(abi.encode(rand, i))), opener, got, 2, fromPulls);
         }
         got[3] = _pick(kindCards(kind, 1), uint256(keccak256(abi.encode(rand, 3))), opener, got, 2, fromPulls);
         bool upgrade =
