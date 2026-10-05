@@ -66,6 +66,11 @@ export interface CardDef {
   target?: TargetKind;
   /** Target is optional: the card may be played without one. */
   targetOptional?: boolean;
+  /**
+   * The card only takes a target while you have an active prediction; without one (or with no valid target) it is
+   * played without one, whatever its type.
+   */
+  targetIfPrediction?: boolean;
   onPlay?: Effect[];
   onDeath?: Effect[];
   startOfTurn?: Effect[];

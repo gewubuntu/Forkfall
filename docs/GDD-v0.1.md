@@ -270,7 +270,7 @@ A licensed collab with **Poncho**, the cutest cat on Base (@ponchobase): a cat i
 
 - **Mechanic:** Tacos are cheap, flexible buffs that go to your hand (hidden from the opponent). A full hand burns them.
 - **Not in starters:** the set comes from Set 1 boosters (same pool, by rarity) and crafting, so starter decks and the core balance gate are unchanged.
-- **Balance target:** a side-grade, not a must-play. A deck with all eight Poncho cards wins about 51% against plain starter decks (49–53% by race; `pnpm sim 500 poncho`, gate ≤ 58%).
+- **Balance target:** a side-grade, not a must-play. A deck with all eight Poncho cards wins about 53% against plain starter decks (51–55% by race; `pnpm sim 500 poncho`, gate ≤ 58%).
 - **Art:** licensed Poncho Pals style, not pixel art: flat vector busts with thick navy outlines, a wide head with cheek tufts, white muzzle and forehead stripe, big glossy eyes, an ω smile, blush, a paw holding an item and a geometric poncho with a PB badge, on flat colour backgrounds. Every card is its own pal built from traits (fur: ginger, grey, tan; hats: sombrero, headband; eyes: happy, sunglasses, laser; items: taco, salsa, mic, cash), plus a taco, a taco truck and a posse scene. Rendered as SVG by `packages/art/src/poncho.ts`. Final pictures come from an image model trained on the Poncho character: drop `<cardId>.jpg` (512×512) into `packages/art/assets/poncho/` and run `pnpm art:poncho-images`; a card's generated picture replaces its vector pal everywhere.
 - **Existing deployments** add the cards with `forge script script/DefineCards.s.sol` (no redeploy).
 

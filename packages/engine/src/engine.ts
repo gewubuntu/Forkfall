@@ -167,7 +167,7 @@ export function legalActions(g: GameState, seat: Seat): Action[] {
       } else if (c.target) {
         const targets = validTargets(g, seat, c);
         for (const t of targets) out.push({ ...base, target: t });
-        if (c.targetOptional || (!targets.length && c.type === 'unit')) out.push(base);
+        if (c.targetOptional || (!targets.length && (c.type === 'unit' || c.targetIfPrediction))) out.push(base);
       } else out.push(base);
     }
   }
@@ -180,6 +180,7 @@ export function legalActions(g: GameState, seat: Seat): Action[] {
 }
 
 function validTargets(g: GameState, seat: Seat, c: CardDef): number[] {
+  if (c.targetIfPrediction && !hasActivePrediction(g, seat)) return [];
   const mine = g.players[seat].board.map((u) => u.uid);
   const theirs = g.players[other(seat)].board.map((u) => u.uid);
   switch (c.target) {
@@ -319,7 +320,7 @@ function play(g: GameState, seat: Seat, a: Extract<Action, { type: 'play' }>, ev
     if (typeof a.target === 'number') {
       if (!valid.includes(a.target)) throw new IllegalAction('invalid target');
       target = a.target;
-    } else if (!(c.targetOptional || (c.type === 'unit' && !valid.length))) {
+    } else if (!(c.targetOptional || (!valid.length && (c.type === 'unit' || c.targetIfPrediction)))) {
       throw new IllegalAction('target required');
     }
   }

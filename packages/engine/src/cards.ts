@@ -199,7 +199,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 34, slug: 'validator', name: 'Validator', faction: 'neutral', chain: 'any', type: 'unit',
-    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: [], collectible: true,
+    cost: 3, attack: 4, health: 2, rarity: 'common', keywords: [], collectible: true,
     text: '',
   },
   {
@@ -214,7 +214,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 37, slug: 'bridge-runner', name: 'Bridge Runner', faction: 'neutral', chain: 'any', type: 'unit',
-    cost: 2, attack: 2, health: 1, rarity: 'common', keywords: ['rush'], collectible: true,
+    cost: 2, attack: 1, health: 3, rarity: 'common', keywords: ['rush'], collectible: true,
     text: 'Rush.',
   },
   {
@@ -304,7 +304,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 53, slug: 'augur', name: 'Augur', faction: 'prophets', chain: 'base', type: 'unit',
-    cost: 4, attack: 4, health: 4, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit',
+    cost: 4, attack: 4, health: 4, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit', targetIfPrediction: true,
     text: 'If you have an active prediction, deal 2 damage to an enemy unit.',
     onPlay: [{ k: 'damage', to: 'chosen', n: 0, nIfPrediction: 2 }],
   },
@@ -368,7 +368,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 64, slug: 'relay-node', name: 'Relay Node', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 2, attack: 1, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    cost: 2, attack: 1, health: 3, rarity: 'common', keywords: ['guard'], collectible: true,
     text: 'Guard. When this dies, Deploy 1.', onDeath: [{ k: 'deploy', n: 1 }],
   },
   {
@@ -470,7 +470,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 83, slug: 'watchdog', name: 'Watchdog', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 5, attack: 5, health: 5, rarity: 'rare', keywords: ['guard', 'firewall'], collectible: true,
+    cost: 5, attack: 6, health: 4, rarity: 'rare', keywords: ['guard', 'firewall'], collectible: true,
     text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
   },
   {
@@ -744,7 +744,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 134, slug: 'moon-puppy', name: 'Moon Puppy', faction: 'degens', chain: 'robinhood', type: 'unit',
-    cost: 2, attack: 1, health: 1, rarity: 'common', keywords: ['swarm'], collectible: true,
+    cost: 1, attack: 0, health: 1, rarity: 'common', keywords: ['swarm'], collectible: true,
     text: 'Swarm. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
   },
   {
@@ -776,7 +776,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 140, slug: 'diamond-hands', name: 'Diamond Hands', faction: 'degens', chain: 'robinhood', type: 'unit',
-    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: ['guard'], collectible: true,
     text: 'Guard.',
   },
   {
@@ -911,7 +911,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 165, slug: 'multisig-wallet', name: 'Multisig Wallet', faction: 'neutral', chain: 'any', type: 'unit',
-    cost: 4, attack: 2, health: 6, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    cost: 4, attack: 2, health: 7, rarity: 'uncommon', keywords: ['guard'], collectible: true,
     text: 'Guard.',
   },
   {
