@@ -8,6 +8,19 @@ const HUB_CHAIN = 84532; // the off-chain referee signs for Base Sepolia by defa
  * On /play: connect the injected test wallet and sign in (one SIWE signature authorizes the in-browser session key).
  * Waits for the Play page itself: the sign-in button is relabelled the moment sign-in starts, long before it ends.
  */
+/**
+ * End the turn and wait until the referee has moved past it. Waiting for "End turn" to disappear was racy: a quick bot
+ * turn hands the turn back before the next check, the button shows again, and the test waited for nothing.
+ */
+async function endTurn(page: Page) {
+  // The header's "Turn N · mode" (the battle log has "Turn N · You" lines too).
+  const label = page.locator('span.muted.small').filter({ hasText: /^Turn \d+ ·/ });
+  const turn = async () => Number(/Turn (\d+)/.exec((await label.textContent()) ?? '')?.[1] ?? 0);
+  const before = await turn();
+  await page.getByRole('button', { name: 'End turn' }).click();
+  await expect.poll(turn, { timeout: 15_000 }).toBeGreaterThan(before);
+}
+
 async function signIn(page: Page) {
   await page.getByRole('button', { name: 'Connect wallet' }).first().click();
   await page.getByRole('button', { name: /Forkfall Test Wallet/ }).click();
@@ -47,12 +60,9 @@ test('sign in with a browser wallet, play the house bot, sign the result and ver
   const matchId = page.url().split('/match/')[1];
 
   // Play two turns (each move is signed silently by the session key), then concede.
-  for (let turns = 0; turns < 2;) {
-    const end = page.getByRole('button', { name: 'End turn' });
-    await end.waitFor({ state: 'visible', timeout: 30_000 });
-    await end.click();
-    await expect(end).toBeHidden();
-    turns++;
+  for (let turns = 0; turns < 2; turns++) {
+    await page.getByRole('button', { name: 'End turn' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await endTurn(page);
   }
   await page.getByRole('button', { name: 'Concede', exact: true }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Concede', exact: true }).click();
@@ -92,9 +102,7 @@ test('a concede lands even when the page lags behind the bot', async ({ page }) 
   await page.waitForURL(/\/match\/0x[0-9a-f]{64}/);
   // A slow connection: the event log arrives 1.5 s late, so the board view trails the bot's moves.
   await page.route(/\/events/, async (r) => { await new Promise((x) => setTimeout(x, 1500)); await r.continue(); });
-  const end = page.getByRole('button', { name: 'End turn' });
-  await end.click();
-  await expect(end).toBeHidden();
+  await endTurn(page);
   // Concede in the bot's turn, before this page has caught up with its moves.
   await page.getByRole('button', { name: 'Concede', exact: true }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Concede', exact: true }).click();

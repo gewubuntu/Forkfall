@@ -216,6 +216,10 @@ export class Lobby {
     const signer = await recoverAddress({ hash: digest, signature }).catch(() => null);
     const bySessionKey = !!session && signer?.toLowerCase() === session.sessionKey.toLowerCase();
     if (!signer || (signer.toLowerCase() !== address.toLowerCase() && !bySessionKey)) throw new ApiError(401, 'bad move signature');
+    // The board may have moved on while the signature was checked (the house bot played, a turn timed out): a move
+    // signed for the older position must not land on top of the new one, or the log's hash chain breaks.
+    if (m.phase !== 'active') throw new ApiError(409, `match is ${m.phase}`);
+    if (seq !== m.moves.length) throw new ApiError(409, `stale seq: expected ${m.moves.length}`);
     if (bySessionKey) {
       const p = m.players[seat];
       p.delegations ??= [];
@@ -308,10 +312,13 @@ export class Lobby {
       if (!p.bot) continue;
       const snap = this.snapshot(m, p.address);
       const action = p.bot === 'random' ? pickRandom(snap) : viewGreedy(snap);
+      const seq = m.moves.length;
       const sig = await this.opts.house.signTypedData({
         domain: this.domain, types: MOVE_TYPES, primaryType: 'Move',
-        message: { matchId: m.id, seq: m.moves.length, prevHash: m.head, actionHash: actionHash(action) },
+        message: { matchId: m.id, seq, prevHash: m.head, actionHash: actionHash(action) },
       });
+      // The player may have moved while this was signed (a concede is legal in the bot's turn): try again next step.
+      if (m.phase !== 'active' || m.moves.length !== seq) continue;
       this.apply(m, seat, action, sig);
       moved = true;
     }

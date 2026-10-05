@@ -427,6 +427,25 @@ export class ForkfallClient {
     return this.req<MatchSnapshot>('POST', `/v1/matches/${matchId}/moves`, { seq: snap.seq, action, signature });
   }
 
+  /**
+   * Concede. It is legal at any point, even in the opponent's turn, but a house bot keeps moving meanwhile, so a
+   * concede signed for a position the bot has since moved past comes back "stale seq". Re-read the board and sign
+   * it again (a short pause between tries) until it lands or `timeoutMs` passes.
+   */
+  async concede(matchId: Hex, opts: { snap?: Pick<MatchSnapshot, 'seq' | 'head'>; timeoutMs?: number; retryMs?: number } = {}) {
+    const deadline = Date.now() + (opts.timeoutMs ?? 10_000);
+    let snap = opts.snap ?? await this.state(matchId);
+    for (;;) {
+      try {
+        return await this.move(matchId, snap, { type: 'concede' });
+      } catch (e) {
+        if (!String((e as Error).message).includes('stale seq') || Date.now() > deadline) throw e;
+      }
+      await new Promise((r) => setTimeout(r, opts.retryMs ?? 250)); // two requests a try: stays under 10/s
+      snap = await this.state(matchId);
+    }
+  }
+
   /** Co-sign the final result so it can be settled on-chain. */
   async signResult(matchId: Hex) {
     const { result } = await this.req<{ result: MatchResult }>('GET', `/v1/matches/${matchId}/result`);

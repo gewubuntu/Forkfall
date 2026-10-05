@@ -449,3 +449,72 @@ describe('Agent League queue', () => {
     failStart = false;
   });
 });
+
+describe('moves racing the house bot', () => {
+  it('refuses a move whose position the board moved past while its signature was being checked', async () => {
+    const a = newClient(); const b = newClient();
+    await a.connect(); await b.connect();
+    await a.queue({ mode: 'casual', race: 'agents' });
+    const { matchId } = await b.queue({ mode: 'casual', race: 'brokers' });
+    await a.reveal(matchId!); await b.reveal(matchId!);
+    const m = lobby.get(matchId!);
+    const active = m.state!.active;
+    const waiting = m.players[1 - active].address === a.address ? a : b;
+    const snap = await waiting.state(matchId!);
+    const signature = await waiting.account.signTypedData({
+      domain: waiting.config!.domain, types: MOVE_TYPES, primaryType: 'Move',
+      message: { matchId: matchId!, seq: snap.seq, prevHash: snap.head, actionHash: actionHash({ type: 'concede' }) },
+    });
+    // The concede is checked against seq n, then its signature is verified (async); meanwhile the other seat moves.
+    const pending = lobby.submitMove(waiting.address, matchId!, snap.seq, { type: 'concede' }, signature);
+    (lobby as unknown as { apply: (...x: unknown[]) => void }).apply(m, active, { type: 'endTurn' }, null);
+    await expect(pending).rejects.toThrow(/stale seq/);
+    expect(m.moves.map((x) => x.action.type)).toEqual(['endTurn']);
+    expect(m.phase).toBe('active');
+  });
+
+  it('a house bot step skips its move when the player conceded while it was signing', async () => {
+    const real = privateKeyToAccount(generatePrivateKey());
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let hold = false;
+    const house = { ...real, signTypedData: async (x: Parameters<typeof real.signTypedData>[0]) => { if (hold) await gate; return real.signTypedData(x); } };
+    const lob = new Lobby({ chain: new Chain(null), house: house as typeof real });
+    const api = createApi(lob, { ratePerSec: 10_000 });
+    await new Promise<void>((r) => api.server.listen(0, r));
+    try {
+      const c = new ForkfallClient(`http://127.0.0.1:${(api.server.address() as AddressInfo).port}`, privateKeyToAccount(generatePrivateKey()));
+      await c.connect();
+      const matchId = await c.practice({ race: 'agents', botRace: 'brokers' });
+      await c.reveal(matchId);
+      const m = lob.get(matchId);
+      for (let i = 0; i < 50 && m.phase !== 'active'; i++) await new Promise((r) => setTimeout(r, 5));
+      if (m.players[m.state!.active].address === c.address) await c.move(matchId, await c.state(matchId), { type: 'endTurn' });
+      hold = true;
+      const step = lob.stepBots(); // the bot picks a move and waits on its signature
+      await c.concede(matchId);
+      expect(m.phase).toBe('ended');
+      const moves = m.moves.length;
+      release();
+      await expect(step).resolves.toBe(false); // nothing moved, and no "match is over" error
+      expect(m.moves.length).toBe(moves); // the bot's move was dropped, not stacked on the finished match
+      const log = await c.log(matchId).catch(() => null); // public once both results are signed; skip if not yet
+      if (log) expect((await verifyMoveSignatures(log)).failed).toEqual([]);
+    } finally { api.server.close(); }
+  });
+
+  it('client.concede lands even from a stale view of the board', async () => {
+    const a = newClient(); const b = newClient();
+    await a.connect(); await b.connect();
+    await a.queue({ mode: 'casual', race: 'degens' });
+    const { matchId } = await b.queue({ mode: 'casual', race: 'prophets' });
+    await a.reveal(matchId!); await b.reveal(matchId!);
+    const stale = await a.state(matchId!);
+    const m = lobby.get(matchId!);
+    const mover = m.players[m.state!.active].address === a.address ? a : b;
+    await mover.move(matchId!, await mover.state(matchId!), { type: 'endTurn' }); // the board moves on
+    const end = await a.concede(matchId!, { snap: stale, retryMs: 1 });
+    expect(end.phase).toBe('ended');
+    expect(end.view!.endReason).toBe('concede');
+  });
+});
