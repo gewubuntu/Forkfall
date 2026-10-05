@@ -66,7 +66,7 @@ function runJob(job: Job): RaceResult | PonchoResult {
 
 /** Run jobs on a pool of worker threads (this same file); results come back in job order. */
 function runAll(jobs: Job[]): Promise<(RaceResult | PonchoResult)[]> {
-  const results: (RaceResult | PonchoResult)[] = new Array(jobs.length);
+  const results: (RaceResult | PonchoResult)[] = Array.from({ length: jobs.length });
   let next = 0, done = 0;
   return new Promise((resolve, reject) => {
     const threads = Math.max(1, Math.min(availableParallelism(), jobs.length));
