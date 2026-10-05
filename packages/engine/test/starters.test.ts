@@ -17,8 +17,14 @@ describe('starter decks', () => {
     }
   });
 
-  it('stay as minted when new cards join the set', () => {
-    // Every starter card is one of the prototype's first 40; anything added later is not in a starter.
+  it('stay exactly as minted when new cards join the set', () => {
+    // What StarterDecks mints (Set1Cards.starter): changing any of these changes every future claim.
+    const pairs = (ids: number[]) => ids.flatMap((id) => [id, id]);
+    const neutrals = [33, 34, 35, 36, 37, 38, 39, 40];
+    expect(starterDeck('agents')).toEqual(pairs([1, 2, 3, 4, 5, 6, 7, ...neutrals]));
+    expect(starterDeck('prophets')).toEqual(pairs([9, 10, 11, 12, 13, 14, 15, ...neutrals]));
+    expect(starterDeck('brokers')).toEqual(pairs([17, 18, 19, 20, 21, 22, 23, ...neutrals]));
+    expect(starterDeck('degens')).toEqual(pairs([25, 26, 27, 28, 29, 30, 31, ...neutrals]));
     const later = COLLECTIBLE.filter((c) => c.id > 40).map((c) => c.id);
     for (const race of RACES) expect(starterDeck(race).filter((id) => later.includes(id))).toEqual([]);
   });
@@ -36,6 +42,15 @@ describe('randomRankedDeck', () => {
         seen.add(deck.join());
       }
       expect(seen.size).toBeGreaterThan(1); // the seed matters
+    }
+  });
+
+  it('always runs a Legendary of the race, as a ranked deck would', () => {
+    for (const race of RACES) {
+      for (let i = 0; i < 50; i++) {
+        const legends = randomRankedDeck(race, String(i)).filter((id) => card(id).rarity === 'legendary');
+        expect(legends.map((id) => card(id).faction), `${race} ${i}`).toEqual([race]);
+      }
     }
   });
 });
