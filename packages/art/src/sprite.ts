@@ -1,4 +1,4 @@
-import { card, type CardDef } from '@forkfall/engine';
+import { CARDS, card, type CardDef } from '@forkfall/engine';
 import { paletteFor, type RacePalette } from './palette.ts';
 import { isPonchoArt, ponchoSvg } from './poncho.ts';
 
@@ -582,13 +582,65 @@ function draw(cv: Canvas, r: Rng, c: CardDef) {
   return knight(cv, r, c);
 }
 
-/** Final colors per pixel (null = transparent), after shading, outline and race accents. */
+const SPRITES = new Map<number, (string | null)[]>();
+/** Sprites as they were when Set 1 started landing in batches (ids 1–57 and the tokens): drawn as is, pinned by a test. */
+const LEGACY_MAX_ID = 57;
+const isLegacy = (id: number) => id <= LEGACY_MAX_ID || !card(id).collectible;
+/** Pixels a newer card's sprite must differ by from every earlier one (of 1024), so cards are told apart at a glance. */
+const MIN_DIFF = 48;
+const RAMP_SWAPS: [Ramp, Ramp][] = [['a', 'b'], ['a', 'c'], ['b', 'c'], ['a', 'd'], ['b', 'd'], ['c', 'd']];
+
+/**
+ * Final colors per pixel (null = transparent), after shading, outline and race accents.
+ * Many cards share a shape (every Brokers action is a coin stack). So a card added after the legacy sprites must
+ * differ by at least MIN_DIFF pixels from every sprite before it (the legacy ones, then lower ids). If its own drawing
+ * doesn't, it tries variants in a fixed order: mirrored, two color ramps swapped, both, then extra glow pixels.
+ * A sprite depends only on the sprites before it, so adding a card never changes an earlier card's art.
+ */
 export function spritePixels(cardId: number): (string | null)[] {
+  const done = SPRITES.get(cardId);
+  if (done) return done;
+  let px = drawSprite(cardId, 0);
+  if (!isLegacy(cardId)) {
+    const earlier = CARDS.filter((c) => isLegacy(c.id) || c.id < cardId).map((c) => spritePixels(c.id));
+    const nearest = (cand: (string | null)[]) => Math.min(...earlier.map((e) => diff(e, cand)));
+    let best = nearest(px);
+    for (let salt = 1; best < MIN_DIFF && salt < 40; salt++) {
+      const cand = drawSprite(cardId, salt);
+      const d = nearest(cand);
+      if (d > best) { px = cand; best = d; }
+    }
+  }
+  SPRITES.set(cardId, px);
+  return px;
+}
+
+function diff(a: (string | null)[], b: (string | null)[]): number {
+  let n = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++;
+  return n;
+}
+
+/** Variant `salt` of a sprite: odd salts mirror it, salts 2+ swap a pair of color ramps, salts 14+ add glow pixels. */
+function vary(cv: Canvas, salt: number) {
+  const v = salt % 14;
+  if (v % 2 === 1) {
+    for (let y = 0; y < N; y++) for (let x = 0; x < N / 2; x++) {
+      const i = y * N + x, j = y * N + (N - 1 - x);
+      [cv.px[i], cv.px[j]] = [cv.px[j], cv.px[i]];
+    }
+  }
+  const swap = v >= 2 ? RAMP_SWAPS[(v >> 1) - 1] : undefined;
+  if (swap) for (let i = 0; i < cv.px.length; i++) cv.px[i] = cv.px[i] === swap[0] ? swap[1] : cv.px[i] === swap[1] ? swap[0] : cv.px[i];
+}
+
+function drawSprite(cardId: number, salt: number): (string | null)[] {
   const c = card(cardId);
   const pal: RacePalette = paletteFor(c);
   const r = rng(cardId * 7919 + 17);
   const cv = new Canvas();
   draw(cv, r, c);
+  if (salt) vary(cv, salt);
 
   const out: (string | null)[] = Array(N * N).fill(null);
   for (let y = 0; y < N; y++) {
@@ -623,6 +675,11 @@ export function spritePixels(cardId: number): (string | null)[] {
   if (sparkles) {
     cv.sparkle(r, sparkles);
     for (const i of cv.sparkles) if (!out[i]) out[i] = pal.glow;
+  }
+  if (salt >= 14) {
+    const before = new Set(cv.sparkles);
+    cv.sparkle(rng(cardId * 104729 + salt), salt - 10);
+    for (const i of cv.sparkles) if (!before.has(i) && !out[i]) out[i] = pal.glow;
   }
   return out;
 }

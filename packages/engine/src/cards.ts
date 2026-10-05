@@ -7,7 +7,7 @@ export const TOKEN_TACO = 1002;
 
 /**
  * The core set: the 40 prototype cards (ids 1–40: 8 per race + 8 neutral) and Set 1 cards added in batches
- * (ids 49+), the Poncho collab set (ids 41–48, neutral, from Base) and 3 tokens. Collectible ids map 1:1 to
+ * (ids 49–168), the Poncho collab set (ids 41–48, neutral, from Base) and 3 tokens. Collectible ids map 1:1 to
  * ERC-1155 token ids in CardRegistry.
  * All numbers are playtest starting values.
  */
@@ -331,6 +331,604 @@ export const CARDS: CardDef[] = [
     cost: 6, attack: 5, health: 6, rarity: 'rare', keywords: [], collectible: true,
     text: 'When one of your predictions comes true, deal 3 damage to the enemy Treasury.',
     onPredictionHit: [{ k: 'damage', to: 'enemyTreasury', n: 3 }],
+  },
+
+  // ─── Set 1 · Agents ────────────────────────────────────────────
+  {
+    id: 58, slug: 'script-kiddie', name: 'Script Kiddie', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 1.', onPlay: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 59, slug: 'seed-phrase', name: 'Seed Phrase', faction: 'agents', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1. Compute 1: your next card costs 1 less.', onPlay: [{ k: 'draw', n: 1 }, { k: 'compute', n: 1 }],
+  },
+  {
+    id: 60, slug: 'ping', name: 'Ping', faction: 'agents', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 1 damage to a unit. Automate: at the start of your next turn, deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 1 }, { k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }] }],
+  },
+  {
+    id: 61, slug: 'upgrade', name: 'Upgrade', faction: 'agents', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Give a friendly unit +2/+1.', onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 1 }],
+  },
+  {
+    id: 62, slug: 'faucet-bot', name: 'Faucet Bot', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 2, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, Deploy 1.',
+    onPlay: [{ k: 'automate', effects: [{ k: 'deploy', n: 1 }] }],
+  },
+  {
+    id: 63, slug: 'gas-optimizer', name: 'Gas Optimizer', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Compute 1: your next card costs 1 less.', onPlay: [{ k: 'compute', n: 1 }],
+  },
+  {
+    id: 64, slug: 'relay-node', name: 'Relay Node', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 2, attack: 1, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. When this dies, Deploy 1.', onDeath: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 65, slug: 'batch-job', name: 'Batch Job', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 2.', onPlay: [{ k: 'deploy', n: 2 }],
+  },
+  {
+    id: 66, slug: 'keeper-bot', name: 'Keeper Bot', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
+  },
+  {
+    id: 67, slug: 'load-balancer', name: 'Load Balancer', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. Deploy 1.', onPlay: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 68, slug: 'indexer', name: 'Indexer', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 1. Compute 1: your next card costs 1 less.', onPlay: [{ k: 'deploy', n: 1 }, { k: 'compute', n: 1 }],
+  },
+  {
+    id: 69, slug: 'drone-swarm', name: 'Drone Swarm', faction: 'agents', chain: 'base', type: 'action',
+    cost: 4, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 3.', onPlay: [{ k: 'deploy', n: 3 }],
+  },
+  {
+    id: 70, slug: 'assembly-line', name: 'Assembly Line', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 3, health: 5, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 2. Automate: at the start of your next turn, Deploy 1.',
+    onPlay: [{ k: 'deploy', n: 2 }, { k: 'automate', effects: [{ k: 'deploy', n: 1 }] }],
+  },
+  {
+    id: 71, slug: 'server-rack', name: 'Server Rack', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 72, slug: 'autopilot', name: 'Autopilot', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, draw 2.',
+    onPlay: [{ k: 'automate', effects: [{ k: 'draw', n: 2 }] }],
+  },
+  {
+    id: 73, slug: 'overclock', name: 'Overclock', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Give a friendly unit +2/+2. It gains Rush this turn.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 2 }, { k: 'grantRush', to: 'chosen' }],
+  },
+  {
+    id: 74, slug: 'hot-swap', name: 'Hot Swap', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 1. Compute 2: your next card costs 2 less.', onPlay: [{ k: 'draw', n: 1 }, { k: 'compute', n: 2 }],
+  },
+  {
+    id: 75, slug: 'kill-switch', name: 'Kill Switch', faction: 'agents', chain: 'base', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 3 damage to a unit. Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 3 }, { k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
+  },
+  {
+    id: 76, slug: 'honeypot', name: 'Honeypot', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 5, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
+    text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 77, slug: 'botnet', name: 'Botnet', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Give all friendly units +1 attack.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 0 }],
+  },
+  {
+    id: 78, slug: 'cron-daemon', name: 'Cron Daemon', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'At the start of your turn, deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    startOfTurn: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }],
+  },
+  {
+    id: 79, slug: 'fork-bomb', name: 'Fork Bomb', faction: 'agents', chain: 'base', type: 'action',
+    cost: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deploy 4.', onPlay: [{ k: 'deploy', n: 4 }],
+  },
+  {
+    id: 80, slug: 'sentinel-array', name: 'Sentinel Array', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 5, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
+    text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 81, slug: 'smart-contract', name: 'Smart Contract', faction: 'agents', chain: 'base', type: 'action',
+    cost: 3, rarity: 'rare', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, give all friendly units +1/+1, then Deploy 1.',
+    onPlay: [{ k: 'automate', effects: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }, { k: 'deploy', n: 1 }] }],
+  },
+  {
+    id: 82, slug: 'arbitrage-engine', name: 'Arbitrage Engine', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 3, health: 5, rarity: 'rare', keywords: [], collectible: true,
+    text: 'At the start of your turn, draw 1.', startOfTurn: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 83, slug: 'watchdog', name: 'Watchdog', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 5, health: 5, rarity: 'rare', keywords: ['guard', 'firewall'], collectible: true,
+    text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 84, slug: 'agent-swarm', name: 'Agent Swarm', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 7, attack: 4, health: 4, rarity: 'rare', keywords: [], collectible: true,
+    text: 'Deploy 4.', onPlay: [{ k: 'deploy', n: 4 }],
+  },
+  {
+    id: 85, slug: 'the-swarm-mind', name: 'The Swarm Mind', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 7, attack: 5, health: 5, rarity: 'legendary', keywords: [], collectible: true,
+    text: 'At the start of your turn, Deploy 1, then give all friendly units +1 attack.',
+    startOfTurn: [{ k: 'deploy', n: 1 }, { k: 'buff', to: 'allFriendly', atk: 1, hp: 0 }],
+  },
+
+  // ─── Set 1 · Prophets, batch 2 ─────────────────────────────────
+  {
+    id: 86, slug: 'omen-raven', name: 'Omen Raven', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: '',
+  },
+  {
+    id: 87, slug: 'hindsight', name: 'Hindsight', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 1 damage to a unit. Draw 1.', onPlay: [{ k: 'damage', to: 'chosen', n: 1 }, { k: 'draw', n: 1 }],
+  },
+  {
+    id: 88, slug: 'palm-reader', name: 'Palm Reader', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 2, attack: 2, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'If you have an active prediction, draw 1.', onPlay: [{ k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 89, slug: 'pilgrim', name: 'Pilgrim', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 2, attack: 1, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 90, slug: 'tarot-card', name: 'Tarot Card', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 2 damage per Odds tier to the enemy Treasury. Backfire: take 2.',
+    prediction: { damagePerTier: 2, backfire: 2 },
+  },
+  {
+    id: 91, slug: 'soothsayer', name: 'Soothsayer', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, draw 1.', onPredictionHit: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 92, slug: 'bookmaker', name: 'Bookmaker', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPredictionHit: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }],
+  },
+  {
+    id: 93, slug: 'doomsayer', name: 'Doomsayer', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 5, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. When one of your predictions comes true, gain +2/+2.',
+    onPredictionHit: [{ k: 'buff', to: 'self', atk: 2, hp: 2 }],
+  },
+  {
+    id: 94, slug: 'star-gazer', name: 'Star Gazer', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1.', onPlay: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 95, slug: 'bad-omen', name: 'Bad Omen', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'Deal 2 damage to an enemy unit. If you have an active prediction, also deal 2 damage to the enemy Treasury.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 2 }, { k: 'damage', to: 'enemyTreasury', n: 0, nIfPrediction: 2 }],
+  },
+  {
+    id: 96, slug: 'ledger-of-fate', name: 'Ledger of Fate', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Foresee. Correct: draw 2 cards per Odds tier. Backfire: take 2.',
+    prediction: { drawPerTier: 2, backfire: 2 },
+  },
+  {
+    id: 97, slug: 'forked-path', name: 'Forked Path', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 2. If you have an active prediction, deal 2 damage to the enemy Treasury.',
+    onPlay: [{ k: 'draw', n: 2 }, { k: 'damage', to: 'enemyTreasury', n: 0, nIfPrediction: 2 }],
+  },
+  {
+    id: 98, slug: 'prophets-escort', name: "Prophet's Escort", faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard. When one of your predictions comes true, gain +1/+1.',
+    onPredictionHit: [{ k: 'buff', to: 'self', atk: 1, hp: 1 }],
+  },
+  {
+    id: 99, slug: 'eclipse', name: 'Eclipse', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deal 2 damage to all enemy units.', onPlay: [{ k: 'damage', to: 'allEnemyUnits', n: 2 }],
+  },
+  {
+    id: 100, slug: 'veiled-oracle', name: 'Veiled Oracle', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard. If you have an active prediction, draw 1.', onPlay: [{ k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 101, slug: 'oracle-of-delphi', name: 'Oracle of Delphi', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 5, rarity: 'rare', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, draw 2.', onPredictionHit: [{ k: 'draw', n: 2 }],
+  },
+  {
+    id: 102, slug: 'high-priestess', name: 'High Priestess', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 5, rarity: 'rare', keywords: ['noBackfire'], collectible: true,
+    text: 'Your predictions never backfire.',
+  },
+  {
+    id: 103, slug: 'grand-augury', name: 'Grand Augury', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 5, rarity: 'rare', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 4 damage per Odds tier to the enemy Treasury. Backfire: take 4.',
+    prediction: { damagePerTier: 4, backfire: 4 },
+  },
+  {
+    id: 104, slug: 'the-last-prophet', name: 'The Last Prophet', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 8, attack: 6, health: 8, rarity: 'legendary', keywords: ['guard'], collectible: true,
+    text: 'Guard. When one of your predictions comes true, give all friendly units +2/+2.',
+    onPredictionHit: [{ k: 'buff', to: 'allFriendly', atk: 2, hp: 2 }],
+  },
+
+  // ─── Set 1 · Brokers ───────────────────────────────────────────
+  {
+    id: 105, slug: 'day-trader', name: 'Day Trader', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: '',
+  },
+  {
+    id: 106, slug: 'piggy-bank', name: 'Piggy Bank', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 0, health: 2, rarity: 'common', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 107, slug: 'stop-loss', name: 'Stop Loss', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'Deal 2 damage to an enemy unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
+  },
+  {
+    id: 108, slug: 'junior-associate', name: 'Junior Associate', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold.',
+  },
+  {
+    id: 109, slug: 'escrow-agent', name: 'Escrow Agent', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 1, health: 3, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. Portfolio: holds 1 Bond (2/2) that drops to the board when this dies.', portfolio: [TOKEN_BOND],
+  },
+  {
+    id: 110, slug: 'treasury-bill', name: 'Treasury Bill', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Draw 1. Give a friendly unit +1/+1 and Hold.',
+    onPlay: [{ k: 'draw', n: 1 }, { k: 'buff', to: 'chosen', atk: 1, hp: 1, addKeywords: ['hold'] }],
+  },
+  {
+    id: 111, slug: 'blue-chip', name: 'Blue Chip', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold.',
+  },
+  {
+    id: 112, slug: 'risk-desk', name: 'Risk Desk', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold.',
+  },
+  {
+    id: 113, slug: 'floor-trader', name: 'Floor Trader', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 114, slug: 'audit', name: 'Audit', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 3 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 3 }],
+  },
+  {
+    id: 115, slug: 'pension-fund', name: 'Pension Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 2, health: 5, rarity: 'common', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Dividend: draw 1.', dividend: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 116, slug: 'holding-company', name: 'Holding Company', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Portfolio: holds 1 Bond.', portfolio: [TOKEN_BOND],
+  },
+  {
+    id: 117, slug: 'hedge-fund', name: 'Hedge Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 4, health: 5, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 118, slug: 'long-position', name: 'Long Position', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'common', keywords: [], collectible: true,
+    text: 'Give all friendly units +1/+1 and Hold.',
+    onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1, addKeywords: ['hold'] }],
+  },
+  {
+    id: 119, slug: 'bailout', name: 'Bailout', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 2.', onPlay: [{ k: 'draw', n: 2 }],
+  },
+  {
+    id: 120, slug: 'underwriter', name: 'Underwriter', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 3, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    text: 'Hold. When this dies, draw 2.', onDeath: [{ k: 'draw', n: 2 }],
+  },
+  {
+    id: 121, slug: 'dollar-cost-average', name: 'Dollar-Cost Average', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Give all friendly units +1/+1.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+  {
+    id: 122, slug: 'gold-reserve', name: 'Gold Reserve', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 0, health: 6, rarity: 'uncommon', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold.',
+  },
+  {
+    id: 123, slug: 'bear-market', name: 'Bear Market', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deal 2 damage to all enemy units.', onPlay: [{ k: 'damage', to: 'allEnemyUnits', n: 2 }],
+  },
+  {
+    id: 124, slug: 'insurance-fund', name: 'Insurance Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 1, health: 7, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 125, slug: 'quant', name: 'Quant', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 3, health: 4, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    dividend: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }],
+  },
+  {
+    id: 126, slug: 'private-equity', name: 'Private Equity', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 3, health: 5, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    text: 'Hold. Portfolio: holds 3 Bonds.', portfolio: [TOKEN_BOND, TOKEN_BOND, TOKEN_BOND],
+  },
+  {
+    id: 127, slug: 'shareholder-meeting', name: 'Shareholder Meeting', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 3.', onPlay: [{ k: 'draw', n: 3 }],
+  },
+  {
+    id: 128, slug: 'liquidity-pool', name: 'Liquidity Pool', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 2, health: 6, rarity: 'rare', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: give all friendly units +1/+1.', dividend: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+  {
+    id: 129, slug: 'activist-investor', name: 'Activist Investor', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 5, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true, target: 'enemyUnit',
+    text: 'Rush. Deal 2 damage to an enemy unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
+  },
+  {
+    id: 130, slug: 'dividend-king', name: 'Dividend King', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 6, attack: 4, health: 6, rarity: 'rare', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: draw 1 and gain 1 Gas.', dividend: [{ k: 'draw', n: 1 }, { k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 131, slug: 'central-bank', name: 'Central Bank', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 7, attack: 5, health: 8, rarity: 'rare', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Portfolio: holds 2 Bonds.', portfolio: [TOKEN_BOND, TOKEN_BOND],
+  },
+  {
+    id: 132, slug: 'the-old-money', name: 'The Old Money', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 7, attack: 5, health: 7, rarity: 'legendary', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Dividend: give all friendly units +1/+1.', dividend: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+
+  // ─── Set 1 · Degens ────────────────────────────────────────────
+  {
+    id: 133, slug: 'soft-rug', name: 'Soft Rug', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 0, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Sacrifice a friendly unit. Deal its attack to the enemy Treasury.', onPlay: [{ k: 'rug', bonus: 0 }],
+  },
+  {
+    id: 134, slug: 'moon-puppy', name: 'Moon Puppy', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: ['swarm'], collectible: true,
+    text: 'Swarm. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
+  },
+  {
+    id: 135, slug: 'gm-gremlin', name: 'Gm Gremlin', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: ['swarm'], collectible: true,
+    text: 'Swarm: +1 attack for each other friendly Swarm unit.',
+  },
+  {
+    id: 136, slug: 'fomo', name: 'FOMO', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Give a friendly unit +2 attack. It gains Rush this turn.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 0 }, { k: 'grantRush', to: 'chosen' }],
+  },
+  {
+    id: 137, slug: 'bag-holder', name: 'Bag Holder', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 1, health: 3, rarity: 'common', keywords: ['swarm', 'guard'], collectible: true,
+    text: 'Swarm. Guard.',
+  },
+  {
+    id: 138, slug: 'airdrop-hunter', name: 'Airdrop Hunter', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 2, health: 1, rarity: 'common', keywords: ['rush', 'swarm'], collectible: true,
+    text: 'Rush. Swarm.',
+  },
+  {
+    id: 139, slug: 'shill-bot', name: 'Shill Bot', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 1, health: 2, rarity: 'common', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }],
+  },
+  {
+    id: 140, slug: 'diamond-hands', name: 'Diamond Hands', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 5, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 141, slug: 'degen-ape', name: 'Degen Ape', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
+  },
+  {
+    id: 142, slug: 'pump-group', name: 'Pump Group', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'Pump all friendly units.', onPlay: [{ k: 'pump', to: 'allFriendly' }],
+  },
+  {
+    id: 143, slug: 'raid-party', name: 'Raid Party', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deal 1 damage to all enemy units. Give all friendly Swarm units +1 attack.',
+    onPlay: [{ k: 'damage', to: 'allEnemyUnits', n: 1 }, { k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 0 }],
+  },
+  {
+    id: 144, slug: 'whale-alert', name: 'Whale Alert', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 4, health: 3, rarity: 'common', keywords: ['rush'], collectible: true,
+    text: 'Rush.',
+  },
+  {
+    id: 145, slug: 'meme-lord', name: 'Meme Lord', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'common', keywords: ['swarm'], collectible: true,
+    text: 'Swarm. Give all friendly Swarm units +1/+1.', onPlay: [{ k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 1 }],
+  },
+  {
+    id: 146, slug: 'gas-war', name: 'Gas War', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deal 3 damage to the enemy Treasury. Draw 1.',
+    onPlay: [{ k: 'damage', to: 'enemyTreasury', n: 3 }, { k: 'draw', n: 1 }],
+  },
+  {
+    id: 147, slug: 'jeet', name: 'Jeet', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 3, health: 1, rarity: 'uncommon', keywords: ['rush'], collectible: true,
+    text: 'Rush. When this dies, deal 1 damage to the enemy Treasury.',
+    onDeath: [{ k: 'damage', to: 'enemyTreasury', n: 1 }],
+  },
+  {
+    id: 148, slug: 'moonshot', name: 'Moonshot', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: ['ape'], collectible: true, target: 'friendlyUnit',
+    text: 'Ape. Give a friendly unit +3 attack. It gains Rush this turn.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 3, hp: 0 }, { k: 'grantRush', to: 'chosen' }],
+  },
+  {
+    id: 149, slug: 'copium', name: 'Copium', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Give all friendly units +0/+2.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 0, hp: 2 }],
+  },
+  {
+    id: 150, slug: 'pump-and-dump', name: 'Pump and Dump', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Pump a friendly unit, then sacrifice it. Deal its attack +1 to the enemy Treasury.',
+    onPlay: [{ k: 'pump', to: 'chosen' }, { k: 'rug', bonus: 1 }],
+  },
+  {
+    id: 151, slug: 'influencer', name: 'Influencer', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'uncommon', keywords: ['swarm', 'guard'], collectible: true,
+    text: 'Swarm. Guard.',
+  },
+  {
+    id: 152, slug: 'mint-bot', name: 'Mint Bot', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'uncommon', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Pump all friendly Swarm units.', onPlay: [{ k: 'pump', to: 'allFriendlySwarm' }],
+  },
+  {
+    id: 153, slug: 'telegram-pump', name: 'Telegram Pump', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Pump all friendly units. They gain Rush this turn.',
+    onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'grantRush', to: 'allFriendly' }],
+  },
+  {
+    id: 154, slug: 'bonk-hammer', name: 'Bonk Hammer', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 5, health: 4, rarity: 'uncommon', keywords: ['rush', 'ape'], collectible: true,
+    text: 'Rush. Ape. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
+  },
+  {
+    id: 155, slug: 'lambo', name: 'Lambo', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 6, attack: 6, health: 4, rarity: 'uncommon', keywords: ['rush'], collectible: true,
+    text: 'Rush.',
+  },
+  {
+    id: 156, slug: 'leverage-x100', name: 'Leverage x100', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'rare', keywords: ['ape'], collectible: true,
+    text: 'Ape. Double the attack of all friendly units.', onPlay: [{ k: 'doubleAttack', to: 'allFriendly' }],
+  },
+  {
+    id: 157, slug: 'liquidation', name: 'Liquidation', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'rare', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 4 damage to a unit and 2 damage to the enemy Treasury.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 4 }, { k: 'damage', to: 'enemyTreasury', n: 2 }],
+  },
+  {
+    id: 158, slug: 'degen-council', name: 'Degen Council', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 4, health: 4, rarity: 'rare', keywords: ['swarm'], collectible: true,
+    text: 'Swarm. Give all friendly Swarm units +2/+1.', onPlay: [{ k: 'buff', to: 'allFriendlySwarm', atk: 2, hp: 1 }],
+  },
+  {
+    id: 159, slug: 'ape-army', name: 'Ape Army', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'rare', keywords: ['ape'], collectible: true,
+    text: 'Ape. Pump all friendly units twice.', onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'pump', to: 'allFriendly' }],
+  },
+  {
+    id: 160, slug: 'the-meme-king', name: 'The Meme King', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 7, attack: 5, health: 5, rarity: 'legendary', keywords: ['rush', 'swarm'], collectible: true,
+    text: 'Rush. Swarm. Pump all friendly units, then give all friendly Swarm units +1/+1.',
+    onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 1 }],
+  },
+
+  // ─── Set 1 · Neutral ───────────────────────────────────────────
+  {
+    id: 161, slug: 'light-node', name: 'Light Node', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 1, attack: 1, health: 3, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 162, slug: 'block-explorer', name: 'Block Explorer', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 2, attack: 1, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1.', onPlay: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 163, slug: 'bridge-toll', name: 'Bridge Toll', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 2 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
+  },
+  {
+    id: 164, slug: 'flash-loan', name: 'Flash Loan', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 0, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Gain 2 Gas this turn.', onPlay: [{ k: 'gainGas', n: 2 }],
+  },
+  {
+    id: 165, slug: 'multisig-wallet', name: 'Multisig Wallet', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 4, attack: 2, health: 6, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 166, slug: 'layer-two', name: 'Layer Two', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 4, attack: 4, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true,
+    text: 'Rush. Draw 1.', onPlay: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 167, slug: 'dark-pool', name: 'Dark Pool', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'rare', keywords: ['guard'], collectible: true,
+    text: 'Guard. When this dies, deal 3 damage to the enemy Treasury.',
+    onDeath: [{ k: 'damage', to: 'enemyTreasury', n: 3 }],
+  },
+  {
+    id: 168, slug: 'consensus-attack', name: 'Consensus Attack', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 6, rarity: 'rare', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 6 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 6 }],
   },
 
   // ─── Tokens (not collectible) ──────────────────────────────────

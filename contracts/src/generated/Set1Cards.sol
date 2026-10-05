@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (57 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (168 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 57;
+    uint256 internal constant COUNT = 168;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](57);
-        races = new uint8[](57);
-        rarities = new uint8[](57);
-        chains = new uint8[](57);
+        ids = new uint16[](168);
+        races = new uint8[](168);
+        rarities = new uint8[](168);
+        chains = new uint8[](168);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -73,6 +73,117 @@ library Set1Cards {
         ids[54] = 55; races[54] = 2; rarities[54] = 1; chains[54] = 1; // Seers' Circle
         ids[55] = 56; races[55] = 2; rarities[55] = 1; chains[55] = 1; // Self-Fulfilling Prophecy
         ids[56] = 57; races[56] = 2; rarities[56] = 2; chains[56] = 1; // The Long Bet
+        ids[57] = 58; races[57] = 1; rarities[57] = 0; chains[57] = 1; // Script Kiddie
+        ids[58] = 59; races[58] = 1; rarities[58] = 0; chains[58] = 1; // Seed Phrase
+        ids[59] = 60; races[59] = 1; rarities[59] = 0; chains[59] = 1; // Ping
+        ids[60] = 61; races[60] = 1; rarities[60] = 0; chains[60] = 1; // Upgrade
+        ids[61] = 62; races[61] = 1; rarities[61] = 0; chains[61] = 1; // Faucet Bot
+        ids[62] = 63; races[62] = 1; rarities[62] = 0; chains[62] = 1; // Gas Optimizer
+        ids[63] = 64; races[63] = 1; rarities[63] = 0; chains[63] = 1; // Relay Node
+        ids[64] = 65; races[64] = 1; rarities[64] = 0; chains[64] = 1; // Batch Job
+        ids[65] = 66; races[65] = 1; rarities[65] = 0; chains[65] = 1; // Keeper Bot
+        ids[66] = 67; races[66] = 1; rarities[66] = 0; chains[66] = 1; // Load Balancer
+        ids[67] = 68; races[67] = 1; rarities[67] = 0; chains[67] = 1; // Indexer
+        ids[68] = 69; races[68] = 1; rarities[68] = 0; chains[68] = 1; // Drone Swarm
+        ids[69] = 70; races[69] = 1; rarities[69] = 0; chains[69] = 1; // Assembly Line
+        ids[70] = 71; races[70] = 1; rarities[70] = 0; chains[70] = 1; // Server Rack
+        ids[71] = 72; races[71] = 1; rarities[71] = 1; chains[71] = 1; // Autopilot
+        ids[72] = 73; races[72] = 1; rarities[72] = 1; chains[72] = 1; // Overclock
+        ids[73] = 74; races[73] = 1; rarities[73] = 1; chains[73] = 1; // Hot Swap
+        ids[74] = 75; races[74] = 1; rarities[74] = 1; chains[74] = 1; // Kill Switch
+        ids[75] = 76; races[75] = 1; rarities[75] = 1; chains[75] = 1; // Honeypot
+        ids[76] = 77; races[76] = 1; rarities[76] = 1; chains[76] = 1; // Botnet
+        ids[77] = 78; races[77] = 1; rarities[77] = 1; chains[77] = 1; // Cron Daemon
+        ids[78] = 79; races[78] = 1; rarities[78] = 1; chains[78] = 1; // Fork Bomb
+        ids[79] = 80; races[79] = 1; rarities[79] = 1; chains[79] = 1; // Sentinel Array
+        ids[80] = 81; races[80] = 1; rarities[80] = 2; chains[80] = 1; // Smart Contract
+        ids[81] = 82; races[81] = 1; rarities[81] = 2; chains[81] = 1; // Arbitrage Engine
+        ids[82] = 83; races[82] = 1; rarities[82] = 2; chains[82] = 1; // Watchdog
+        ids[83] = 84; races[83] = 1; rarities[83] = 2; chains[83] = 1; // Agent Swarm
+        ids[84] = 85; races[84] = 1; rarities[84] = 3; chains[84] = 1; // The Swarm Mind
+        ids[85] = 86; races[85] = 2; rarities[85] = 0; chains[85] = 1; // Omen Raven
+        ids[86] = 87; races[86] = 2; rarities[86] = 0; chains[86] = 1; // Hindsight
+        ids[87] = 88; races[87] = 2; rarities[87] = 0; chains[87] = 1; // Palm Reader
+        ids[88] = 89; races[88] = 2; rarities[88] = 0; chains[88] = 1; // Pilgrim
+        ids[89] = 90; races[89] = 2; rarities[89] = 0; chains[89] = 1; // Tarot Card
+        ids[90] = 91; races[90] = 2; rarities[90] = 0; chains[90] = 1; // Soothsayer
+        ids[91] = 92; races[91] = 2; rarities[91] = 0; chains[91] = 1; // Bookmaker
+        ids[92] = 93; races[92] = 2; rarities[92] = 0; chains[92] = 1; // Doomsayer
+        ids[93] = 94; races[93] = 2; rarities[93] = 0; chains[93] = 1; // Star Gazer
+        ids[94] = 95; races[94] = 2; rarities[94] = 1; chains[94] = 1; // Bad Omen
+        ids[95] = 96; races[95] = 2; rarities[95] = 1; chains[95] = 1; // Ledger of Fate
+        ids[96] = 97; races[96] = 2; rarities[96] = 1; chains[96] = 1; // Forked Path
+        ids[97] = 98; races[97] = 2; rarities[97] = 1; chains[97] = 1; // Prophet's Escort
+        ids[98] = 99; races[98] = 2; rarities[98] = 1; chains[98] = 1; // Eclipse
+        ids[99] = 100; races[99] = 2; rarities[99] = 1; chains[99] = 1; // Veiled Oracle
+        ids[100] = 101; races[100] = 2; rarities[100] = 2; chains[100] = 1; // Oracle of Delphi
+        ids[101] = 102; races[101] = 2; rarities[101] = 2; chains[101] = 1; // High Priestess
+        ids[102] = 103; races[102] = 2; rarities[102] = 2; chains[102] = 1; // Grand Augury
+        ids[103] = 104; races[103] = 2; rarities[103] = 3; chains[103] = 1; // The Last Prophet
+        ids[104] = 105; races[104] = 3; rarities[104] = 0; chains[104] = 2; // Day Trader
+        ids[105] = 106; races[105] = 3; rarities[105] = 0; chains[105] = 2; // Piggy Bank
+        ids[106] = 107; races[106] = 3; rarities[106] = 0; chains[106] = 2; // Stop Loss
+        ids[107] = 108; races[107] = 3; rarities[107] = 0; chains[107] = 2; // Junior Associate
+        ids[108] = 109; races[108] = 3; rarities[108] = 0; chains[108] = 2; // Escrow Agent
+        ids[109] = 110; races[109] = 3; rarities[109] = 0; chains[109] = 2; // Treasury Bill
+        ids[110] = 111; races[110] = 3; rarities[110] = 0; chains[110] = 2; // Blue Chip
+        ids[111] = 112; races[111] = 3; rarities[111] = 0; chains[111] = 2; // Risk Desk
+        ids[112] = 113; races[112] = 3; rarities[112] = 0; chains[112] = 2; // Floor Trader
+        ids[113] = 114; races[113] = 3; rarities[113] = 0; chains[113] = 2; // Audit
+        ids[114] = 115; races[114] = 3; rarities[114] = 0; chains[114] = 2; // Pension Fund
+        ids[115] = 116; races[115] = 3; rarities[115] = 0; chains[115] = 2; // Holding Company
+        ids[116] = 117; races[116] = 3; rarities[116] = 0; chains[116] = 2; // Hedge Fund
+        ids[117] = 118; races[117] = 3; rarities[117] = 0; chains[117] = 2; // Long Position
+        ids[118] = 119; races[118] = 3; rarities[118] = 1; chains[118] = 2; // Bailout
+        ids[119] = 120; races[119] = 3; rarities[119] = 1; chains[119] = 2; // Underwriter
+        ids[120] = 121; races[120] = 3; rarities[120] = 1; chains[120] = 2; // Dollar-Cost Average
+        ids[121] = 122; races[121] = 3; rarities[121] = 1; chains[121] = 2; // Gold Reserve
+        ids[122] = 123; races[122] = 3; rarities[122] = 1; chains[122] = 2; // Bear Market
+        ids[123] = 124; races[123] = 3; rarities[123] = 1; chains[123] = 2; // Insurance Fund
+        ids[124] = 125; races[124] = 3; rarities[124] = 1; chains[124] = 2; // Quant
+        ids[125] = 126; races[125] = 3; rarities[125] = 1; chains[125] = 2; // Private Equity
+        ids[126] = 127; races[126] = 3; rarities[126] = 1; chains[126] = 2; // Shareholder Meeting
+        ids[127] = 128; races[127] = 3; rarities[127] = 2; chains[127] = 2; // Liquidity Pool
+        ids[128] = 129; races[128] = 3; rarities[128] = 2; chains[128] = 2; // Activist Investor
+        ids[129] = 130; races[129] = 3; rarities[129] = 2; chains[129] = 2; // Dividend King
+        ids[130] = 131; races[130] = 3; rarities[130] = 2; chains[130] = 2; // Central Bank
+        ids[131] = 132; races[131] = 3; rarities[131] = 3; chains[131] = 2; // The Old Money
+        ids[132] = 133; races[132] = 4; rarities[132] = 0; chains[132] = 2; // Soft Rug
+        ids[133] = 134; races[133] = 4; rarities[133] = 0; chains[133] = 2; // Moon Puppy
+        ids[134] = 135; races[134] = 4; rarities[134] = 0; chains[134] = 2; // Gm Gremlin
+        ids[135] = 136; races[135] = 4; rarities[135] = 0; chains[135] = 2; // FOMO
+        ids[136] = 137; races[136] = 4; rarities[136] = 0; chains[136] = 2; // Bag Holder
+        ids[137] = 138; races[137] = 4; rarities[137] = 0; chains[137] = 2; // Airdrop Hunter
+        ids[138] = 139; races[138] = 4; rarities[138] = 0; chains[138] = 2; // Shill Bot
+        ids[139] = 140; races[139] = 4; rarities[139] = 0; chains[139] = 2; // Diamond Hands
+        ids[140] = 141; races[140] = 4; rarities[140] = 0; chains[140] = 2; // Degen Ape
+        ids[141] = 142; races[141] = 4; rarities[141] = 0; chains[141] = 2; // Pump Group
+        ids[142] = 143; races[142] = 4; rarities[142] = 0; chains[142] = 2; // Raid Party
+        ids[143] = 144; races[143] = 4; rarities[143] = 0; chains[143] = 2; // Whale Alert
+        ids[144] = 145; races[144] = 4; rarities[144] = 0; chains[144] = 2; // Meme Lord
+        ids[145] = 146; races[145] = 4; rarities[145] = 0; chains[145] = 2; // Gas War
+        ids[146] = 147; races[146] = 4; rarities[146] = 1; chains[146] = 2; // Jeet
+        ids[147] = 148; races[147] = 4; rarities[147] = 1; chains[147] = 2; // Moonshot
+        ids[148] = 149; races[148] = 4; rarities[148] = 1; chains[148] = 2; // Copium
+        ids[149] = 150; races[149] = 4; rarities[149] = 1; chains[149] = 2; // Pump and Dump
+        ids[150] = 151; races[150] = 4; rarities[150] = 1; chains[150] = 2; // Influencer
+        ids[151] = 152; races[151] = 4; rarities[151] = 1; chains[151] = 2; // Mint Bot
+        ids[152] = 153; races[152] = 4; rarities[152] = 1; chains[152] = 2; // Telegram Pump
+        ids[153] = 154; races[153] = 4; rarities[153] = 1; chains[153] = 2; // Bonk Hammer
+        ids[154] = 155; races[154] = 4; rarities[154] = 1; chains[154] = 2; // Lambo
+        ids[155] = 156; races[155] = 4; rarities[155] = 2; chains[155] = 2; // Leverage x100
+        ids[156] = 157; races[156] = 4; rarities[156] = 2; chains[156] = 2; // Liquidation
+        ids[157] = 158; races[157] = 4; rarities[157] = 2; chains[157] = 2; // Degen Council
+        ids[158] = 159; races[158] = 4; rarities[158] = 2; chains[158] = 2; // Ape Army
+        ids[159] = 160; races[159] = 4; rarities[159] = 3; chains[159] = 2; // The Meme King
+        ids[160] = 161; races[160] = 0; rarities[160] = 0; chains[160] = 0; // Light Node
+        ids[161] = 162; races[161] = 0; rarities[161] = 0; chains[161] = 0; // Block Explorer
+        ids[162] = 163; races[162] = 0; rarities[162] = 0; chains[162] = 0; // Bridge Toll
+        ids[163] = 164; races[163] = 0; rarities[163] = 1; chains[163] = 0; // Flash Loan
+        ids[164] = 165; races[164] = 0; rarities[164] = 1; chains[164] = 0; // Multisig Wallet
+        ids[165] = 166; races[165] = 0; rarities[165] = 2; chains[165] = 0; // Layer Two
+        ids[166] = 167; races[166] = 0; rarities[166] = 2; chains[166] = 0; // Dark Pool
+        ids[167] = 168; races[167] = 0; rarities[167] = 2; chains[167] = 0; // Consensus Attack
     }
 
     /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).
