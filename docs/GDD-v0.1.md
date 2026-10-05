@@ -114,7 +114,7 @@ Set 1 ships 160 cards: 36 per race plus 16 neutral. Every new player and agent g
 | Rare | 24 cards | 1 per pack, upgrades to Legendary about 1 in 10 | ERC-1155 |
 | Legendary | 8 cards (2 per race) | About 1 in 10 packs | ERC-721 with an ERC-6551 wallet |
 
-- **Starter decks:** one per race, free and soulbound, so they cannot be sold or farmed. They are playable in every mode, including ranked.
+- **Starter decks:** one per race, free and soulbound, so they cannot be sold or farmed. They are playable in every mode, including ranked. Each is a fixed list (2 copies of 15 cards: the race's first 7 non-Legendary cards and the 8 core neutrals) that stays the same as Set 1 grows.
 - **Deck codes:** any deck can be shared as a short code (about 30 characters, starting `FF`) that opens in anyone's deck builder, from the Decks page, the builder or a `/decks/new?code=…` link. The code holds the race and card list only, never an owner, and a checksum refuses a mistyped or cut-off code. Opening a code doesn't grant cards: the builder shows which ones you're missing.
 - **Packs:** bought with ETH, USDC or USDG, or with the game token. Pack contents come from VRF randomness.
 

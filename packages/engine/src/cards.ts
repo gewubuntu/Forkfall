@@ -374,13 +374,21 @@ export function validateDeck(race: Race, deck: number[], ranked = false): DeckCh
   return { ok: errors.length === 0, errors, rarityPoints };
 }
 
-/** Free starter deck: 2x every non-legendary core race card + 2x every core neutral card (collab sets are never in starters). */
+/**
+ * The free starter decks: 2 copies of each of these 15 cards. Pinned, not derived from the card list: Set 1 grows
+ * in batches, and a starter deck must not change under players who already claimed it (StarterDecks mints this list).
+ * They are the prototype's race cards (no Legendary) plus the core neutrals; collab sets are never in starters.
+ */
+export const STARTER_CARDS: Readonly<Record<Race, readonly number[]>> = {
+  agents: [1, 2, 3, 4, 5, 6, 7, 33, 34, 35, 36, 37, 38, 39, 40],
+  prophets: [9, 10, 11, 12, 13, 14, 15, 33, 34, 35, 36, 37, 38, 39, 40],
+  brokers: [17, 18, 19, 20, 21, 22, 23, 33, 34, 35, 36, 37, 38, 39, 40],
+  degens: [25, 26, 27, 28, 29, 30, 31, 33, 34, 35, 36, 37, 38, 39, 40],
+};
+
+/** Free starter deck: 2x each of the race's STARTER_CARDS, sorted. */
 export function starterDeck(race: Race): number[] {
-  const out: number[] = [];
-  for (const c of COLLECTIBLE) {
-    if (setOf(c) === 'core' && (c.faction === race || c.faction === 'neutral') && c.rarity !== 'legendary') out.push(c.id, c.id);
-  }
-  return out;
+  return STARTER_CARDS[race].flatMap((id) => [id, id]);
 }
 
 export function factionOf(id: number): Faction { return card(id).faction; }
