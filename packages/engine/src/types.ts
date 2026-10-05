@@ -140,6 +140,8 @@ export type Seat = 0 | 1;
 
 export interface GameState {
   version: 1;
+  /** Card rules version the match is played under (see rules.ts). Absent = the current version. */
+  rules?: number;
   matchId: string;
   seed: string;
   turn: number;
@@ -190,4 +192,6 @@ export interface MatchConfig {
   /** Combined seed from both players' commit-reveal. */
   seed: string;
   players: [PlayerConfig, PlayerConfig];
+  /** Card rules version (see rules.ts). Omitted = the current version; replays pass the one the match was played under. */
+  rules?: number;
 }

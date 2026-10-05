@@ -243,6 +243,19 @@ Card data lives in one place (`packages/engine/src/cards.ts`). `pnpm gen:cards` 
 (like the Poncho set), a live deployment picks them up with
 `cd contracts && forge script script/DefineCards.s.sol --rpc-url base_sepolia --broadcast --private-key $DEPLOYER_PRIVATE_KEY`.
 
+**Rules versions.** A balance change must not change how old matches replay. Each match records the rules version
+it was played under (`GameState.rules`, `MatchLog.rules`), and the engine looks every card up in that version's
+table. Older tables are rebuilt from `packages/engine/src/rules-history.ts`, which stores only what changed. A test
+pins every version's fingerprint, so a change to how a card plays (cost, stats, keywords, effects, targeting) fails
+until you run `pnpm rules:bump` once in that PR and pin the new version as it prints. The script fetches
+`origin/main` and adds the one version after it; re-running it on the same branch redoes that version, and a stale or
+newer base is refused, so a shipped version is never redefined. Text-only edits need no bump; a card's
+collectibility, faction and rarity must stay the same across versions (deck checks read them from the live table).
+A change to the engine's own logic has no table to diff: gate it on `g.rules` by hand. Logs from before versions were
+recorded (v1–v3) are replayed under the version live when the match was created, then the others of that era.
+Bots, quest progress and the web client read the current table. A referee rolled back to a build that doesn't know a
+recorded version can't reload those matches: roll forward instead.
+
 ## Open items from the GDD
 
 These open questions are still open, and the code leaves room for each answer:

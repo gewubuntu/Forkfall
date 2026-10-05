@@ -1,6 +1,6 @@
 import {
   applyAction, combineSeeds, createMatch, eventsFor, forfeit, keccakHex, legalActions, randomHex32,
-  RACES, starterDeck, validateDeck, viewFor,
+  RACES, RULES_VERSION, rulesCandidates, starterDeck, validateDeck, viewFor,
   type Action, type Race, type Seat,
 } from '@forkfall/engine';
 import {
@@ -179,6 +179,7 @@ export class Lobby {
       this.league.charge(m);
       return;
     }
+    m.rules ??= RULES_VERSION; // played, and replayed forever, under the rules of the day it starts
     const r = this.initialState(m);
     m.state = r.state;
     m.events.push(...r.events);
@@ -187,9 +188,10 @@ export class Lobby {
     this.changed(m);
   }
 
-  private initialState(m: Match) {
+  private initialState(m: Match, rules = m.rules ?? RULES_VERSION) {
     const [a, b] = m.players;
     return createMatch({
+      rules,
       matchId: m.id, seed: combineSeeds(m.id, a.seedShare!, b.seedShare!),
       players: [
         { address: a.address, race: a.race, deck: a.deck, deckSalt: a.deckSalt! },
@@ -381,7 +383,7 @@ export class Lobby {
     this.full(m);
     return {
       matchId: m.id, mode: m.mode, season: m.season, createdAt: m.createdAt, endedAt: m.endedAt, endReason: m.state?.endReason,
-      domain: { ...this.domain, chainId: Number(this.domain.chainId) },
+      rules: m.rules, domain: { ...this.domain, chainId: Number(this.domain.chainId) },
       players: m.players.map((p) => ({ address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit, seedShare: p.seedShare!, deckSalt: p.deckSalt!, delegations: p.delegations ?? [] })),
       moves: m.moves, head: m.head, result: m.result!,
     };
@@ -419,7 +421,7 @@ export class Lobby {
     const players = archivedSeats(rec);
     this.matches.set(log.matchId, {
       id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
-      phase: 'ended', players, state: replay.final, events: replay.frames.flatMap((f) => f.events),
+      phase: 'ended', players, rules: replay.rules, state: replay.final, events: replay.frames.flatMap((f) => f.events),
       moves: log.moves, head: log.head, clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
       result: log.result, refereeSig: rec.refereeSig, referee: rec.referee,
       archived: true, usedAt: 0,
@@ -437,7 +439,7 @@ export class Lobby {
     if (!this.ownDomain(log.domain)) return false;
     this.matches.set(log.matchId, {
       id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
-      phase: 'ended', events: [], moves: [], head: log.head,
+      phase: 'ended', rules: log.rules, events: [], moves: [], head: log.head,
       players: log.players.map((p, i): Seatholder => ({
         ...p, deck: [], resultSig: s.resultSigs[i] ?? undefined, bot: s.bots[i] ?? undefined,
       })) as [Seatholder, Seatholder],
@@ -461,6 +463,7 @@ export class Lobby {
     rec.log.players.forEach((p, i) => {
       Object.assign(m.players[i], { deck: p.deck, seedShare: p.seedShare, deckSalt: p.deckSalt, delegations: p.delegations });
     });
+    m.rules = replay.rules;
     m.state = replay.final;
     m.events = replay.frames.flatMap((f) => f.events);
     m.moves = rec.log.moves;
@@ -684,31 +687,12 @@ export class Lobby {
       // A charge that was in flight: its outcome is unknown, so re-check it from tick (never charge twice).
       if (m.league?.state === 'charging') m.league = { ...m.league, retryAt: this.now() };
     } else if (m.phase === 'active' || m.phase === 'ended') {
-      try {
-        const r = this.initialState(m);
-        let state = r.state;
-        const events = [...r.events];
-        let head: Hex = ZERO32;
-        for (const mv of m.moves) {
-          const out = applyAction(state, mv.seat, mv.action);
-          state = out.state;
-          events.push(...out.events);
-          head = nextHead(head, mv.seat, actionHash(mv.action)) as Hex;
-          if (head !== mv.head) return false;
-        }
-        if (head !== m.head) return false;
-        // A finished match kept here because archiving it failed. A forfeit (too many timeouts) ends without a move.
-        if (m.phase === 'ended' && state.status !== 'ended') {
-          const loser = m.clock.timeouts.findIndex((t) => t >= this.maxTimeouts);
-          if (loser < 0) return false;
-          const out = forfeit(state, loser as Seat);
-          state = out.state;
-          events.push(...out.events);
-        }
-        if ((state.status === 'ended') !== (m.phase === 'ended')) return false;
-        m.state = state;
-        m.events = events;
-      } catch { return false; }
+      // Saved before matches recorded their rules version: the first version that replays the moves, by date.
+      const versions = m.rules !== undefined ? [m.rules] : rulesCandidates(m.createdAt);
+      let rebuilt: ReturnType<Lobby['rebuild']> = null;
+      for (const v of versions) if ((rebuilt = this.rebuild(m, v))) break;
+      if (!rebuilt) return false;
+      Object.assign(m, rebuilt);
       if (m.phase === 'active') m.clock.turnStartedAt += downtime;
     } else return false;
     this.matches.set(m.id, m);
@@ -716,6 +700,42 @@ export class Lobby {
     else this.save(m);
     if (m.phase === 'reveal' && m.league?.state !== 'charging') this.maybeStart(m); // both revealed just before going down
     return 'resumed';
+  }
+
+  /**
+   * Replay a saved match's moves under a rules version, checking the hash chain. Null if they don't replay to the
+   * saved head and phase.
+   */
+  private rebuild(m: Match, rules: number): Pick<Match, 'rules' | 'state' | 'events'> | null {
+    try {
+      const r = this.initialState(m, rules);
+      let state = r.state;
+      const events = [...r.events];
+      let head: Hex = ZERO32;
+      for (const mv of m.moves) {
+        const out = applyAction(state, mv.seat, mv.action);
+        state = out.state;
+        events.push(...out.events);
+        head = nextHead(head, mv.seat, actionHash(mv.action)) as Hex;
+        if (head !== mv.head) return null;
+      }
+      if (head !== m.head) return null;
+      // A finished match kept here because archiving it failed. A forfeit (too many timeouts) ends without a move.
+      if (m.phase === 'ended' && state.status !== 'ended') {
+        const loser = m.clock.timeouts.findIndex((t) => t >= this.maxTimeouts);
+        if (loser < 0) return null;
+        const out = forfeit(state, loser as Seat);
+        state = out.state;
+        events.push(...out.events);
+      }
+      if ((state.status === 'ended') !== (m.phase === 'ended')) return null;
+      // A finished match must also reproduce its result (that's what tells rules versions apart).
+      if (m.phase === 'ended' && m.result) {
+        const w = state.winner === 'draw' || state.winner === null ? ZERO_ADDRESS : m.players[state.winner].address;
+        if (w.toLowerCase() !== m.result.winner.toLowerCase() || state.turn !== Number(m.result.turns)) return null;
+      }
+      return { rules, state, events };
+    } catch { return null; }
   }
 
   /** A running-match record that can't be resumed: refund its league entry fees if they were charged. */

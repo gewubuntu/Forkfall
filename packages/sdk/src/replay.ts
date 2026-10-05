@@ -1,5 +1,5 @@
 import {
-  applyAction, combineSeeds, createMatch, forfeit,
+  applyAction, combineSeeds, createMatch, forfeit, isRulesVersion, RULES_VERSION, rulesCandidates,
   type Action, type GameEvent, type GameState, type Race, type Seat,
 } from '@forkfall/engine';
 import { parseSiweMessage } from 'viem/siwe';
@@ -17,6 +17,11 @@ export interface MatchLog {
   createdAt?: number;
   endedAt?: number;
   endReason?: GameState['endReason'];
+  /**
+   * Card rules version the match was played under. Logs from before rules versions were recorded don't have it:
+   * replayLog then finds the version that reproduces the signed result.
+   */
+  rules?: number;
   domain: TypedDataDomain;
   players: {
     address: Address; race: Race; deck: number[]; deckId: Hex; agent: boolean;
@@ -42,13 +47,39 @@ export interface Replay {
   final: GameState;
   checks: { seeds: ReplayCheck; chain: ReplayCheck; outcome: ReplayCheck };
   ok: boolean;
+  /** Rules version the replay used: the log's, or for a log without one, the first that reproduces it. */
+  rules: number;
+  /** The log didn't say which rules it was played under: `rules` was found by replaying. */
+  rulesDetected: boolean;
 }
 
 /**
  * Re-runs a match from its public log with the shared rules engine: the same seed reveals, decks and
  * moves must reproduce the hash-chain head and the result that was signed. Anyone can do this.
+ * The match is replayed under the card rules it was played under (`log.rules`). A log without a version predates
+ * them: it is replayed under each version, starting with the one live when it was created (see rulesCandidates),
+ * and the first that reproduces it is used.
  */
 export function replayLog(log: MatchLog): Replay {
+  if (log.rules !== undefined) {
+    if (isRulesVersion(log.rules)) return replayUnder(log, log.rules, false);
+    // A version this build doesn't know (a newer referee): report it rather than replaying under the wrong rules.
+    const r = replayUnder(log, RULES_VERSION, false);
+    const detail = `the log is played under rules v${log.rules}; this build knows up to v${RULES_VERSION}`;
+    return { ...r, ok: false, checks: { ...r.checks, outcome: { ...r.checks.outcome, ok: false, detail } } };
+  }
+  let first: Replay | undefined;
+  for (const v of rulesCandidates(log.createdAt)) {
+    let r: Replay;
+    try { r = replayUnder(log, v, true); } catch { continue; } // a deck that isn't legal under that version
+    if (r.ok) return r;
+    first ??= r;
+  }
+  // Nothing reproduces it: report the replay under the likeliest version (or the current one's error).
+  return first ?? replayUnder(log, RULES_VERSION, true);
+}
+
+function replayUnder(log: MatchLog, rules: number, rulesDetected: boolean): Replay {
   const [a, b] = log.players;
   const seedsOk = commitSeed(a.seedShare) === a.seedCommit && commitSeed(b.seedShare) === b.seedCommit;
   const r0 = createMatch({
@@ -58,6 +89,7 @@ export function replayLog(log: MatchLog): Replay {
       { address: a.address, race: a.race, deck: a.deck, deckSalt: a.deckSalt },
       { address: b.address, race: b.race, deck: b.deck, deckSalt: b.deckSalt },
     ],
+    rules,
   });
   const frames: ReplayFrame[] = [{ move: null, state: r0.state, events: r0.events }];
   let state = r0.state;
@@ -98,7 +130,7 @@ export function replayLog(log: MatchLog): Replay {
       detail: outcomeOk ? undefined : `replay: ${state.status === 'ended' ? `winner ${winner}, turn ${state.turn}` : 'match did not end'}`,
     },
   };
-  return { frames, final: state, checks, ok: seedsOk && !chainErr && outcomeOk };
+  return { frames, final: state, checks, ok: seedsOk && !chainErr && outcomeOk, rules, rulesDetected };
 }
 
 export interface SignatureReport {

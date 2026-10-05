@@ -40,6 +40,8 @@ export interface Match {
   createdAt: number;
   phase: 'reveal' | 'active' | 'ended' | 'cancelled';
   players: [Seatholder, Seatholder];
+  /** Card rules version, set when the match starts (absent: saved before versions were recorded, or not started). */
+  rules?: number;
   state?: GameState;
   events: GameEvent[];
   moves: LoggedMove[];

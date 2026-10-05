@@ -1,4 +1,5 @@
-import { card, PREDICTION_TIERS, TOKEN_DRONE, validateDeck } from './cards.ts';
+import { PREDICTION_TIERS, TOKEN_DRONE, validateDeck } from './cards.ts';
+import { cardIn, cardsFor, isRulesVersion, RULES_VERSION } from './rules.ts';
 import { keccakHex, randWord, shuffle } from './rng.ts';
 import type {
   Action, CardDef, Effect, GameEvent, GameState, HandCard, MatchConfig, PlayerState, Race,
@@ -24,9 +25,13 @@ export interface ApplyResult { state: GameState; events: GameEvent[] }
 
 // ─── Setup ───────────────────────────────────────────────────────
 export function createMatch(cfg: MatchConfig): ApplyResult {
+  const rules = cfg.rules ?? RULES_VERSION;
+  if (!isRulesVersion(rules)) throw new IllegalAction(`unknown rules version ${rules}`);
   cfg.players.forEach((p, i) => {
     const check = validateDeck(p.race, p.deck, false);
     if (!check.ok) throw new IllegalAction(`player ${i} deck invalid: ${check.errors.join('; ')}`);
+    const missing = p.deck.find((id) => !cardsFor(rules).has(id));
+    if (missing !== undefined) throw new IllegalAction(`player ${i} deck invalid: card ${missing} is not in rules v${rules}`);
   });
   const mk = (i: 0 | 1): PlayerState => {
     const p = cfg.players[i];
@@ -43,6 +48,7 @@ export function createMatch(cfg: MatchConfig): ApplyResult {
   };
   const g: GameState = {
     version: 1,
+    rules,
     matchId: cfg.matchId,
     seed: cfg.seed,
     turn: 0,
@@ -78,7 +84,7 @@ export function createScriptedMatch(cfg: {
     fatigue: 0, discount: 0, dividendsThisTurn: 0, stats: emptyStats(),
   });
   const g: GameState = {
-    version: 1, matchId: cfg.matchId, seed: keccakHex('scripted', cfg.matchId), turn: 0, active: cfg.first,
+    version: 1, rules: RULES_VERSION, matchId: cfg.matchId, seed: keccakHex('scripted', cfg.matchId), turn: 0, active: cfg.first,
     players: [mk(0), mk(1)], rngCounter: 0, nextUid: 1, status: 'active', winner: null,
   };
   const ev: GameEvent[] = [];
@@ -92,6 +98,9 @@ export function createScriptedMatch(cfg: {
 function emptyStats() { return { cardsPlayed: 0, unitsSummoned: 0, bigUnitsPlayed: 0, attackers: [] as number[] }; }
 
 export const other = (s: Seat): Seat => (s === 0 ? 1 : 0);
+
+/** A card as it plays in this match (its rules version; a state without one plays the current rules). */
+function cardOf(g: GameState, id: number) { return cardIn(g.rules ?? RULES_VERSION, id); }
 
 function rand(g: GameState): number { return randWord(g.seed, 0x10000 + g.rngCounter++); }
 
@@ -129,7 +138,7 @@ export function effectiveAttack(g: GameState, seat: Seat, u: UnitState): number 
 }
 
 export function playCost(g: GameState, seat: Seat, h: HandCard, ape = false): number {
-  const c = card(h.cardId);
+  const c = cardOf(g, h.cardId);
   return Math.max(0, c.cost - g.players[seat].discount - (ape ? APE_DISCOUNT : 0));
 }
 
@@ -156,7 +165,7 @@ export function legalActions(g: GameState, seat: Seat): Action[] {
   const me = g.players[seat];
   const out: Action[] = [];
   for (const h of me.hand) {
-    const c = card(h.cardId);
+    const c = cardOf(g, h.cardId);
     for (const ape of c.keywords.includes('ape') ? [false, true] : [false]) {
       if (playCost(g, seat, h, ape) > me.gas) continue;
       if (c.type === 'unit' && me.board.length >= BOARD_SLOTS) continue;
@@ -213,7 +222,7 @@ function startTurn(g: GameState, seat: Seat, ev: GameEvent[]) {
     if (!held) continue;
     u.attack += 1; u.health += 1; u.maxHealth += 1;
     ev.push({ t: 'hold', seat, uid: u.uid });
-    const div = card(u.cardId).dividend;
+    const div = cardOf(g, u.cardId).dividend;
     if (div && me.dividendsThisTurn < DIVIDEND_CAP) {
       me.dividendsThisTurn++;
       runEffects(g, seat, div, { self: u.uid }, ev);
@@ -229,7 +238,7 @@ function startTurn(g: GameState, seat: Seat, ev: GameEvent[]) {
   }
 
   for (const u of me.board.slice()) {
-    const sot = card(u.cardId).startOfTurn;
+    const sot = cardOf(g, u.cardId).startOfTurn;
     if (sot && me.board.includes(u)) runEffects(g, seat, sot, { self: u.uid }, ev);
   }
   cleanup(g, ev);
@@ -267,14 +276,14 @@ function resolvePrediction(g: GameState, seat: Seat, uid: number, cardId: number
   const me = g.players[seat];
   const hit = predictionHit(g, other(seat), cond);
   ev.push({ t: 'predictionResolved', seat, uid, cardId, condition: cond, hit });
-  const payoff = card(cardId).prediction!;
+  const payoff = cardOf(g, cardId).prediction!;
   if (hit) {
     const bonus = me.board.some((u) => u.keywords.includes('predictionBonus')) ? 1 : 0;
     const tier = PREDICTION_TIERS[cond] + bonus;
     if (payoff.damagePerTier) damageTreasury(g, other(seat), payoff.damagePerTier * tier, ev);
     for (let i = 0; i < (payoff.drawPerTier ?? 0) * tier; i++) draw(g, seat, ev);
     for (const u of me.board.slice()) {
-      const hitFx = card(u.cardId).onPredictionHit;
+      const hitFx = cardOf(g, u.cardId).onPredictionHit;
       if (hitFx) runEffects(g, seat, hitFx, { self: u.uid }, ev);
     }
   } else if (!me.board.some((u) => u.keywords.includes('noBackfire'))) {
@@ -307,7 +316,7 @@ function play(g: GameState, seat: Seat, a: Extract<Action, { type: 'play' }>, ev
   const idx = me.hand.findIndex((h) => h.uid === a.uid);
   if (idx < 0) throw new IllegalAction('card not in hand');
   const h = me.hand[idx];
-  const c = card(h.cardId);
+  const c = cardOf(g, h.cardId);
   const ape = !!a.ape;
   if (ape && !c.keywords.includes('ape')) throw new IllegalAction(`${c.name} has no Ape`);
   const cost = playCost(g, seat, h, ape);
@@ -378,7 +387,7 @@ function apeDownside(g: GameState, seat: Seat, self: number | undefined, ev: Gam
 function summon(g: GameState, seat: Seat, cardId: number, ev: GameEvent[], uid?: number): number | undefined {
   const me = g.players[seat];
   if (me.board.length >= BOARD_SLOTS) return undefined;
-  const c = card(cardId);
+  const c = cardOf(g, cardId);
   const u: UnitState = {
     uid: uid ?? g.nextUid++,
     cardId,
@@ -397,7 +406,7 @@ function summon(g: GameState, seat: Seat, cardId: number, ev: GameEvent[], uid?:
   // Firewall: each enemy firewall source pings the new unit.
   const enemy = g.players[other(seat)];
   const firewalls = enemy.board.filter((x) => x.keywords.includes('firewall')).length
-    + enemy.assets.filter((x) => card(x.cardId).keywords.includes('firewall')).length;
+    + enemy.assets.filter((x) => cardOf(g, x.cardId).keywords.includes('firewall')).length;
   for (let i = 0; i < firewalls; i++) damageUnit(g, seat, u, 1, ev);
   return u.uid;
 }
@@ -449,7 +458,7 @@ function cleanup(g: GameState, ev: GameEvent[]) {
       changed = true;
       p.board = p.board.filter((u) => u.health > 0);
       for (const u of dead) {
-        const c = card(u.cardId);
+        const c = cardOf(g, u.cardId);
         if (c.collectible) p.graveyard.push(u.cardId);
         ev.push({ t: 'death', seat, uid: u.uid, cardId: u.cardId });
         if (c.onDeath) runEffects(g, seat, c.onDeath, {}, ev);

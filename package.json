@@ -12,6 +12,7 @@
     "test:e2e": "playwright test -c apps/web/playwright.config.ts",
     "sim": "tsx packages/engine/scripts/simulate.ts",
     "gen:cards": "tsx packages/engine/scripts/gen-solidity.ts",
+    "rules:bump": "tsx packages/engine/scripts/rules-bump.ts",
     "server": "sh scripts/with-env.sh tsx apps/server/src/main.ts",
     "server:offchain": "OFFCHAIN=1 sh scripts/with-env.sh tsx apps/server/src/main.ts",
     "server:local": "CHAIN_ID=31337 RPC_URL=http://127.0.0.1:8545 HOUSE_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 tsx apps/server/src/main.ts",
