@@ -133,19 +133,9 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
     setSending(true);
     setError(null);
     try {
-      let next = await client.move(matchId, snap, a).catch(async (e) => {
-        // A concede is legal at any point, even in the opponent's turn, so if the board moved on since this view
-        // (the bot played meanwhile), sign it again against the latest position instead of failing with "stale seq".
-        if (a.type !== 'concede' || !String((e as Error).message).includes('stale seq')) throw e;
-        return null;
-      });
-      for (let tries = 0; !next && tries < 3; tries++) {
-        next = await client.move(matchId, await client.state(matchId), a).catch((e) => {
-          if (!String((e as Error).message).includes('stale seq')) throw e;
-          return null;
-        });
-      }
-      if (!next) throw new Error('The board kept changing: try conceding again.');
+      // A concede is legal at any point, even in the opponent's turn: if the bot moves meanwhile, the client signs it
+      // again against the latest position until it lands (three quick tries used to run out during a long bot turn).
+      const next = a.type === 'concede' ? await client.concede(matchId, { snap }) : await client.move(matchId, snap, a);
       setSnap(next);
     } catch (e) {
       if (isNetworkError(e)) { setOffline(true); setError('Lost the connection to the referee: that move may not have gone through. The board updates once it’s back.'); }
