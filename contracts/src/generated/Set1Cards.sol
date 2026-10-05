@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (48 collectible cards: core prototype set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (57 collectible cards: core prototype set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 48;
+    uint256 internal constant COUNT = 57;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](48);
-        races = new uint8[](48);
-        rarities = new uint8[](48);
-        chains = new uint8[](48);
+        ids = new uint16[](57);
+        races = new uint8[](57);
+        rarities = new uint8[](57);
+        chains = new uint8[](57);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -64,6 +64,15 @@ library Set1Cards {
         ids[45] = 46; races[45] = 0; rarities[45] = 1; chains[45] = 1; // Poncho Posse
         ids[46] = 47; races[46] = 0; rarities[46] = 2; chains[46] = 1; // Mariachi Cat
         ids[47] = 48; races[47] = 0; rarities[47] = 3; chains[47] = 1; // Poncho, Cutest Cat on Base
+        ids[48] = 49; races[48] = 2; rarities[48] = 0; chains[48] = 1; // Fortune Cookie
+        ids[49] = 50; races[49] = 2; rarities[49] = 0; chains[49] = 1; // Street Oracle
+        ids[50] = 51; races[50] = 2; rarities[50] = 0; chains[50] = 1; // Second Sight
+        ids[51] = 52; races[51] = 2; rarities[51] = 0; chains[51] = 1; // Hedge Prophet
+        ids[52] = 53; races[52] = 2; rarities[52] = 0; chains[52] = 1; // Augur
+        ids[53] = 54; races[53] = 2; rarities[53] = 1; chains[53] = 1; // Contrarian
+        ids[54] = 55; races[54] = 2; rarities[54] = 1; chains[54] = 1; // Seers' Circle
+        ids[55] = 56; races[55] = 2; rarities[55] = 1; chains[55] = 1; // Self-Fulfilling Prophecy
+        ids[56] = 57; races[56] = 2; rarities[56] = 2; chains[56] = 1; // The Long Bet
     }
 
     /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).

@@ -277,6 +277,61 @@ export const CARDS: CardDef[] = [
     onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 2 }], startOfTurn: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
   },
 
+  // ─── Set 1 · Prophets, batch 1 ─────────────────────────────────
+  {
+    id: 49, slug: 'fortune-cookie', name: 'Fortune Cookie', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Foresee. Correct: draw 1 card per Odds tier. Backfire: take 1.',
+    prediction: { drawPerTier: 1, backfire: 1 },
+  },
+  {
+    id: 50, slug: 'street-oracle', name: 'Street Oracle', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 1, attack: 1, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, deal 1 damage to the enemy Treasury.',
+    onPredictionHit: [{ k: 'damage', to: 'enemyTreasury', n: 1 }],
+  },
+  {
+    id: 51, slug: 'second-sight', name: 'Second Sight', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1, plus 1 more if you have an active prediction.',
+    onPlay: [{ k: 'draw', n: 1 }, { k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 52, slug: 'hedge-prophet', name: 'Hedge Prophet', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. When this dies, draw 1.', onDeath: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 53, slug: 'augur', name: 'Augur', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 4, health: 5, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit', targetOptional: true,
+    text: 'Deal 1 damage to an enemy unit, or 3 if you have an active prediction.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 1, nIfPrediction: 3 }],
+  },
+  {
+    id: 54, slug: 'contrarian', name: 'Contrarian', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'Deal 3 damage to an enemy unit. If you have an active prediction, draw 1.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 3 }, { k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 55, slug: 'seers-circle', name: "Seers' Circle", faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 4, health: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, give all friendly units +1/+1.',
+    onPredictionHit: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+  {
+    id: 56, slug: 'self-fulfilling-prophecy', name: 'Self-Fulfilling Prophecy', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 2 damage and draw 1 card per Odds tier. Backfire: take 2.',
+    prediction: { damagePerTier: 2, drawPerTier: 1, backfire: 2 },
+  },
+  {
+    id: 57, slug: 'the-long-bet', name: 'The Long Bet', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 6, attack: 5, health: 7, rarity: 'rare', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, deal 3 damage to the enemy Treasury.',
+    onPredictionHit: [{ k: 'damage', to: 'enemyTreasury', n: 3 }],
+  },
+
   // ─── Tokens (not collectible) ──────────────────────────────────
   {
     id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',
