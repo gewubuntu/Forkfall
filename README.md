@@ -243,6 +243,15 @@ Card data lives in one place (`packages/engine/src/cards.ts`). `pnpm gen:cards` 
 (like the Poncho set), a live deployment picks them up with
 `cd contracts && forge script script/DefineCards.s.sol --rpc-url base_sepolia --broadcast --private-key $DEPLOYER_PRIVATE_KEY`.
 
+**Rules versions.** A balance change must not change how old matches replay. Each match records the rules version
+it was played under (`GameState.rules`, `MatchLog.rules`), and the engine looks every card up in that version's
+table. Older tables are rebuilt from `packages/engine/src/rules-history.ts`, which stores only what changed. A test
+pins the live table's fingerprint, so a change to how a card plays (cost, stats, keywords, effects, targeting) fails
+until you run `pnpm rules:bump` once in that PR. It freezes the change as a new version against `origin/main`;
+re-running it on the same branch updates that version. Text-only edits need no bump. A change to the engine's own
+logic has no table to diff: gate it on `g.rules` by hand. Bots and the web client show and evaluate cards by the
+current table.
+
 ## Open items from the GDD
 
 These open questions are still open, and the code leaves room for each answer:

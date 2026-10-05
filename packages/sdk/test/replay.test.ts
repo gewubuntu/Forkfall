@@ -1,3 +1,4 @@
+import { RULES_SINCE, RULES_VERSION } from '@forkfall/engine';
 import { type Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -151,5 +152,46 @@ describe('verifyMoveSignatures', () => {
 
     const no: MessageVerifier = { verifyMessage: async () => false };
     expect((await verifyMoveSignatures(log, { client: no })).failed).toHaveLength(seat0);
+  });
+});
+
+describe('replayLog across rules versions', () => {
+  // A brokers vs degens match the greedy bots play under the first Set 1 rules (v1); fixed keys, so the same every
+  // run. Under v3 or v4 its moves no longer reproduce the signed result.
+  const v1 = { rules: 1, seed: 'rules-v1-1', races: ['brokers', 'degens'] as ['brokers', 'degens'] };
+  let m: SignedMatch;
+  beforeAll(async () => { m = await signedMatch(v1); });
+
+  it('replays a match under the rules version its log records, not the current one', () => {
+    expect(m.log.rules).toBe(1);
+    const r = replayLog(m.log);
+    expect(r).toMatchObject({ ok: true, rules: 1, rulesDetected: false });
+    expect(r.final.rules).toBe(1);
+    expect(replayLog({ ...m.log, rules: RULES_VERSION }).ok).toBe(false); // what every old log did before versions
+  });
+
+  it('finds the version of a log from before versions were recorded, starting from when it was created', async () => {
+    const { log } = await signedMatch({ ...v1, unrecorded: true });
+    expect(log.rules).toBeUndefined();
+    expect(replayLog(log)).toMatchObject({ ok: true, rules: 1, rulesDetected: true });
+    // Created while v4 was live (a referee that hadn't deployed it yet): newer versions don't reproduce it, so the
+    // search goes back. v2 only changed cards these decks never draw, so it is the same game as v1.
+    const late = replayLog({ ...log, createdAt: RULES_SINCE[RULES_VERSION] + 1000 });
+    expect(late).toMatchObject({ ok: true, rulesDetected: true });
+    expect(late.rules).toBeLessThanOrEqual(2);
+    expect(late.frames.map((f) => ({ ...f.state, rules: 0 }))).toEqual(replayLog(m.log).frames.map((f) => ({ ...f.state, rules: 0 })));
+  });
+
+  it('fails a log recorded under a version this build doesn’t know, saying so', () => {
+    const r = replayLog({ ...m.log, rules: RULES_VERSION + 1 });
+    expect(r.ok).toBe(false);
+    expect(r.checks.outcome.detail).toMatch(new RegExp(`rules v${RULES_VERSION + 1}; this build knows up to v${RULES_VERSION}`));
+  });
+
+  it('fails an unrecorded log no version reproduces', async () => {
+    const log = clone(m.log);
+    delete log.rules;
+    log.result.turns += 1;
+    expect(replayLog(log)).toMatchObject({ ok: false, rulesDetected: true });
   });
 });

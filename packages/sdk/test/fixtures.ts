@@ -1,12 +1,10 @@
-import { applyAction, combineSeeds, createMatch, greedyBot, starterDeck, type PlayerConfig, type Race, type Seat } from '@forkfall/engine';
+import { applyAction, combineSeeds, createMatch, greedyBot, keccakHex, starterDeck, type PlayerConfig, type Race, type Seat } from '@forkfall/engine';
 import type { Hex, LocalAccount } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import {
   actionHash, buildSessionMessage, commitSeed, forkfallDomain, MOVE_TYPES, nextHead, ZERO32,
   type Delegation, type MatchLog,
 } from '../src/index.ts';
-
-const hex32 = () => generatePrivateKey() as Hex; // any 32 random bytes
 
 export interface SignedMatch {
   log: MatchLog;
@@ -18,12 +16,16 @@ export interface SignedMatch {
 /**
  * A full match between two greedy bots, every move signed the way the referee stores it: a hash chain over
  * (seat, actionHash) and an EIP-712 Move signature per move. Seat 0 can sign through a SIWE-delegated session
- * key instead of its wallet (`session: true`).
+ * key instead of its wallet (`session: true`). `rules` plays it under an older card rules version; the log records the
+ * version unless `unrecorded` (a log from before versions were recorded). `seed` makes every key and share
+ * deterministic, so the same match is played every run.
  */
-export async function signedMatch(opts: { races?: [Race, Race]; session?: boolean } = {}): Promise<SignedMatch> {
+export async function signedMatch(opts: { races?: [Race, Race]; session?: boolean; rules?: number; unrecorded?: boolean; seed?: string; createdAt?: number } = {}): Promise<SignedMatch> {
+  let n = 0;
+  const hex32 = () => (opts.seed ? keccakHex(opts.seed, String(n++)) : generatePrivateKey()) as Hex;
   const races = opts.races ?? ['brokers', 'degens'];
-  const wallets: [LocalAccount, LocalAccount] = [privateKeyToAccount(generatePrivateKey()), privateKeyToAccount(generatePrivateKey())];
-  const domain = forkfallDomain(84532, privateKeyToAccount(generatePrivateKey()).address);
+  const wallets: [LocalAccount, LocalAccount] = [privateKeyToAccount(hex32()), privateKeyToAccount(hex32())];
+  const domain = forkfallDomain(84532, privateKeyToAccount(hex32()).address);
   const matchId = hex32();
   const shares = [hex32(), hex32()] as const;
   const salts = [hex32(), hex32()] as const;
@@ -32,7 +34,7 @@ export async function signedMatch(opts: { races?: [Race, Race]; session?: boolea
   const delegations: [Delegation[], Delegation[]] = [[], []];
   const signers: [LocalAccount, LocalAccount] = [...wallets];
   if (opts.session) {
-    const key = privateKeyToAccount(generatePrivateKey());
+    const key = privateKeyToAccount(hex32());
     const message = buildSessionMessage({
       domain: 'forkfall.test', uri: 'https://forkfall.test', wallet: wallets[0].address, sessionKey: key.address,
       chainId: 84532, nonce: 'abcdef12345678', expiresAt: new Date(Date.now() + 3600_000),
@@ -44,6 +46,7 @@ export async function signedMatch(opts: { races?: [Race, Race]; session?: boolea
   let state = createMatch({
     matchId, seed: combineSeeds(matchId, shares[0], shares[1]),
     players: [0, 1].map((i): PlayerConfig => ({ address: wallets[i].address, race: races[i], deck: decks[i], deckSalt: salts[i] })) as [PlayerConfig, PlayerConfig],
+    rules: opts.rules,
   }).state;
   const bot = greedyBot();
   const moves: MatchLog['moves'] = [];
@@ -61,7 +64,8 @@ export async function signedMatch(opts: { races?: [Race, Race]; session?: boolea
   }
   const winner = state.winner === 0 || state.winner === 1 ? wallets[state.winner].address : ('0x' + '0'.repeat(40)) as Hex;
   const log: MatchLog = {
-    matchId, mode: 'casual', season: 1, createdAt: 1, endedAt: 2, endReason: state.endReason,
+    matchId, mode: 'casual', season: 1, createdAt: opts.createdAt ?? 1, endedAt: 2, endReason: state.endReason,
+    ...(opts.unrecorded ? {} : { rules: state.rules }),
     domain: { ...domain, chainId: 84532 },
     players: [0, 1].map((i) => ({
       address: wallets[i].address, race: races[i], deck: decks[i], deckId: ZERO32, agent: false,
