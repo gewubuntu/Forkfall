@@ -591,6 +591,151 @@ export const CARDS: CardDef[] = [
     onPredictionHit: [{ k: 'buff', to: 'allFriendly', atk: 2, hp: 2 }],
   },
 
+  // ─── Set 1 · Brokers ───────────────────────────────────────────
+  {
+    id: 105, slug: 'day-trader', name: 'Day Trader', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: '',
+  },
+  {
+    id: 106, slug: 'piggy-bank', name: 'Piggy Bank', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 0, health: 2, rarity: 'common', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 107, slug: 'stop-loss', name: 'Stop Loss', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'Deal 2 damage to an enemy unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
+  },
+  {
+    id: 108, slug: 'junior-associate', name: 'Junior Associate', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold.',
+  },
+  {
+    id: 109, slug: 'escrow-agent', name: 'Escrow Agent', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 1, health: 3, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. Portfolio: holds 1 Bond (2/2) that drops to the board when this dies.', portfolio: [TOKEN_BOND],
+  },
+  {
+    id: 110, slug: 'treasury-bill', name: 'Treasury Bill', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Draw 1. Give a friendly unit +1/+1 and Hold.',
+    onPlay: [{ k: 'draw', n: 1 }, { k: 'buff', to: 'chosen', atk: 1, hp: 1, addKeywords: ['hold'] }],
+  },
+  {
+    id: 111, slug: 'blue-chip', name: 'Blue Chip', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold.',
+  },
+  {
+    id: 112, slug: 'risk-desk', name: 'Risk Desk', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold.',
+  },
+  {
+    id: 113, slug: 'floor-trader', name: 'Floor Trader', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 114, slug: 'audit', name: 'Audit', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 3 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 3 }],
+  },
+  {
+    id: 115, slug: 'pension-fund', name: 'Pension Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 2, health: 5, rarity: 'common', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Dividend: draw 1.', dividend: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 116, slug: 'holding-company', name: 'Holding Company', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Portfolio: holds 1 Bond.', portfolio: [TOKEN_BOND],
+  },
+  {
+    id: 117, slug: 'hedge-fund', name: 'Hedge Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 4, health: 5, rarity: 'common', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 118, slug: 'long-position', name: 'Long Position', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'common', keywords: [], collectible: true,
+    text: 'Give all friendly units +1/+1 and Hold.',
+    onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1, addKeywords: ['hold'] }],
+  },
+  {
+    id: 119, slug: 'bailout', name: 'Bailout', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 2.', onPlay: [{ k: 'draw', n: 2 }],
+  },
+  {
+    id: 120, slug: 'underwriter', name: 'Underwriter', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 3, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    text: 'Hold. When this dies, draw 2.', onDeath: [{ k: 'draw', n: 2 }],
+  },
+  {
+    id: 121, slug: 'dollar-cost-average', name: 'Dollar-Cost Average', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Give all friendly units +1/+1.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+  {
+    id: 122, slug: 'gold-reserve', name: 'Gold Reserve', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 0, health: 6, rarity: 'uncommon', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold.',
+  },
+  {
+    id: 123, slug: 'bear-market', name: 'Bear Market', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deal 2 damage to all enemy units.', onPlay: [{ k: 'damage', to: 'allEnemyUnits', n: 2 }],
+  },
+  {
+    id: 124, slug: 'insurance-fund', name: 'Insurance Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 1, health: 7, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 125, slug: 'quant', name: 'Quant', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 3, health: 4, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    dividend: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }],
+  },
+  {
+    id: 126, slug: 'private-equity', name: 'Private Equity', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 3, health: 5, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    text: 'Hold. Portfolio: holds 3 Bonds.', portfolio: [TOKEN_BOND, TOKEN_BOND, TOKEN_BOND],
+  },
+  {
+    id: 127, slug: 'shareholder-meeting', name: 'Shareholder Meeting', faction: 'brokers', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 3.', onPlay: [{ k: 'draw', n: 3 }],
+  },
+  {
+    id: 128, slug: 'liquidity-pool', name: 'Liquidity Pool', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 2, health: 6, rarity: 'rare', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: give all friendly units +1/+1.', dividend: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+  {
+    id: 129, slug: 'activist-investor', name: 'Activist Investor', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 5, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true, target: 'anyUnit',
+    text: 'Rush. Deal 2 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
+  },
+  {
+    id: 130, slug: 'dividend-king', name: 'Dividend King', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 6, attack: 4, health: 6, rarity: 'rare', keywords: ['hold'], collectible: true,
+    text: 'Hold. Dividend: draw 1 and gain 1 Gas.', dividend: [{ k: 'draw', n: 1 }, { k: 'gainGas', n: 1 }],
+  },
+  {
+    id: 131, slug: 'central-bank', name: 'Central Bank', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 7, attack: 5, health: 8, rarity: 'rare', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Portfolio: holds 2 Bonds.', portfolio: [TOKEN_BOND, TOKEN_BOND],
+  },
+  {
+    id: 132, slug: 'the-old-money', name: 'The Old Money', faction: 'brokers', chain: 'robinhood', type: 'unit',
+    cost: 7, attack: 5, health: 7, rarity: 'legendary', keywords: ['guard', 'hold'], collectible: true,
+    text: 'Guard. Hold. Dividend: give all friendly units +1/+1.', dividend: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+
   // ─── Tokens (not collectible) ──────────────────────────────────
   {
     id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',

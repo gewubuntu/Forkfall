@@ -13,7 +13,7 @@ import {TestnetOnly} from "../src/TestnetOnly.sol";
 contract CardsTest is Fixture {
     function test_set1Defined() public view {
         assertEq(d.cards.allCards().length, Set1Cards.COUNT); // every card the engine defines (core + Poncho collab)
-        assertEq(d.cards.cardsOfRarity(3).length, 7); // Set 1 Legendaries so far, plus Poncho
+        assertEq(d.cards.cardsOfRarity(3).length, 8); // Set 1 Legendaries so far, plus Poncho
         CardRegistry.CardInfo memory c = d.cards.cardInfo(8); // The Launcher
         assertEq(c.race, 1);
         assertEq(c.rarity, 3);

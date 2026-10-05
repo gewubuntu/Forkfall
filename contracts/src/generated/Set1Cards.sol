@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (104 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (132 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 104;
+    uint256 internal constant COUNT = 132;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](104);
-        races = new uint8[](104);
-        rarities = new uint8[](104);
-        chains = new uint8[](104);
+        ids = new uint16[](132);
+        races = new uint8[](132);
+        rarities = new uint8[](132);
+        chains = new uint8[](132);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -120,6 +120,34 @@ library Set1Cards {
         ids[101] = 102; races[101] = 2; rarities[101] = 2; chains[101] = 1; // High Priestess
         ids[102] = 103; races[102] = 2; rarities[102] = 2; chains[102] = 1; // Grand Augury
         ids[103] = 104; races[103] = 2; rarities[103] = 3; chains[103] = 1; // The Last Prophet
+        ids[104] = 105; races[104] = 3; rarities[104] = 0; chains[104] = 2; // Day Trader
+        ids[105] = 106; races[105] = 3; rarities[105] = 0; chains[105] = 2; // Piggy Bank
+        ids[106] = 107; races[106] = 3; rarities[106] = 0; chains[106] = 2; // Stop Loss
+        ids[107] = 108; races[107] = 3; rarities[107] = 0; chains[107] = 2; // Junior Associate
+        ids[108] = 109; races[108] = 3; rarities[108] = 0; chains[108] = 2; // Escrow Agent
+        ids[109] = 110; races[109] = 3; rarities[109] = 0; chains[109] = 2; // Treasury Bill
+        ids[110] = 111; races[110] = 3; rarities[110] = 0; chains[110] = 2; // Blue Chip
+        ids[111] = 112; races[111] = 3; rarities[111] = 0; chains[111] = 2; // Risk Desk
+        ids[112] = 113; races[112] = 3; rarities[112] = 0; chains[112] = 2; // Floor Trader
+        ids[113] = 114; races[113] = 3; rarities[113] = 0; chains[113] = 2; // Audit
+        ids[114] = 115; races[114] = 3; rarities[114] = 0; chains[114] = 2; // Pension Fund
+        ids[115] = 116; races[115] = 3; rarities[115] = 0; chains[115] = 2; // Holding Company
+        ids[116] = 117; races[116] = 3; rarities[116] = 0; chains[116] = 2; // Hedge Fund
+        ids[117] = 118; races[117] = 3; rarities[117] = 0; chains[117] = 2; // Long Position
+        ids[118] = 119; races[118] = 3; rarities[118] = 1; chains[118] = 2; // Bailout
+        ids[119] = 120; races[119] = 3; rarities[119] = 1; chains[119] = 2; // Underwriter
+        ids[120] = 121; races[120] = 3; rarities[120] = 1; chains[120] = 2; // Dollar-Cost Average
+        ids[121] = 122; races[121] = 3; rarities[121] = 1; chains[121] = 2; // Gold Reserve
+        ids[122] = 123; races[122] = 3; rarities[122] = 1; chains[122] = 2; // Bear Market
+        ids[123] = 124; races[123] = 3; rarities[123] = 1; chains[123] = 2; // Insurance Fund
+        ids[124] = 125; races[124] = 3; rarities[124] = 1; chains[124] = 2; // Quant
+        ids[125] = 126; races[125] = 3; rarities[125] = 1; chains[125] = 2; // Private Equity
+        ids[126] = 127; races[126] = 3; rarities[126] = 1; chains[126] = 2; // Shareholder Meeting
+        ids[127] = 128; races[127] = 3; rarities[127] = 2; chains[127] = 2; // Liquidity Pool
+        ids[128] = 129; races[128] = 3; rarities[128] = 2; chains[128] = 2; // Activist Investor
+        ids[129] = 130; races[129] = 3; rarities[129] = 2; chains[129] = 2; // Dividend King
+        ids[130] = 131; races[130] = 3; rarities[130] = 2; chains[130] = 2; // Central Bank
+        ids[131] = 132; races[131] = 3; rarities[131] = 3; chains[131] = 2; // The Old Money
     }
 
     /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).
