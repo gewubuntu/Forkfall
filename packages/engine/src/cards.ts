@@ -333,6 +333,158 @@ export const CARDS: CardDef[] = [
     onPredictionHit: [{ k: 'damage', to: 'enemyTreasury', n: 3 }],
   },
 
+  // ─── Set 1 · Agents ────────────────────────────────────────────
+  {
+    id: 58, slug: 'script-kiddie', name: 'Script Kiddie', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 1.', onPlay: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 59, slug: 'seed-phrase', name: 'Seed Phrase', faction: 'agents', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1. Compute 1: your next card costs 1 less.', onPlay: [{ k: 'draw', n: 1 }, { k: 'compute', n: 1 }],
+  },
+  {
+    id: 60, slug: 'ping', name: 'Ping', faction: 'agents', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 1 damage to a unit. Automate: at the start of your next turn, deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 1 }, { k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }] }],
+  },
+  {
+    id: 61, slug: 'upgrade', name: 'Upgrade', faction: 'agents', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Give a friendly unit +2/+1.', onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 1 }],
+  },
+  {
+    id: 62, slug: 'faucet-bot', name: 'Faucet Bot', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 2, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, Deploy 1.',
+    onPlay: [{ k: 'automate', effects: [{ k: 'deploy', n: 1 }] }],
+  },
+  {
+    id: 63, slug: 'gas-optimizer', name: 'Gas Optimizer', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Compute 1: your next card costs 1 less.', onPlay: [{ k: 'compute', n: 1 }],
+  },
+  {
+    id: 64, slug: 'relay-node', name: 'Relay Node', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 2, attack: 1, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. When this dies, Deploy 1.', onDeath: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 65, slug: 'batch-job', name: 'Batch Job', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 2.', onPlay: [{ k: 'deploy', n: 2 }],
+  },
+  {
+    id: 66, slug: 'keeper-bot', name: 'Keeper Bot', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
+  },
+  {
+    id: 67, slug: 'load-balancer', name: 'Load Balancer', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. Deploy 1.', onPlay: [{ k: 'deploy', n: 1 }],
+  },
+  {
+    id: 68, slug: 'indexer', name: 'Indexer', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 1. Compute 1: your next card costs 1 less.', onPlay: [{ k: 'deploy', n: 1 }, { k: 'compute', n: 1 }],
+  },
+  {
+    id: 69, slug: 'drone-swarm', name: 'Drone Swarm', faction: 'agents', chain: 'base', type: 'action',
+    cost: 4, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 3.', onPlay: [{ k: 'deploy', n: 3 }],
+  },
+  {
+    id: 70, slug: 'assembly-line', name: 'Assembly Line', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 3, health: 5, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deploy 2. Automate: at the start of your next turn, Deploy 1.',
+    onPlay: [{ k: 'deploy', n: 2 }, { k: 'automate', effects: [{ k: 'deploy', n: 1 }] }],
+  },
+  {
+    id: 71, slug: 'server-rack', name: 'Server Rack', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 72, slug: 'autopilot', name: 'Autopilot', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, draw 2.',
+    onPlay: [{ k: 'automate', effects: [{ k: 'draw', n: 2 }] }],
+  },
+  {
+    id: 73, slug: 'overclock', name: 'Overclock', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Give a friendly unit +2/+2. It gains Rush this turn.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 2 }, { k: 'grantRush', to: 'chosen' }],
+  },
+  {
+    id: 74, slug: 'hot-swap', name: 'Hot Swap', faction: 'agents', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 1. Compute 2: your next card costs 2 less.', onPlay: [{ k: 'draw', n: 1 }, { k: 'compute', n: 2 }],
+  },
+  {
+    id: 75, slug: 'kill-switch', name: 'Kill Switch', faction: 'agents', chain: 'base', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 3 damage to a unit. Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 3 }, { k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
+  },
+  {
+    id: 76, slug: 'honeypot', name: 'Honeypot', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 5, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
+    text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 77, slug: 'botnet', name: 'Botnet', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Give all friendly units +1 attack.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 0 }],
+  },
+  {
+    id: 78, slug: 'cron-daemon', name: 'Cron Daemon', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'At the start of your turn, deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    startOfTurn: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }],
+  },
+  {
+    id: 79, slug: 'fork-bomb', name: 'Fork Bomb', faction: 'agents', chain: 'base', type: 'action',
+    cost: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deploy 4.', onPlay: [{ k: 'deploy', n: 4 }],
+  },
+  {
+    id: 80, slug: 'sentinel-array', name: 'Sentinel Array', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 5, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
+    text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 81, slug: 'smart-contract', name: 'Smart Contract', faction: 'agents', chain: 'base', type: 'action',
+    cost: 3, rarity: 'rare', keywords: [], collectible: true,
+    text: 'Automate: at the start of your next turn, give all friendly units +1/+1, then Deploy 1.',
+    onPlay: [{ k: 'automate', effects: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }, { k: 'deploy', n: 1 }] }],
+  },
+  {
+    id: 82, slug: 'arbitrage-engine', name: 'Arbitrage Engine', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 3, health: 5, rarity: 'rare', keywords: [], collectible: true,
+    text: 'At the start of your turn, draw 1.', startOfTurn: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 83, slug: 'watchdog', name: 'Watchdog', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 5, attack: 5, health: 5, rarity: 'rare', keywords: ['guard', 'firewall'], collectible: true,
+    text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
+  },
+  {
+    id: 84, slug: 'agent-swarm', name: 'Agent Swarm', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 7, attack: 4, health: 4, rarity: 'rare', keywords: [], collectible: true,
+    text: 'Deploy 4.', onPlay: [{ k: 'deploy', n: 4 }],
+  },
+  {
+    id: 85, slug: 'the-swarm-mind', name: 'The Swarm Mind', faction: 'agents', chain: 'base', type: 'unit',
+    cost: 7, attack: 5, health: 5, rarity: 'legendary', keywords: [], collectible: true,
+    text: 'At the start of your turn, Deploy 1, then give all friendly units +1 attack.',
+    startOfTurn: [{ k: 'deploy', n: 1 }, { k: 'buff', to: 'allFriendly', atk: 1, hp: 0 }],
+  },
+
   // ─── Tokens (not collectible) ──────────────────────────────────
   {
     id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',

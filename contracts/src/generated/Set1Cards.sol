@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (57 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (85 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 57;
+    uint256 internal constant COUNT = 85;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](57);
-        races = new uint8[](57);
-        rarities = new uint8[](57);
-        chains = new uint8[](57);
+        ids = new uint16[](85);
+        races = new uint8[](85);
+        rarities = new uint8[](85);
+        chains = new uint8[](85);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -73,6 +73,34 @@ library Set1Cards {
         ids[54] = 55; races[54] = 2; rarities[54] = 1; chains[54] = 1; // Seers' Circle
         ids[55] = 56; races[55] = 2; rarities[55] = 1; chains[55] = 1; // Self-Fulfilling Prophecy
         ids[56] = 57; races[56] = 2; rarities[56] = 2; chains[56] = 1; // The Long Bet
+        ids[57] = 58; races[57] = 1; rarities[57] = 0; chains[57] = 1; // Script Kiddie
+        ids[58] = 59; races[58] = 1; rarities[58] = 0; chains[58] = 1; // Seed Phrase
+        ids[59] = 60; races[59] = 1; rarities[59] = 0; chains[59] = 1; // Ping
+        ids[60] = 61; races[60] = 1; rarities[60] = 0; chains[60] = 1; // Upgrade
+        ids[61] = 62; races[61] = 1; rarities[61] = 0; chains[61] = 1; // Faucet Bot
+        ids[62] = 63; races[62] = 1; rarities[62] = 0; chains[62] = 1; // Gas Optimizer
+        ids[63] = 64; races[63] = 1; rarities[63] = 0; chains[63] = 1; // Relay Node
+        ids[64] = 65; races[64] = 1; rarities[64] = 0; chains[64] = 1; // Batch Job
+        ids[65] = 66; races[65] = 1; rarities[65] = 0; chains[65] = 1; // Keeper Bot
+        ids[66] = 67; races[66] = 1; rarities[66] = 0; chains[66] = 1; // Load Balancer
+        ids[67] = 68; races[67] = 1; rarities[67] = 0; chains[67] = 1; // Indexer
+        ids[68] = 69; races[68] = 1; rarities[68] = 0; chains[68] = 1; // Drone Swarm
+        ids[69] = 70; races[69] = 1; rarities[69] = 0; chains[69] = 1; // Assembly Line
+        ids[70] = 71; races[70] = 1; rarities[70] = 0; chains[70] = 1; // Server Rack
+        ids[71] = 72; races[71] = 1; rarities[71] = 1; chains[71] = 1; // Autopilot
+        ids[72] = 73; races[72] = 1; rarities[72] = 1; chains[72] = 1; // Overclock
+        ids[73] = 74; races[73] = 1; rarities[73] = 1; chains[73] = 1; // Hot Swap
+        ids[74] = 75; races[74] = 1; rarities[74] = 1; chains[74] = 1; // Kill Switch
+        ids[75] = 76; races[75] = 1; rarities[75] = 1; chains[75] = 1; // Honeypot
+        ids[76] = 77; races[76] = 1; rarities[76] = 1; chains[76] = 1; // Botnet
+        ids[77] = 78; races[77] = 1; rarities[77] = 1; chains[77] = 1; // Cron Daemon
+        ids[78] = 79; races[78] = 1; rarities[78] = 1; chains[78] = 1; // Fork Bomb
+        ids[79] = 80; races[79] = 1; rarities[79] = 1; chains[79] = 1; // Sentinel Array
+        ids[80] = 81; races[80] = 1; rarities[80] = 2; chains[80] = 1; // Smart Contract
+        ids[81] = 82; races[81] = 1; rarities[81] = 2; chains[81] = 1; // Arbitrage Engine
+        ids[82] = 83; races[82] = 1; rarities[82] = 2; chains[82] = 1; // Watchdog
+        ids[83] = 84; races[83] = 1; rarities[83] = 2; chains[83] = 1; // Agent Swarm
+        ids[84] = 85; races[84] = 1; rarities[84] = 3; chains[84] = 1; // The Swarm Mind
     }
 
     /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).
