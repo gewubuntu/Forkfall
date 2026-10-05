@@ -736,6 +736,158 @@ export const CARDS: CardDef[] = [
     text: 'Guard. Hold. Dividend: give all friendly units +1/+1.', dividend: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
   },
 
+  // ─── Set 1 · Degens ────────────────────────────────────────────
+  {
+    id: 133, slug: 'soft-rug', name: 'Soft Rug', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 0, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Sacrifice a friendly unit. Deal its attack to the enemy Treasury.', onPlay: [{ k: 'rug', bonus: 0 }],
+  },
+  {
+    id: 134, slug: 'moon-puppy', name: 'Moon Puppy', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: ['swarm'], collectible: true,
+    text: 'Swarm. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
+  },
+  {
+    id: 135, slug: 'gm-gremlin', name: 'Gm Gremlin', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: ['swarm'], collectible: true,
+    text: 'Swarm: +1 attack for each other friendly Swarm unit.',
+  },
+  {
+    id: 136, slug: 'fomo', name: 'FOMO', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Give a friendly unit +2 attack. It gains Rush this turn.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 0 }, { k: 'grantRush', to: 'chosen' }],
+  },
+  {
+    id: 137, slug: 'bag-holder', name: 'Bag Holder', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 1, health: 3, rarity: 'common', keywords: ['swarm', 'guard'], collectible: true,
+    text: 'Swarm. Guard.',
+  },
+  {
+    id: 138, slug: 'airdrop-hunter', name: 'Airdrop Hunter', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 2, health: 1, rarity: 'common', keywords: ['rush', 'swarm'], collectible: true,
+    text: 'Rush. Swarm.',
+  },
+  {
+    id: 139, slug: 'shill-bot', name: 'Shill Bot', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 1, health: 2, rarity: 'common', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Deal 1 damage to a random enemy unit (or the enemy Treasury).',
+    onPlay: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 1 }],
+  },
+  {
+    id: 140, slug: 'diamond-hands', name: 'Diamond Hands', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 5, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 141, slug: 'degen-ape', name: 'Degen Ape', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
+  },
+  {
+    id: 142, slug: 'pump-group', name: 'Pump Group', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'Pump all friendly units.', onPlay: [{ k: 'pump', to: 'allFriendly' }],
+  },
+  {
+    id: 143, slug: 'raid-party', name: 'Raid Party', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deal 1 damage to all enemy units. Give all friendly Swarm units +1 attack.',
+    onPlay: [{ k: 'damage', to: 'allEnemyUnits', n: 1 }, { k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 0 }],
+  },
+  {
+    id: 144, slug: 'whale-alert', name: 'Whale Alert', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 4, health: 3, rarity: 'common', keywords: ['rush'], collectible: true,
+    text: 'Rush.',
+  },
+  {
+    id: 145, slug: 'meme-lord', name: 'Meme Lord', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 4, attack: 3, health: 3, rarity: 'common', keywords: ['swarm'], collectible: true,
+    text: 'Swarm. Give all friendly Swarm units +1/+1.', onPlay: [{ k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 1 }],
+  },
+  {
+    id: 146, slug: 'gas-war', name: 'Gas War', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'common', keywords: [], collectible: true,
+    text: 'Deal 3 damage to the enemy Treasury. Draw 1.',
+    onPlay: [{ k: 'damage', to: 'enemyTreasury', n: 3 }, { k: 'draw', n: 1 }],
+  },
+  {
+    id: 147, slug: 'jeet', name: 'Jeet', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 2, attack: 3, health: 1, rarity: 'uncommon', keywords: ['rush'], collectible: true,
+    text: 'Rush. When this dies, deal 1 damage to the enemy Treasury.',
+    onDeath: [{ k: 'damage', to: 'enemyTreasury', n: 1 }],
+  },
+  {
+    id: 148, slug: 'moonshot', name: 'Moonshot', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: ['ape'], collectible: true, target: 'friendlyUnit',
+    text: 'Ape. Give a friendly unit +3 attack. It gains Rush this turn.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 3, hp: 0 }, { k: 'grantRush', to: 'chosen' }],
+  },
+  {
+    id: 149, slug: 'copium', name: 'Copium', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Give all friendly units +0/+2.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 0, hp: 2 }],
+  },
+  {
+    id: 150, slug: 'pump-and-dump', name: 'Pump and Dump', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true, target: 'friendlyUnit',
+    text: 'Pump a friendly unit, then sacrifice it. Deal its attack +1 to the enemy Treasury.',
+    onPlay: [{ k: 'pump', to: 'chosen' }, { k: 'rug', bonus: 1 }],
+  },
+  {
+    id: 151, slug: 'influencer', name: 'Influencer', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'uncommon', keywords: ['swarm', 'guard'], collectible: true,
+    text: 'Swarm. Guard.',
+  },
+  {
+    id: 152, slug: 'mint-bot', name: 'Mint Bot', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'uncommon', keywords: ['swarm', 'ape'], collectible: true,
+    text: 'Swarm. Ape. Pump all friendly Swarm units.', onPlay: [{ k: 'pump', to: 'allFriendlySwarm' }],
+  },
+  {
+    id: 153, slug: 'telegram-pump', name: 'Telegram Pump', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Pump all friendly units. They gain Rush this turn.',
+    onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'grantRush', to: 'allFriendly' }],
+  },
+  {
+    id: 154, slug: 'bonk-hammer', name: 'Bonk Hammer', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 5, health: 4, rarity: 'uncommon', keywords: ['rush', 'ape'], collectible: true,
+    text: 'Rush. Ape. Pump: gain a random stat boost.', onPlay: [{ k: 'pump', to: 'self' }],
+  },
+  {
+    id: 155, slug: 'lambo', name: 'Lambo', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 6, attack: 6, health: 4, rarity: 'uncommon', keywords: ['rush'], collectible: true,
+    text: 'Rush.',
+  },
+  {
+    id: 156, slug: 'leverage-x100', name: 'Leverage x100', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 3, rarity: 'rare', keywords: ['ape'], collectible: true,
+    text: 'Ape. Double the attack of all friendly units.', onPlay: [{ k: 'doubleAttack', to: 'allFriendly' }],
+  },
+  {
+    id: 157, slug: 'liquidation', name: 'Liquidation', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 4, rarity: 'rare', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 4 damage to a unit and 2 damage to the enemy Treasury.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 4 }, { k: 'damage', to: 'enemyTreasury', n: 2 }],
+  },
+  {
+    id: 158, slug: 'degen-council', name: 'Degen Council', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 5, attack: 4, health: 4, rarity: 'rare', keywords: ['swarm'], collectible: true,
+    text: 'Swarm. Give all friendly Swarm units +2/+1.', onPlay: [{ k: 'buff', to: 'allFriendlySwarm', atk: 2, hp: 1 }],
+  },
+  {
+    id: 159, slug: 'ape-army', name: 'Ape Army', faction: 'degens', chain: 'robinhood', type: 'action',
+    cost: 5, rarity: 'rare', keywords: ['ape'], collectible: true,
+    text: 'Ape. Pump all friendly units twice.', onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'pump', to: 'allFriendly' }],
+  },
+  {
+    id: 160, slug: 'the-meme-king', name: 'The Meme King', faction: 'degens', chain: 'robinhood', type: 'unit',
+    cost: 7, attack: 5, health: 5, rarity: 'legendary', keywords: ['rush', 'swarm'], collectible: true,
+    text: 'Rush. Swarm. Pump all friendly units, then give all friendly Swarm units +1/+1.',
+    onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 1 }],
+  },
+
   // ─── Tokens (not collectible) ──────────────────────────────────
   {
     id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',

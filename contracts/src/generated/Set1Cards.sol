@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (132 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (160 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 132;
+    uint256 internal constant COUNT = 160;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](132);
-        races = new uint8[](132);
-        rarities = new uint8[](132);
-        chains = new uint8[](132);
+        ids = new uint16[](160);
+        races = new uint8[](160);
+        rarities = new uint8[](160);
+        chains = new uint8[](160);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -148,6 +148,34 @@ library Set1Cards {
         ids[129] = 130; races[129] = 3; rarities[129] = 2; chains[129] = 2; // Dividend King
         ids[130] = 131; races[130] = 3; rarities[130] = 2; chains[130] = 2; // Central Bank
         ids[131] = 132; races[131] = 3; rarities[131] = 3; chains[131] = 2; // The Old Money
+        ids[132] = 133; races[132] = 4; rarities[132] = 0; chains[132] = 2; // Soft Rug
+        ids[133] = 134; races[133] = 4; rarities[133] = 0; chains[133] = 2; // Moon Puppy
+        ids[134] = 135; races[134] = 4; rarities[134] = 0; chains[134] = 2; // Gm Gremlin
+        ids[135] = 136; races[135] = 4; rarities[135] = 0; chains[135] = 2; // FOMO
+        ids[136] = 137; races[136] = 4; rarities[136] = 0; chains[136] = 2; // Bag Holder
+        ids[137] = 138; races[137] = 4; rarities[137] = 0; chains[137] = 2; // Airdrop Hunter
+        ids[138] = 139; races[138] = 4; rarities[138] = 0; chains[138] = 2; // Shill Bot
+        ids[139] = 140; races[139] = 4; rarities[139] = 0; chains[139] = 2; // Diamond Hands
+        ids[140] = 141; races[140] = 4; rarities[140] = 0; chains[140] = 2; // Degen Ape
+        ids[141] = 142; races[141] = 4; rarities[141] = 0; chains[141] = 2; // Pump Group
+        ids[142] = 143; races[142] = 4; rarities[142] = 0; chains[142] = 2; // Raid Party
+        ids[143] = 144; races[143] = 4; rarities[143] = 0; chains[143] = 2; // Whale Alert
+        ids[144] = 145; races[144] = 4; rarities[144] = 0; chains[144] = 2; // Meme Lord
+        ids[145] = 146; races[145] = 4; rarities[145] = 0; chains[145] = 2; // Gas War
+        ids[146] = 147; races[146] = 4; rarities[146] = 1; chains[146] = 2; // Jeet
+        ids[147] = 148; races[147] = 4; rarities[147] = 1; chains[147] = 2; // Moonshot
+        ids[148] = 149; races[148] = 4; rarities[148] = 1; chains[148] = 2; // Copium
+        ids[149] = 150; races[149] = 4; rarities[149] = 1; chains[149] = 2; // Pump and Dump
+        ids[150] = 151; races[150] = 4; rarities[150] = 1; chains[150] = 2; // Influencer
+        ids[151] = 152; races[151] = 4; rarities[151] = 1; chains[151] = 2; // Mint Bot
+        ids[152] = 153; races[152] = 4; rarities[152] = 1; chains[152] = 2; // Telegram Pump
+        ids[153] = 154; races[153] = 4; rarities[153] = 1; chains[153] = 2; // Bonk Hammer
+        ids[154] = 155; races[154] = 4; rarities[154] = 1; chains[154] = 2; // Lambo
+        ids[155] = 156; races[155] = 4; rarities[155] = 2; chains[155] = 2; // Leverage x100
+        ids[156] = 157; races[156] = 4; rarities[156] = 2; chains[156] = 2; // Liquidation
+        ids[157] = 158; races[157] = 4; rarities[157] = 2; chains[157] = 2; // Degen Council
+        ids[158] = 159; races[158] = 4; rarities[158] = 2; chains[158] = 2; // Ape Army
+        ids[159] = 160; races[159] = 4; rarities[159] = 3; chains[159] = 2; // The Meme King
     }
 
     /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).
