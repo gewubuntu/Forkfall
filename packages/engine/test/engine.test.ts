@@ -293,11 +293,16 @@ describe('Set 1 · Prophets batch 1', () => {
     g.players[op].board = [];
     const empty = legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid);
     expect(empty).toEqual([{ type: 'play', uid }]); // no enemy unit: it's just a 4/5
-    const target = unit(g, op, 34, { health: 5, maxHealth: 5 });
+    const target = unit(g, op, 34);
     const plays = legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid);
     expect(plays).toEqual([{ type: 'play', uid, target }]); // the damage can't be skipped
     expect(() => applyAction(g, me, { type: 'play', uid })).toThrow(IllegalAction);
     const after = applyAction(g, me, { type: 'play', uid, target }).state;
-    expect(after.players[op].board.find((u) => u.uid === target)!.health).toBe(4); // 1 damage without a prediction
+    expect(after.players[op].board.find((u) => u.uid === target)!.health).toBe(3); // no prediction: no damage
+    // With an active prediction it deals 2.
+    const seen = structuredClone(g);
+    seen.players[me].predictions.push({ uid: seen.nextUid++, cardId: 9, condition: 'attacks', resolvesOnTurn: seen.turn + 1 });
+    const hit = applyAction(seen, me, { type: 'play', uid, target }).state;
+    expect(hit.players[op].board.find((u) => u.uid === target)!.health).toBe(1);
   });
 });
