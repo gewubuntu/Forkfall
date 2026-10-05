@@ -717,8 +717,8 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 129, slug: 'activist-investor', name: 'Activist Investor', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 5, attack: 5, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true, target: 'anyUnit',
-    text: 'Rush. Deal 2 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
+    cost: 5, attack: 5, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true, target: 'enemyUnit',
+    text: 'Rush. Deal 2 damage to an enemy unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
   },
   {
     id: 130, slug: 'dividend-king', name: 'Dividend King', faction: 'brokers', chain: 'robinhood', type: 'unit',

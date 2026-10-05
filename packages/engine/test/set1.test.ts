@@ -175,7 +175,7 @@ describe('Set 1 card effects', () => {
     expect(g.players[me].board.map((u) => [u.cardId, u.attack])).toEqual([[85, 6], [TOKEN_DRONE, 2]]);
   });
 
-  it('Soft Rug and Pump and Dump sacrifice the unit for its attack (+1 for Pump and Dump)', () => {
+  it('Soft Rug and Pump and Dump sacrifice the unit for its attack (+1 for Pump and Dump, after the Pump)', () => {
     let g = fresh();
     const me = g.active;
     const o = opp(g);
@@ -183,13 +183,33 @@ describe('Set 1 card effects', () => {
     g = play(g, { uid: hand(g, 133), target: u });
     expect(g.players[me].board).toHaveLength(0);
     expect(g.players[o].treasury).toBe(22);
-    g = fresh();
-    const v = unit(g, me, 34);
-    g = play(g, { uid: hand(g, 150), target: v });
-    expect(g.players[me].board).toHaveLength(0);
-    const dealt = 25 - g.players[o].treasury;
-    expect(dealt).toBeGreaterThanOrEqual(4); // 3 attack + 0–3 from Pump + 1
-    expect(dealt).toBeLessThanOrEqual(7);
+    // Pump and Dump: the Treasury takes the attack the unit had after its Pump, plus 1.
+    const attacks = new Set<number>();
+    for (const seed of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
+      const h = fresh();
+      h.seed = keccakHex('pump-and-dump', seed);
+      const v = unit(h, h.active, 34);
+      const r = applyAction(h, h.active, { type: 'play', uid: hand(h, 150), target: v });
+      const pumped = r.events.find((e) => e.t === 'stat' && e.uid === v) as { attack: number } | undefined;
+      expect(pumped).toBeDefined();
+      expect(r.state.players[me].board).toHaveLength(0);
+      expect(25 - r.state.players[o].treasury).toBe(pumped!.attack + 1);
+      attacks.add(pumped!.attack);
+    }
+    expect(Math.max(...attacks)).toBeGreaterThan(3); // some seeds pump attack, so a Rug reading the old attack would fail
+  });
+
+  it('Activist Investor only targets enemy units, and is a plain 5/4 Rush when there are none', () => {
+    const g = fresh();
+    const me = g.active;
+    const mine = unit(g, me, 34);
+    const uid = hand(g, 129);
+    expect(legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid)).toEqual([{ type: 'play', uid }]);
+    expect(() => play(g, { uid, target: mine })).toThrow();
+    const after = play(g, { uid });
+    expect(after.players[me].board.find((x) => x.uid === mine)!.health).toBe(3);
+    const e = unit(g, opp(g), 34);
+    expect(play(g, { uid, target: e }).players[opp(g)].board[0].health).toBe(1);
   });
 
   it('Leverage x100 doubles every friendly unit; Telegram Pump gives them all Rush', () => {

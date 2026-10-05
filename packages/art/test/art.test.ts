@@ -28,6 +28,14 @@ describe('sprites follow the pixel style guide', () => {
     const keys = new Set(CARDS.map((c) => spritePixels(c.id).join()));
     expect(keys.size).toBe(CARDS.length);
   });
+  it('cards after the first Prophets batch differ from every earlier sprite by at least 48 pixels', () => {
+    const diff = (a: (string | null)[], b: (string | null)[]) => a.filter((x, i) => x !== b[i]).length;
+    const legacy = (id: number) => id <= 57 || id >= 1000;
+    for (const c of CARDS.filter((x) => !legacy(x.id))) {
+      const px = spritePixels(c.id);
+      for (const o of CARDS.filter((x) => legacy(x.id) || x.id < c.id)) expect(diff(px, spritePixels(o.id)), `${c.name} vs ${o.name}`).toBeGreaterThanOrEqual(48);
+    }
+  });
   it('adding cards never changes the art of earlier ones', () => {
     // Every sprite as of the first Prophets batch (ids 1–57 and the 3 tokens), pinned.
     const before = CARDS.filter((c) => c.id <= 57 || !c.collectible).map((c) => c.id).sort((a, b) => a - b);
