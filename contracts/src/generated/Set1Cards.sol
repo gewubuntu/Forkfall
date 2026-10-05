@@ -3,7 +3,7 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (57 collectible cards: core prototype set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (57 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
     uint256 internal constant COUNT = 57;
 

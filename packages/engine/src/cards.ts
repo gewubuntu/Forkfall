@@ -6,8 +6,9 @@ export const TOKEN_BOND = 1001;
 export const TOKEN_TACO = 1002;
 
 /**
- * Core prototype set: 40 test cards (8 per race + 8 neutral), the Poncho collab set (ids 41–48, neutral,
- * from Base) and 3 tokens. Collectible ids map 1:1 to ERC-1155 token ids in CardRegistry.
+ * The core set: the 40 prototype cards (ids 1–40: 8 per race + 8 neutral) and Set 1 cards added in batches
+ * (ids 49+), the Poncho collab set (ids 41–48, neutral, from Base) and 3 tokens. Collectible ids map 1:1 to
+ * ERC-1155 token ids in CardRegistry.
  * All numbers are playtest starting values.
  */
 export const CARDS: CardDef[] = [
@@ -303,7 +304,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 53, slug: 'augur', name: 'Augur', faction: 'prophets', chain: 'base', type: 'unit',
-    cost: 4, attack: 4, health: 5, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit', targetOptional: true,
+    cost: 4, attack: 4, health: 5, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit',
     text: 'Deal 1 damage to an enemy unit, or 3 if you have an active prediction.',
     onPlay: [{ k: 'damage', to: 'chosen', n: 1, nIfPrediction: 3 }],
   },
