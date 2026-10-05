@@ -441,7 +441,7 @@ export class ForkfallClient {
       } catch (e) {
         if (!String((e as Error).message).includes('stale seq') || Date.now() > deadline) throw e;
       }
-      await new Promise((r) => setTimeout(r, opts.retryMs ?? 150));
+      await new Promise((r) => setTimeout(r, opts.retryMs ?? 250)); // two requests a try: stays under 10/s
       snap = await this.state(matchId);
     }
   }

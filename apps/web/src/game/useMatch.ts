@@ -139,6 +139,7 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
       setSnap(next);
     } catch (e) {
       if (isNetworkError(e)) { setOffline(true); setError('Lost the connection to the referee: that move may not have gone through. The board updates once it’s back.'); }
+      else if (a.type === 'concede' && String((e as Error).message).includes('stale seq')) setError('The board kept changing: try conceding again.');
       else setError(String((e as Error).message).replace(/^.*?→ \d+: /, ''));
       // Stale view (e.g. a timeout ended the turn): resync.
       sendingRef.current = false;
