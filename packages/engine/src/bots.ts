@@ -14,19 +14,32 @@ export function randomBot(rng: () => number = Math.random): Bot {
   };
 }
 
-/** Estimated chance the opponent satisfies `cond` on their next turn (public info only). */
+/**
+ * Estimated chance the opponent satisfies `cond` on their next turn (public info only). Fitted to what greedy bots
+ * actually do (about 20,000 opponent turns over pool decks), by the opponent's race, board, next turn's Gas and hand.
+ */
 export function predictionOdds(g: GameState, seat: Seat, cond: PredictionCondition): number {
   const op = g.players[other(seat)];
   const units = op.board.length;
-  const nextGas = Math.min(10, op.maxGas + 1);
-  const passive = op.race === 'brokers';
-  const handCount = op.hand.length;
+  const gas = Math.min(10, op.maxGas + 1);
+  const hand = op.hand.length;
   switch (cond) {
-    case 'attacks': return units ? (passive ? 0.55 : 0.9) : 0.3;
-    case 'attacks2': return units >= 2 ? (passive ? 0.35 : 0.7) : units === 1 ? 0.25 : 0.05;
-    case 'playsBigUnit': return nextGas >= 4 && handCount >= 2 ? 0.45 : 0.03;
-    case 'plays3Cards': return handCount >= 4 ? (op.race === 'degens' ? 0.45 : 0.2) : 0.05;
-    case 'summons3': return op.race === 'agents' ? (nextGas >= 4 ? 0.5 : 0.25) : op.race === 'degens' ? 0.25 : 0.05;
+    case 'attacks':
+      if (!units) return op.race === 'degens' ? 0.24 : 0.07; // Rush
+      return op.race === 'brokers' && units === 1 ? 0.72 : 0.87;
+    case 'attacks2':
+      if (units >= 2) return op.race === 'brokers' ? 0.75 : 0.83;
+      return units === 1 ? (op.race === 'degens' ? 0.2 : 0.07) : 0;
+    case 'playsBigUnit':
+      if (gas < 4) return op.race === 'degens' ? 0.08 : 0.02;
+      return Math.min(0.9, (hand <= 1 ? 0.38 : hand <= 3 ? 0.52 : hand <= 5 ? 0.6 : 0.75) + (op.race === 'brokers' ? 0.1 : 0));
+    case 'plays3Cards':
+      if (gas < 4) return 0.01;
+      if (gas < 6) return 0.04;
+      return op.race === 'prophets' ? 0.28 : 0.17;
+    case 'summons3':
+      if (op.race === 'agents') return gas < 4 ? 0.05 : 0.2;
+      return gas >= 6 ? (op.race === 'degens' ? 0.03 : 0.07) : 0.01;
   }
 }
 
