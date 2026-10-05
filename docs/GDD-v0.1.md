@@ -262,15 +262,15 @@ A licensed collab with **Poncho**, the cutest cat on Base (@ponchobase): a cat i
 | 42 | Taco Tuesday | Common | 2 | action | Add 2 Tacos to your hand. |
 | 43 | Salsa Slinger | Common | 3 | 2/2 | Deal 2 damage to a random enemy unit (or the enemy Treasury). |
 | 44 | Sombrero Sentry | Common | 3 | 2/4 | Guard. When this dies, add a Taco to your hand. |
-| 45 | Taco Truck | Uncommon | 4 | 2/5 | At the start of your turn, add a Taco to your hand. |
-| 46 | Poncho Posse | Uncommon | 4 | 3/3 | Give all friendly units +1/+1. |
-| 47 | Mariachi Cat | Rare | 5 | 4/4 | Rush. Add 2 Tacos to your hand. |
-| 48 | Poncho, Cutest Cat on Base | Legendary | 7 | 5/6 | Guard. Add 2 Tacos to your hand. At the start of your turn, give all friendly units +1/+1. |
+| 45 | Taco Truck | Uncommon | 5 | 2/4 | At the start of your turn, add a Taco to your hand. |
+| 46 | Poncho Posse | Uncommon | 5 | 3/2 | Give all friendly units +1/+1. |
+| 47 | Mariachi Cat | Rare | 5 | 4/3 | Rush. Add 2 Tacos to your hand. |
+| 48 | Poncho, Cutest Cat on Base | Legendary | 8 | 5/6 | Guard. Add 2 Tacos to your hand. At the start of your turn, give all friendly units +1/+1. |
 | – | Taco (token) | – | 1 | action | Give a friendly unit +1/+1. |
 
 - **Mechanic:** Tacos are cheap, flexible buffs that go to your hand (hidden from the opponent). A full hand burns them.
 - **Not in starters:** the set comes from Set 1 boosters (same pool, by rarity) and crafting, so starter decks and the core balance gate are unchanged.
-- **Balance target:** a side-grade, not a must-play. Swapping any one Poncho card for its core counterpart lands at 46–53% for greedy bots; a deck with all eight Poncho cards wins about 55–57% against plain starters (`pnpm sim 200 poncho`, gate ≤ 58%).
+- **Balance target:** a side-grade, not a must-play. A deck with all eight Poncho cards wins about 51% against plain starter decks (49–53% by race; `pnpm sim 500 poncho`, gate ≤ 58%).
 - **Art:** licensed Poncho Pals style, not pixel art: flat vector busts with thick navy outlines, a wide head with cheek tufts, white muzzle and forehead stripe, big glossy eyes, an ω smile, blush, a paw holding an item and a geometric poncho with a PB badge, on flat colour backgrounds. Every card is its own pal built from traits (fur: ginger, grey, tan; hats: sombrero, headband; eyes: happy, sunglasses, laser; items: taco, salsa, mic, cash), plus a taco, a taco truck and a posse scene. Rendered as SVG by `packages/art/src/poncho.ts`. Final pictures come from an image model trained on the Poncho character: drop `<cardId>.jpg` (512×512) into `packages/art/assets/poncho/` and run `pnpm art:poncho-images`; a card's generated picture replaces its vector pal everywhere.
 - **Existing deployments** add the cards with `forge script script/DefineCards.s.sol` (no redeploy).
 

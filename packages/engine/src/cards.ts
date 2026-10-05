@@ -36,7 +36,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 5, slug: 'swarm-deployer', name: 'Swarm Deployer', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 4, attack: 3, health: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    cost: 4, attack: 3, health: 2, rarity: 'uncommon', keywords: [], collectible: true,
     text: 'Deploy 2.', onPlay: [{ k: 'deploy', n: 2 }],
   },
   {
@@ -46,7 +46,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 7, slug: 'mainframe', name: 'Mainframe', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 6, attack: 5, health: 6, rarity: 'rare', keywords: [], collectible: true,
+    cost: 7, attack: 5, health: 6, rarity: 'rare', keywords: [], collectible: true,
     text: 'At the start of your turn, Deploy 1.', startOfTurn: [{ k: 'deploy', n: 1 }],
   },
   {
@@ -65,7 +65,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 10, slug: 'seers-acolyte', name: "Seer's Acolyte", faction: 'prophets', chain: 'base', type: 'unit',
-    cost: 2, attack: 3, health: 3, rarity: 'common', keywords: [], collectible: true,
+    cost: 2, attack: 3, health: 4, rarity: 'common', keywords: [], collectible: true,
     text: 'When one of your predictions comes true, gain +1/+1.',
     onPredictionHit: [{ k: 'buff', to: 'self', atk: 1, hp: 1 }],
   },
@@ -77,7 +77,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 12, slug: 'oracle-guard', name: 'Oracle Guard', faction: 'prophets', chain: 'base', type: 'unit',
-    cost: 3, attack: 3, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    cost: 3, attack: 3, health: 5, rarity: 'common', keywords: ['guard'], collectible: true,
     text: 'Guard. If you have an active prediction, draw 1.', onPlay: [{ k: 'drawIfPrediction', n: 1 }],
   },
   {
@@ -88,7 +88,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 14, slug: 'market-seer', name: 'Market Seer', faction: 'prophets', chain: 'base', type: 'unit',
-    cost: 5, attack: 4, health: 6, rarity: 'uncommon', keywords: ['predictionBonus'], collectible: true,
+    cost: 5, attack: 4, health: 7, rarity: 'uncommon', keywords: ['predictionBonus'], collectible: true,
     text: 'Your predictions resolve one Odds tier higher.',
   },
   {
@@ -106,39 +106,39 @@ export const CARDS: CardDef[] = [
   // ─── Brokers (Robinhood Chain) ─────────────────────────────────
   {
     id: 17, slug: 'intern', name: 'Intern', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: ['hold'], collectible: true,
+    cost: 1, attack: 2, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
     text: 'Hold.',
   },
   {
     id: 18, slug: 'bond-desk', name: 'Bond Desk', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 2, attack: 0, health: 3, rarity: 'common', keywords: ['hold', 'guard'], collectible: true,
+    cost: 2, attack: 0, health: 5, rarity: 'common', keywords: ['hold', 'guard'], collectible: true,
     text: 'Hold. Guard.',
   },
   {
     id: 19, slug: 'analyst', name: 'Analyst', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 3, attack: 2, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
+    cost: 3, attack: 2, health: 3, rarity: 'common', keywords: ['hold'], collectible: true,
     text: 'Hold. Dividend: draw 1.', dividend: [{ k: 'draw', n: 1 }],
   },
   {
     id: 20, slug: 'index-fund', name: 'Index Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 4, attack: 3, health: 4, rarity: 'common', keywords: ['hold'], collectible: true,
+    cost: 4, attack: 3, health: 5, rarity: 'common', keywords: ['hold'], collectible: true,
     text: 'Hold. Dividend: gain 1 Gas.', dividend: [{ k: 'gainGas', n: 1 }],
   },
   {
     id: 21, slug: 'portfolio-manager', name: 'Portfolio Manager', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 4, attack: 2, health: 3, rarity: 'uncommon', keywords: ['hold'], collectible: true,
+    cost: 4, attack: 2, health: 4, rarity: 'uncommon', keywords: ['hold'], collectible: true,
     text: 'Hold. Portfolio: holds 2 Bonds (2/2) that drop to the board when this dies.',
     portfolio: [TOKEN_BOND, TOKEN_BOND],
   },
   {
     id: 22, slug: 'compound-interest', name: 'Compound Interest', faction: 'brokers', chain: 'robinhood', type: 'action',
     cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'friendlyUnit',
-    text: 'Give a friendly unit +2/+2 and Hold.',
-    onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 2, addKeywords: ['hold'] }],
+    text: 'Give a friendly unit +2/+3 and Hold.',
+    onPlay: [{ k: 'buff', to: 'chosen', atk: 2, hp: 3, addKeywords: ['hold'] }],
   },
   {
     id: 23, slug: 'trust-vault', name: 'Trust Vault', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 6, attack: 3, health: 6, rarity: 'rare', keywords: ['guard', 'hold'], collectible: true,
+    cost: 6, attack: 3, health: 7, rarity: 'rare', keywords: ['guard', 'hold'], collectible: true,
     text: 'Guard. Hold. Portfolio: holds 2 Bonds.', portfolio: [TOKEN_BOND, TOKEN_BOND],
   },
   {
@@ -176,7 +176,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 30, slug: 'hype-man', name: 'Hype Man', faction: 'degens', chain: 'robinhood', type: 'unit',
-    cost: 3, attack: 2, health: 3, rarity: 'uncommon', keywords: ['swarm', 'ape'], collectible: true,
+    cost: 4, attack: 2, health: 3, rarity: 'uncommon', keywords: ['swarm', 'ape'], collectible: true,
     text: 'Swarm. Ape. Give all friendly Swarm units +1 attack.',
     onPlay: [{ k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 0 }],
   },
@@ -258,22 +258,22 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 45, slug: 'taco-truck', name: 'Taco Truck', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
-    cost: 4, attack: 2, health: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    cost: 5, attack: 2, health: 4, rarity: 'uncommon', keywords: [], collectible: true,
     text: 'At the start of your turn, add a Taco to your hand.', startOfTurn: [{ k: 'addToHand', card: TOKEN_TACO, n: 1 }],
   },
   {
     id: 46, slug: 'poncho-posse', name: 'Poncho Posse', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
-    cost: 4, attack: 3, health: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    cost: 5, attack: 3, health: 2, rarity: 'uncommon', keywords: [], collectible: true,
     text: 'Give all friendly units +1/+1.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
   },
   {
     id: 47, slug: 'mariachi-cat', name: 'Mariachi Cat', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
-    cost: 5, attack: 4, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true,
+    cost: 5, attack: 4, health: 3, rarity: 'rare', keywords: ['rush'], collectible: true,
     text: 'Rush. Add 2 Tacos to your hand.', onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 2 }],
   },
   {
     id: 48, slug: 'poncho', name: 'Poncho, Cutest Cat on Base', faction: 'neutral', chain: 'base', set: 'poncho', type: 'unit',
-    cost: 7, attack: 5, health: 6, rarity: 'legendary', keywords: ['guard'], collectible: true,
+    cost: 8, attack: 5, health: 6, rarity: 'legendary', keywords: ['guard'], collectible: true,
     text: 'Guard. Add 2 Tacos to your hand. At the start of your turn, give all friendly units +1/+1.',
     onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 2 }], startOfTurn: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
   },
@@ -293,7 +293,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 51, slug: 'second-sight', name: 'Second Sight', faction: 'prophets', chain: 'base', type: 'action',
-    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    cost: 1, rarity: 'common', keywords: [], collectible: true,
     text: 'Draw 1, plus 1 more if you have an active prediction.',
     onPlay: [{ k: 'draw', n: 1 }, { k: 'drawIfPrediction', n: 1 }],
   },
@@ -336,7 +336,7 @@ export const CARDS: CardDef[] = [
   // ─── Set 1 · Agents ────────────────────────────────────────────
   {
     id: 58, slug: 'script-kiddie', name: 'Script Kiddie', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 1, attack: 1, health: 2, rarity: 'common', keywords: [], collectible: true,
+    cost: 1, attack: 1, health: 1, rarity: 'common', keywords: [], collectible: true,
     text: 'Deploy 1.', onPlay: [{ k: 'deploy', n: 1 }],
   },
   {
@@ -357,13 +357,13 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 62, slug: 'faucet-bot', name: 'Faucet Bot', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: true,
+    cost: 2, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
     text: 'Automate: at the start of your next turn, Deploy 1.',
     onPlay: [{ k: 'automate', effects: [{ k: 'deploy', n: 1 }] }],
   },
   {
     id: 63, slug: 'gas-optimizer', name: 'Gas Optimizer', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 2, attack: 2, health: 3, rarity: 'common', keywords: [], collectible: true,
+    cost: 2, attack: 2, health: 2, rarity: 'common', keywords: [], collectible: true,
     text: 'Compute 1: your next card costs 1 less.', onPlay: [{ k: 'compute', n: 1 }],
   },
   {
@@ -378,18 +378,18 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 66, slug: 'keeper-bot', name: 'Keeper Bot', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: [], collectible: true,
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: [], collectible: true,
     text: 'Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
     onPlay: [{ k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
   },
   {
     id: 67, slug: 'load-balancer', name: 'Load Balancer', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 3, attack: 2, health: 5, rarity: 'common', keywords: ['guard'], collectible: true,
+    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
     text: 'Guard. Deploy 1.', onPlay: [{ k: 'deploy', n: 1 }],
   },
   {
     id: 68, slug: 'indexer', name: 'Indexer', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: [], collectible: true,
+    cost: 3, attack: 2, health: 3, rarity: 'common', keywords: [], collectible: true,
     text: 'Deploy 1. Compute 1: your next card costs 1 less.', onPlay: [{ k: 'deploy', n: 1 }, { k: 'compute', n: 1 }],
   },
   {
@@ -399,7 +399,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 70, slug: 'assembly-line', name: 'Assembly Line', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 5, attack: 3, health: 6, rarity: 'common', keywords: [], collectible: true,
+    cost: 6, attack: 3, health: 5, rarity: 'common', keywords: [], collectible: true,
     text: 'Deploy 2. Automate: at the start of your next turn, Deploy 1.',
     onPlay: [{ k: 'deploy', n: 2 }, { k: 'automate', effects: [{ k: 'deploy', n: 1 }] }],
   },
@@ -427,18 +427,18 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 75, slug: 'kill-switch', name: 'Kill Switch', faction: 'agents', chain: 'base', type: 'action',
-    cost: 3, rarity: 'uncommon', keywords: [], collectible: true, target: 'anyUnit',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true, target: 'anyUnit',
     text: 'Deal 3 damage to a unit. Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
     onPlay: [{ k: 'damage', to: 'chosen', n: 3 }, { k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
   },
   {
     id: 76, slug: 'honeypot', name: 'Honeypot', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 3, attack: 2, health: 5, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
+    cost: 4, attack: 2, health: 4, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
     text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
   },
   {
     id: 77, slug: 'botnet', name: 'Botnet', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 4, attack: 3, health: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    cost: 4, attack: 3, health: 3, rarity: 'uncommon', keywords: [], collectible: true,
     text: 'Give all friendly units +1 attack.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 0 }],
   },
   {
@@ -465,7 +465,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 82, slug: 'arbitrage-engine', name: 'Arbitrage Engine', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 5, attack: 3, health: 6, rarity: 'rare', keywords: [], collectible: true,
+    cost: 5, attack: 3, health: 5, rarity: 'rare', keywords: [], collectible: true,
     text: 'At the start of your turn, draw 1.', startOfTurn: [{ k: 'draw', n: 1 }],
   },
   {
@@ -475,12 +475,12 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 84, slug: 'agent-swarm', name: 'Agent Swarm', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 7, attack: 4, health: 5, rarity: 'rare', keywords: [], collectible: true,
+    cost: 7, attack: 4, health: 4, rarity: 'rare', keywords: [], collectible: true,
     text: 'Deploy 4.', onPlay: [{ k: 'deploy', n: 4 }],
   },
   {
     id: 85, slug: 'the-swarm-mind', name: 'The Swarm Mind', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 7, attack: 5, health: 6, rarity: 'legendary', keywords: [], collectible: true,
+    cost: 8, attack: 5, health: 5, rarity: 'legendary', keywords: [], collectible: true,
     text: 'At the start of your turn, Deploy 1, then give all friendly units +1 attack.',
     startOfTurn: [{ k: 'deploy', n: 1 }, { k: 'buff', to: 'allFriendly', atk: 1, hp: 0 }],
   },
@@ -554,7 +554,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 98, slug: 'prophets-escort', name: "Prophet's Escort", faction: 'prophets', chain: 'base', type: 'unit',
-    cost: 3, attack: 3, health: 4, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    cost: 3, attack: 3, health: 5, rarity: 'uncommon', keywords: ['guard'], collectible: true,
     text: 'Guard. When one of your predictions comes true, gain +1/+1.',
     onPredictionHit: [{ k: 'buff', to: 'self', atk: 1, hp: 1 }],
   },
@@ -594,7 +594,7 @@ export const CARDS: CardDef[] = [
   // ─── Set 1 · Brokers ───────────────────────────────────────────
   {
     id: 105, slug: 'day-trader', name: 'Day Trader', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    cost: 1, attack: 3, health: 1, rarity: 'common', keywords: [], collectible: true,
     text: '',
   },
   {
@@ -625,7 +625,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 111, slug: 'blue-chip', name: 'Blue Chip', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: ['hold'], collectible: true,
+    cost: 3, attack: 3, health: 4, rarity: 'common', keywords: ['hold'], collectible: true,
     text: 'Hold.',
   },
   {
@@ -660,7 +660,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 118, slug: 'long-position', name: 'Long Position', faction: 'brokers', chain: 'robinhood', type: 'action',
-    cost: 5, rarity: 'common', keywords: [], collectible: true,
+    cost: 4, rarity: 'common', keywords: [], collectible: true,
     text: 'Give all friendly units +1/+1 and Hold.',
     onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1, addKeywords: ['hold'] }],
   },
@@ -676,7 +676,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 121, slug: 'dollar-cost-average', name: 'Dollar-Cost Average', faction: 'brokers', chain: 'robinhood', type: 'action',
-    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true,
     text: 'Give all friendly units +1/+1.', onPlay: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
   },
   {
@@ -691,7 +691,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 124, slug: 'insurance-fund', name: 'Insurance Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 4, attack: 1, health: 7, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    cost: 4, attack: 1, health: 8, rarity: 'uncommon', keywords: ['guard'], collectible: true,
     text: 'Guard.',
   },
   {
@@ -712,7 +712,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 128, slug: 'liquidity-pool', name: 'Liquidity Pool', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 4, attack: 2, health: 6, rarity: 'rare', keywords: ['hold'], collectible: true,
+    cost: 4, attack: 3, health: 6, rarity: 'rare', keywords: ['hold'], collectible: true,
     text: 'Hold. Dividend: give all friendly units +1/+1.', dividend: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
   },
   {
@@ -873,7 +873,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 158, slug: 'degen-council', name: 'Degen Council', faction: 'degens', chain: 'robinhood', type: 'unit',
-    cost: 7, attack: 4, health: 4, rarity: 'rare', keywords: ['swarm'], collectible: true,
+    cost: 6, attack: 4, health: 4, rarity: 'rare', keywords: ['swarm'], collectible: true,
     text: 'Swarm. Give all friendly Swarm units +2/+1.', onPlay: [{ k: 'buff', to: 'allFriendlySwarm', atk: 2, hp: 1 }],
   },
   {
@@ -916,7 +916,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 166, slug: 'layer-two', name: 'Layer Two', faction: 'neutral', chain: 'any', type: 'unit',
-    cost: 4, attack: 4, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true,
+    cost: 5, attack: 4, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true,
     text: 'Rush. Draw 1.', onPlay: [{ k: 'draw', n: 1 }],
   },
   {
