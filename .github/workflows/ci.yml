@@ -1,7 +1,15 @@
 name: CI
+# Actions minutes are metered: run each commit once. A pull request runs CI for its branch; a push only on main
+# (a branch push without a PR runs nothing, or start it by hand with workflow_dispatch). A newer push to the same
+# PR cancels the run it supersedes; main's runs always finish.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   typescript:
