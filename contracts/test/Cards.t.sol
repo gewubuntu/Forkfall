@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {Set1Cards} from "../src/generated/Set1Cards.sol";
 import {Fixture} from "./Fixture.sol";
 import {CardRegistry} from "../src/CardRegistry.sol";
 import {StarterDecks} from "../src/StarterDecks.sol";
@@ -11,7 +12,7 @@ import {TestnetOnly} from "../src/TestnetOnly.sol";
 
 contract CardsTest is Fixture {
     function test_set1Defined() public view {
-        assertEq(d.cards.allCards().length, 48); // 40 core + 8 Poncho collab
+        assertEq(d.cards.allCards().length, Set1Cards.COUNT); // every card the engine defines (core + Poncho collab)
         assertEq(d.cards.cardsOfRarity(3).length, 5); // one legendary per race + Poncho
         CardRegistry.CardInfo memory c = d.cards.cardInfo(8); // The Launcher
         assertEq(c.race, 1);
