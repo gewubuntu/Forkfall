@@ -8,3 +8,4 @@ export * from './tutorial.ts';
 export * from './cosmetics.ts';
 export * from './quests.ts';
 export * from './deckcode.ts';
+export * from './decks.ts';
