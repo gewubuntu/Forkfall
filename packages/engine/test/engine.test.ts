@@ -298,6 +298,10 @@ describe('Set 1 · Prophets batch 1', () => {
     expect(legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid)).toEqual([{ type: 'play', uid }]);
     expect(() => applyAction(g, me, { type: 'play', uid, target })).toThrow(IllegalAction);
     expect(applyAction(g, me, { type: 'play', uid }).state.players[op].board[0].health).toBe(3);
+    // The opponent's prediction doesn't count: still no target.
+    const theirs = structuredClone(g);
+    theirs.players[op].predictions.push({ uid: theirs.nextUid++, cardId: 9, condition: 'attacks', resolvesOnTurn: theirs.turn + 1 });
+    expect(legalActions(theirs, me).filter((a) => a.type === 'play' && a.uid === uid)).toEqual([{ type: 'play', uid }]);
     // With an active prediction it must target an enemy unit, and deals 2.
     const seen = structuredClone(g);
     seen.players[me].predictions.push({ uid: seen.nextUid++, cardId: 9, condition: 'attacks', resolvesOnTurn: seen.turn + 1 });
