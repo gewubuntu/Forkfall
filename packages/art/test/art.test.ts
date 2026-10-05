@@ -1,4 +1,4 @@
-import { CARDS, COLLECTIBLE } from '@forkfall/engine';
+import { CARDS, COLLECTIBLE, keccakHex } from '@forkfall/engine';
 import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -27,6 +27,12 @@ describe('sprites follow the pixel style guide', () => {
   it('every card gets its own sprite', () => {
     const keys = new Set(CARDS.map((c) => spritePixels(c.id).join()));
     expect(keys.size).toBe(CARDS.length);
+  });
+  it('adding cards never changes the art of earlier ones', () => {
+    // Every sprite as of the first Prophets batch (ids 1–57 and the 3 tokens), pinned.
+    const before = CARDS.filter((c) => c.id <= 57 || !c.collectible).map((c) => c.id).sort((a, b) => a - b);
+    expect(before).toHaveLength(60);
+    expect(keccakHex(...before.map((id) => spritePixels(id).join()))).toBe('0x130f252821c6def8ad4e73edd036fb79e392ee6f57b557b48183c4008cbefa36');
   });
 });
 

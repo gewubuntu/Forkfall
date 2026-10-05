@@ -352,7 +352,7 @@ describe('card metadata routes', () => {
     expect(await img.text()).toContain('STARTER · SOULBOUND');
     expect((await (await fetch(`${url}/metadata/contract.json`)).json()).name).toContain('Forkfall');
     expect((await fetch(`${url}/metadata/cards/10008.json`)).status).toBe(404); // no Legendary starter copy
-    expect((await fetch(`${url}/metadata/cards/99.json`)).status).toBe(404);
+    expect((await fetch(`${url}/metadata/cards/999.json`)).status).toBe(404);
   });
 });
 

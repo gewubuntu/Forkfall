@@ -1,4 +1,4 @@
-import { card, type CardDef } from '@forkfall/engine';
+import { CARDS, card, type CardDef } from '@forkfall/engine';
 import { paletteFor, type RacePalette } from './palette.ts';
 import { isPonchoArt, ponchoSvg } from './poncho.ts';
 
@@ -582,8 +582,25 @@ function draw(cv: Canvas, r: Rng, c: CardDef) {
   return knight(cv, r, c);
 }
 
-/** Final colors per pixel (null = transparent), after shading, outline and race accents. */
+const SPRITES = new Map<number, (string | null)[]>();
+
+/**
+ * Final colors per pixel (null = transparent), after shading, outline and race accents. Many cards share a
+ * shape (every Brokers action is a coin stack), so a card whose sprite would repeat an earlier card's (lower
+ * id) gets a few glow pixels, seeded by its id, until it is unique. Earlier cards never change when cards are
+ * added.
+ */
 export function spritePixels(cardId: number): (string | null)[] {
+  const done = SPRITES.get(cardId);
+  if (done) return done;
+  const taken = new Set(CARDS.filter((c) => c.id < cardId).map((c) => spritePixels(c.id).join()));
+  let px = drawSprite(cardId, 0);
+  for (let salt = 1; taken.has(px.join()) && salt < 100; salt++) px = drawSprite(cardId, salt);
+  SPRITES.set(cardId, px);
+  return px;
+}
+
+function drawSprite(cardId: number, salt: number): (string | null)[] {
   const c = card(cardId);
   const pal: RacePalette = paletteFor(c);
   const r = rng(cardId * 7919 + 17);
@@ -623,6 +640,11 @@ export function spritePixels(cardId: number): (string | null)[] {
   if (sparkles) {
     cv.sparkle(r, sparkles);
     for (const i of cv.sparkles) if (!out[i]) out[i] = pal.glow;
+  }
+  if (salt) {
+    const before = new Set(cv.sparkles);
+    cv.sparkle(rng(cardId * 104729 + salt), 1 + Math.ceil(salt / 4));
+    for (const i of cv.sparkles) if (!before.has(i) && !out[i]) out[i] = pal.glow;
   }
   return out;
 }

@@ -7,7 +7,7 @@ export const TOKEN_TACO = 1002;
 
 /**
  * The core set: the 40 prototype cards (ids 1–40: 8 per race + 8 neutral) and Set 1 cards added in batches
- * (ids 49+), the Poncho collab set (ids 41–48, neutral, from Base) and 3 tokens. Collectible ids map 1:1 to
+ * (ids 49–168), the Poncho collab set (ids 41–48, neutral, from Base) and 3 tokens. Collectible ids map 1:1 to
  * ERC-1155 token ids in CardRegistry.
  * All numbers are playtest starting values.
  */
