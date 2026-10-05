@@ -1,3 +1,4 @@
+import { RULES_VERSION } from '@forkfall/engine';
 import { commitSeed, ForkfallClient, replayLog, runMatch } from '@forkfall/sdk';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
@@ -147,6 +148,40 @@ describe('referee restarts', () => {
     expect(await a.me()).toMatchObject({ address: a.address });
     await r3.stop();
   }, 30_000);
+
+  it('a running match keeps its rules version across a restart; one saved before versions were recorded gets one', async () => {
+    const dir = tmp();
+    const r1 = referee(dir);
+    const port = await r1.listen();
+    const url = `http://127.0.0.1:${port}`;
+    const a = new ForkfallClient(url, privateKeyToAccount(generatePrivateKey()));
+    const b = new ForkfallClient(url, privateKeyToAccount(generatePrivateKey()));
+    await a.connect(); await b.connect();
+    const ids: Hex[] = [];
+    for (const rules of [1, undefined]) {
+      const id = await b.acceptChallenge((await a.createChallenge({ race: 'agents' })).code, { race: 'degens' });
+      r1.lobby.get(id).rules = rules;
+      await a.reveal(id); await b.reveal(id);
+      const s = await a.state(id);
+      await (s.view!.active === s.seat ? a : b).move(id, s, { type: 'endTurn' });
+      ids.push(id);
+    }
+    const [old, unrecorded] = ids;
+    expect(r1.lobby.get(old).state!.rules).toBe(1);
+    expect(r1.lobby.get(unrecorded).rules).toBe(RULES_VERSION);
+    await r1.stop();
+    expect(r1.store.read<SavedMatch>(`matches/${old}.json`)!.match.rules).toBe(1);
+    const rec = r1.store.read<SavedMatch>(`matches/${unrecorded}.json`)!;
+    delete rec.match.rules;
+    r1.store.write(`matches/${unrecorded}.json`, rec);
+
+    const r2 = referee(dir);
+    expect(r2.resumed).toBe(2);
+    expect(r2.lobby.get(old)).toMatchObject({ rules: 1, state: { rules: 1 } });
+    expect(r2.lobby.get(unrecorded).state!.rules).toBe(r2.lobby.get(unrecorded).rules);
+    expect(r2.store.read<SavedMatch>(`matches/${unrecorded}.json`)!.match.rules).toBe(r2.lobby.get(unrecorded).rules);
+    await r2.stop();
+  });
 
   it('refuses a running-match record whose moves were tampered with', async () => {
     const dir = tmp();

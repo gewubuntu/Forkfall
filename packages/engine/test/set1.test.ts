@@ -7,6 +7,8 @@ import {
 
 const A = '0x' + 'a'.repeat(40);
 const B = '0x' + 'b'.repeat(40);
+/** Validator (34) as a plain 3/3 filler: pinned, so balance changes to Validator don't move these tests. */
+const V33 = { attack: 3, health: 3, maxHealth: 3 };
 
 /** A match in progress with empty hands and boards, so a test sets up exactly what it needs. */
 function fresh(): GameState {
@@ -66,7 +68,7 @@ describe('Set 1 card list', () => {
     for (const c of COLLECTIBLE) {
       const g = fresh();
       const me = g.active;
-      unit(g, me, 34); // a friendly and an enemy target
+      unit(g, me, 34, V33); // a friendly and an enemy target
       unit(g, opp(g), 34);
       const uid = hand(g, c.id);
       const plays = legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid);
@@ -114,12 +116,12 @@ describe('Set 1 card effects', () => {
   it('Long Position and Treasury Bill give Hold', () => {
     let g = fresh();
     const me = g.active;
-    unit(g, me, 34);
-    unit(g, me, 34);
+    unit(g, me, 34, V33);
+    unit(g, me, 34, V33);
     g = play(g, { uid: hand(g, 118) });
     expect(g.players[me].board.every((u) => u.keywords.includes('hold') && u.attack === 4 && u.health === 4)).toBe(true);
     g = fresh();
-    unit(g, g.active, 34);
+    unit(g, g.active, 34, V33);
     const t = g.players[g.active].board[0].uid;
     const deck = g.players[g.active].deck.length;
     g = play(g, { uid: hand(g, 110), target: t });
@@ -133,7 +135,7 @@ describe('Set 1 card effects', () => {
       let g = fresh();
       const o = opp(g);
       if (withPrediction) predict(g, g.active);
-      const e = unit(g, o, 34);
+      const e = unit(g, o, 34, V33);
       g = play(g, { uid: hand(g, 95), target: e });
       g = play(g, { uid: hand(g, 97) });
       expect(g.players[o].board[0].health).toBe(1);
@@ -154,7 +156,7 @@ describe('Set 1 card effects', () => {
     let g = fresh();
     const me = g.active;
     unit(g, me, 104);
-    unit(g, me, 34);
+    unit(g, me, 34, V33);
     predict(g, me);
     g = applyAction(g, me, { type: 'endTurn' }).state;
     g.players[g.active].stats.attackers.push(1); // the opponent attacked: the prediction comes true
@@ -165,7 +167,7 @@ describe('Set 1 card effects', () => {
   it('Smart Contract and The Swarm Mind act at the start of your turn', () => {
     let g = fresh();
     const me = g.active;
-    unit(g, me, 34);
+    unit(g, me, 34, V33);
     g = play(g, { uid: hand(g, 81) });
     g = fullRound(g);
     expect(g.players[me].board.map((u) => [u.cardId, u.attack, u.health])).toEqual([[34, 4, 4], [TOKEN_DRONE, 1, 1]]);
@@ -179,7 +181,7 @@ describe('Set 1 card effects', () => {
     let g = fresh();
     const me = g.active;
     const o = opp(g);
-    const u = unit(g, me, 34);
+    const u = unit(g, me, 34, V33);
     g = play(g, { uid: hand(g, 133), target: u });
     expect(g.players[me].board).toHaveLength(0);
     expect(g.players[o].treasury).toBe(22);
@@ -188,7 +190,7 @@ describe('Set 1 card effects', () => {
     for (const seed of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
       const h = fresh();
       h.seed = keccakHex('pump-and-dump', seed);
-      const v = unit(h, h.active, 34);
+      const v = unit(h, h.active, 34, V33);
       const r = applyAction(h, h.active, { type: 'play', uid: hand(h, 150), target: v });
       const pumped = r.events.find((e) => e.t === 'stat' && e.uid === v) as { attack: number } | undefined;
       expect(pumped).toBeDefined();
@@ -202,25 +204,25 @@ describe('Set 1 card effects', () => {
   it('Activist Investor only targets enemy units, and is a plain 5/4 Rush when there are none', () => {
     const g = fresh();
     const me = g.active;
-    const mine = unit(g, me, 34);
+    const mine = unit(g, me, 34, V33);
     const uid = hand(g, 129);
     expect(legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid)).toEqual([{ type: 'play', uid }]);
     expect(() => play(g, { uid, target: mine })).toThrow();
     const after = play(g, { uid });
     expect(after.players[me].board.find((x) => x.uid === mine)!.health).toBe(3);
-    const e = unit(g, opp(g), 34);
+    const e = unit(g, opp(g), 34, V33);
     expect(play(g, { uid, target: e }).players[opp(g)].board[0].health).toBe(1);
   });
 
   it('Leverage x100 doubles every friendly unit; Telegram Pump gives them all Rush', () => {
     let g = fresh();
     const me = g.active;
-    unit(g, me, 34, { summonedTurn: g.turn });
+    unit(g, me, 34, { ...V33, summonedTurn: g.turn });
     unit(g, me, 135, { summonedTurn: g.turn });
     g = play(g, { uid: hand(g, 156) });
     expect(g.players[me].board.map((u) => u.attack)).toEqual([6, 4]);
     g = fresh();
-    unit(g, me, 34, { summonedTurn: g.turn });
+    unit(g, me, 34, { ...V33, summonedTurn: g.turn });
     g = play(g, { uid: hand(g, 153) });
     expect(legalActions(g, me).some((a) => a.type === 'attack')).toBe(true);
   });
@@ -228,7 +230,7 @@ describe('Set 1 card effects', () => {
   it('The Meme King pumps everyone, then buffs Swarm units', () => {
     let g = fresh();
     const me = g.active;
-    unit(g, me, 34);
+    unit(g, me, 34, V33);
     unit(g, me, 135);
     g = play(g, { uid: hand(g, 160) });
     const [validator, gremlin, king] = g.players[me].board;

@@ -1,3 +1,4 @@
+import { RULES_VERSION, UNRECORDED_RULES_SINCE } from '@forkfall/engine';
 import { ForkfallClient, replayLog, runMatch } from '@forkfall/sdk';
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
@@ -155,6 +156,35 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     expect(second.loads).toEqual([]);
     expect(second.lobby.log(id)).toEqual(log);
     expect(second.loads).toEqual([id]);
+  }, 30_000);
+
+  it('archives the rules version a match was played under; a file from before versions were recorded still restores', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ff-archive-')); dirs.push(dir);
+    const clock = { t: Date.now() };
+    const first = await referee(dir, clock);
+    const a = new ForkfallClient(first.url, privateKeyToAccount(generatePrivateKey()));
+    const b = new ForkfallClient(first.url, privateKeyToAccount(generatePrivateKey()));
+    await a.connect(); await b.connect();
+    const id = await b.acceptChallenge((await a.createChallenge({ race: 'brokers' })).code, { race: 'degens' });
+    first.lobby.get(id).rules = 1; // as a referee still on the first Set 1 rules would have started it
+    await Promise.all([runMatch(a, id, { pollMs: 2, live: false }), runMatch(b, id, { pollMs: 2, live: false })]);
+    const log = await a.log(id);
+    expect(log.rules).toBe(1);
+    expect(replayLog(log)).toMatchObject({ ok: true, rules: 1, rulesDetected: false });
+    const current = await finishedMatch(first.url);
+    expect((await current.a.log(current.id)).rules).toBe(RULES_VERSION);
+
+    // Archived before versions were recorded: no version in the file or the index. Found again by replaying.
+    // (Created while v1 was live, as every v1 match was.)
+    rewriteArchive(dir, id, (rec) => { delete rec.log.rules; rec.log.createdAt = UNRECORDED_RULES_SINCE[2] - 60_000; });
+    writeFileSync(join(dir, 'index.jsonl'), '');
+    const second = await referee(dir, clock);
+    expect(second.archive.restoreInto(second.lobby)).toMatchObject({ replayed: 2, skipped: [] });
+    const restored = second.lobby.log(id);
+    expect(replayLog({ ...restored, rules: undefined }).rules).toBe(restored.rules);
+    expect(replayLog(restored).ok).toBe(true);
+    // The same game as the one played (a later version that only changed cards these decks never drew can match it).
+    expect({ ...second.lobby.get(id).state, rules: 0 }).toEqual({ ...replayLog(log).final, rules: 0 });
   }, 30_000);
 
   it('a missing archive file fails only that match, with a 500', async () => {
