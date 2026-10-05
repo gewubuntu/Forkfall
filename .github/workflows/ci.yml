@@ -1,14 +1,15 @@
 name: CI
 # Actions minutes are metered: run each commit once. A pull request runs CI for its branch; a push only on main
 # (a branch push without a PR runs nothing, or start it by hand with workflow_dispatch). A newer push to the same
-# PR cancels the run it supersedes; main's runs always finish.
+# PR cancels the run it supersedes. Other runs get a group of their own commit, so every commit on main is tested
+# (a shared group would drop a queued run whenever a newer one queues, even without cancel-in-progress).
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
