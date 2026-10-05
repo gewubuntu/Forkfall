@@ -1,6 +1,6 @@
 import { card, PREDICTION_TIERS } from './cards.ts';
 import { applyAction, effectiveAttack, legalActions, other } from './engine.ts';
-import type { Action, GameState, PredictionCondition, Seat } from './types.ts';
+import type { Action, Effect, GameState, PredictionCondition, Seat } from './types.ts';
 
 export type Bot = (g: GameState, seat: Seat) => Action;
 
@@ -30,7 +30,29 @@ export function predictionOdds(g: GameState, seat: Seat, cond: PredictionConditi
   }
 }
 
-/** Expected value of an active prediction, in evaluation units. */
+/** Rough worth of effects that fire for `seat` (trigger payoffs), in evaluation units. */
+function effectsValue(g: GameState, seat: Seat, effects: Effect[]): number {
+  const units = g.players[seat].board.length;
+  let v = 0;
+  for (const e of effects) {
+    switch (e.k) {
+      case 'damage':
+        v += e.n * (e.to === 'enemyTreasury' ? 1.4 : e.to === 'randomEnemyUnitOrTreasury' ? 1.2 : e.to === 'allEnemyUnits' ? 1.5 : 0.8);
+        break;
+      case 'draw': case 'drawIfPrediction': v += e.n; break;
+      case 'buff': v += (e.atk * 1.2 + e.hp * 0.9) * (e.to === 'allFriendly' ? units : 1); break;
+      case 'deploy': v += e.n * 2.1; break;
+      case 'pump': v += 2 * (e.to === 'allFriendly' ? units : 1); break;
+      default: break;
+    }
+  }
+  return v;
+}
+
+/**
+ * Expected value of an active prediction, in evaluation units: its own payoff, plus the units on your board that
+ * pay off whenever one of your predictions comes true (Street Oracle, The Long Bet, Seers' Circle…).
+ */
 export function predictionEV(g: GameState, seat: Seat, cardId: number, cond: PredictionCondition): number {
   const pay = card(cardId).prediction!;
   const me = g.players[seat];
@@ -38,7 +60,11 @@ export function predictionEV(g: GameState, seat: Seat, cardId: number, cond: Pre
   const bonus = me.board.some((u) => u.keywords.includes('predictionBonus')) ? 1 : 0;
   const tier = PREDICTION_TIERS[cond] + bonus;
   const noBackfire = me.board.some((u) => u.keywords.includes('noBackfire'));
-  const win = tier * ((pay.damagePerTier ?? 0) * 1.4 + (pay.drawPerTier ?? 0) * 1.0);
+  const triggers = me.board.reduce((acc, u) => {
+    const fx = card(u.cardId).onPredictionHit;
+    return fx ? acc + effectsValue(g, seat, fx) : acc;
+  }, 0);
+  const win = tier * ((pay.damagePerTier ?? 0) * 1.4 + (pay.drawPerTier ?? 0) * 1.0) + triggers;
   return p * win - (noBackfire ? 0 : (1 - p) * pay.backfire * 1.4);
 }
 
@@ -51,10 +77,12 @@ export function evaluate(g: GameState, seat: Seat): number {
     g.players[s].board.reduce((acc, u) => {
       let v = effectiveAttack(g, s, u) * 1.2 + u.health * 0.9;
       if (u.keywords.includes('guard')) v += 1;
-      if (u.keywords.includes('hold')) v += 0.8;
+      // Hold: a unit that skips attacking grows next turn (and pays its Dividend), so attacking with it costs that.
+      if (u.keywords.includes('hold')) v += u.attackedLastOwnTurn ? 0.3 : 1.3;
       if (u.keywords.includes('firewall')) v += 1.2;
       const c = card(u.cardId);
       if (c.startOfTurn || c.dividend) v += 1.5;
+      if (c.onPredictionHit) v += 0.75; // pays off on future predictions too
       if (c.portfolio) v += c.portfolio.length * 1.5;
       return acc + v;
     }, 0);
@@ -66,23 +94,53 @@ export function evaluate(g: GameState, seat: Seat): number {
     + boardVal(seat) - boardVal(other(seat))
     + me.hand.length * 1.0 - op.hand.length * 0.5
     + me.assets.length * 3 + me.automations.length * 2.5
+    + me.discount * 0.7 // Compute: the next card is cheaper
     + predVal(seat)
   );
 }
 
+/** Moves whose payoff is the move after them: extra Gas, Compute, and buffs, Rush or Pump on a chosen unit. */
+function isEnabler(g: GameState, seat: Seat, a: Action): boolean {
+  if (a.type !== 'play') return false;
+  const h = g.players[seat].hand.find((x) => x.uid === a.uid);
+  const c = h && card(h.cardId);
+  if (!c || c.type === 'unit') return false;
+  return (c.onPlay ?? []).some((e) => e.k === 'gainGas' || e.k === 'compute' || e.k === 'grantRush' || e.k === 'doubleAttack'
+    || ((e.k === 'buff' || e.k === 'pump') && e.to === 'chosen'));
+}
+
+/** How many of the best first moves also get a second look. */
+const LOOKAHEAD_TOP = 3;
+
 /**
- * One-ply greedy: try every legal action, keep the best evaluation.
- * Ends the turn when nothing beats passing. Deterministic given the state.
+ * Greedy with a short look within the turn: try every legal action and evaluate the result. The best few, and every
+ * enabler (extra Gas, Compute, a buff or Rush on a unit), are also scored by the best follow-up move they allow, so
+ * the bot sees why Flash Loan or FOMO is worth playing. Ends the turn when nothing beats passing. Deterministic given
+ * the state.
  */
 export function greedyBot(): Bot {
   return (g, seat) => {
-    let best: Action = { type: 'endTurn' };
-    let bestScore = evaluate(g, seat) + 0.01;
+    const pass = evaluate(g, seat) + 0.01;
+    const first: { a: Action; s: GameState; score: number }[] = [];
     for (const a of legalActions(g, seat)) {
       if (a.type === 'endTurn') continue;
-      let score: number;
-      try { score = evaluate(applyAction(g, seat, a).state, seat); } catch { continue; }
-      if (score > bestScore) { bestScore = score; best = a; }
+      try {
+        const s = applyAction(g, seat, a).state;
+        first.push({ a, s, score: evaluate(s, seat) });
+      } catch { continue; }
+    }
+    const top = new Set([...first].sort((x, y) => y.score - x.score).slice(0, LOOKAHEAD_TOP));
+    let best: Action = { type: 'endTurn' };
+    let bestScore = pass;
+    for (const f of first) {
+      let score = f.score;
+      if ((top.has(f) || isEnabler(g, seat, f.a)) && f.s.status === 'active' && f.s.active === seat) {
+        for (const b of legalActions(f.s, seat)) {
+          if (b.type === 'endTurn') continue;
+          try { score = Math.max(score, evaluate(applyAction(f.s, seat, b).state, seat)); } catch { continue; }
+        }
+      }
+      if (score > bestScore) { bestScore = score; best = f.a; }
     }
     return best;
   };
