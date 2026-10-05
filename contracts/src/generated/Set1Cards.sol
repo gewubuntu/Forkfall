@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (85 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (104 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 85;
+    uint256 internal constant COUNT = 104;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](85);
-        races = new uint8[](85);
-        rarities = new uint8[](85);
-        chains = new uint8[](85);
+        ids = new uint16[](104);
+        races = new uint8[](104);
+        rarities = new uint8[](104);
+        chains = new uint8[](104);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -101,6 +101,25 @@ library Set1Cards {
         ids[82] = 83; races[82] = 1; rarities[82] = 2; chains[82] = 1; // Watchdog
         ids[83] = 84; races[83] = 1; rarities[83] = 2; chains[83] = 1; // Agent Swarm
         ids[84] = 85; races[84] = 1; rarities[84] = 3; chains[84] = 1; // The Swarm Mind
+        ids[85] = 86; races[85] = 2; rarities[85] = 0; chains[85] = 1; // Omen Raven
+        ids[86] = 87; races[86] = 2; rarities[86] = 0; chains[86] = 1; // Hindsight
+        ids[87] = 88; races[87] = 2; rarities[87] = 0; chains[87] = 1; // Palm Reader
+        ids[88] = 89; races[88] = 2; rarities[88] = 0; chains[88] = 1; // Pilgrim
+        ids[89] = 90; races[89] = 2; rarities[89] = 0; chains[89] = 1; // Tarot Card
+        ids[90] = 91; races[90] = 2; rarities[90] = 0; chains[90] = 1; // Soothsayer
+        ids[91] = 92; races[91] = 2; rarities[91] = 0; chains[91] = 1; // Bookmaker
+        ids[92] = 93; races[92] = 2; rarities[92] = 0; chains[92] = 1; // Doomsayer
+        ids[93] = 94; races[93] = 2; rarities[93] = 0; chains[93] = 1; // Star Gazer
+        ids[94] = 95; races[94] = 2; rarities[94] = 1; chains[94] = 1; // Bad Omen
+        ids[95] = 96; races[95] = 2; rarities[95] = 1; chains[95] = 1; // Ledger of Fate
+        ids[96] = 97; races[96] = 2; rarities[96] = 1; chains[96] = 1; // Forked Path
+        ids[97] = 98; races[97] = 2; rarities[97] = 1; chains[97] = 1; // Prophet's Escort
+        ids[98] = 99; races[98] = 2; rarities[98] = 1; chains[98] = 1; // Eclipse
+        ids[99] = 100; races[99] = 2; rarities[99] = 1; chains[99] = 1; // Veiled Oracle
+        ids[100] = 101; races[100] = 2; rarities[100] = 2; chains[100] = 1; // Oracle of Delphi
+        ids[101] = 102; races[101] = 2; rarities[101] = 2; chains[101] = 1; // High Priestess
+        ids[102] = 103; races[102] = 2; rarities[102] = 2; chains[102] = 1; // Grand Augury
+        ids[103] = 104; races[103] = 2; rarities[103] = 3; chains[103] = 1; // The Last Prophet
     }
 
     /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).

@@ -485,6 +485,112 @@ export const CARDS: CardDef[] = [
     startOfTurn: [{ k: 'deploy', n: 1 }, { k: 'buff', to: 'allFriendly', atk: 1, hp: 0 }],
   },
 
+  // ─── Set 1 · Prophets, batch 2 ─────────────────────────────────
+  {
+    id: 86, slug: 'omen-raven', name: 'Omen Raven', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    text: '',
+  },
+  {
+    id: 87, slug: 'hindsight', name: 'Hindsight', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 1, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 1 damage to a unit. Draw 1.', onPlay: [{ k: 'damage', to: 'chosen', n: 1 }, { k: 'draw', n: 1 }],
+  },
+  {
+    id: 88, slug: 'palm-reader', name: 'Palm Reader', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 2, attack: 2, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'If you have an active prediction, draw 1.', onPlay: [{ k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 89, slug: 'pilgrim', name: 'Pilgrim', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 2, attack: 1, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 90, slug: 'tarot-card', name: 'Tarot Card', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 2 damage per Odds tier to the enemy Treasury. Backfire: take 2.',
+    prediction: { damagePerTier: 2, backfire: 2 },
+  },
+  {
+    id: 91, slug: 'soothsayer', name: 'Soothsayer', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'common', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, draw 1.', onPredictionHit: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 92, slug: 'bookmaker', name: 'Bookmaker', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, deal 2 damage to a random enemy unit (or the enemy Treasury).',
+    onPredictionHit: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }],
+  },
+  {
+    id: 93, slug: 'doomsayer', name: 'Doomsayer', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 5, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. When one of your predictions comes true, gain +2/+2.',
+    onPredictionHit: [{ k: 'buff', to: 'self', atk: 2, hp: 2 }],
+  },
+  {
+    id: 94, slug: 'star-gazer', name: 'Star Gazer', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1.', onPlay: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 95, slug: 'bad-omen', name: 'Bad Omen', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'Deal 2 damage to an enemy unit. If you have an active prediction, also deal 2 damage to the enemy Treasury.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 2 }, { k: 'damage', to: 'enemyTreasury', n: 0, nIfPrediction: 2 }],
+  },
+  {
+    id: 96, slug: 'ledger-of-fate', name: 'Ledger of Fate', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Foresee. Correct: draw 2 cards per Odds tier. Backfire: take 2.',
+    prediction: { drawPerTier: 2, backfire: 2 },
+  },
+  {
+    id: 97, slug: 'forked-path', name: 'Forked Path', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Draw 2. If you have an active prediction, deal 2 damage to the enemy Treasury.',
+    onPlay: [{ k: 'draw', n: 2 }, { k: 'damage', to: 'enemyTreasury', n: 0, nIfPrediction: 2 }],
+  },
+  {
+    id: 98, slug: 'prophets-escort', name: "Prophet's Escort", faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 3, health: 3, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard. When one of your predictions comes true, gain +1/+1.',
+    onPredictionHit: [{ k: 'buff', to: 'self', atk: 1, hp: 1 }],
+  },
+  {
+    id: 99, slug: 'eclipse', name: 'Eclipse', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Deal 2 damage to all enemy units.', onPlay: [{ k: 'damage', to: 'allEnemyUnits', n: 2 }],
+  },
+  {
+    id: 100, slug: 'veiled-oracle', name: 'Veiled Oracle', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard. If you have an active prediction, draw 1.', onPlay: [{ k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 101, slug: 'oracle-of-delphi', name: 'Oracle of Delphi', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 5, rarity: 'rare', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, draw 2.', onPredictionHit: [{ k: 'draw', n: 2 }],
+  },
+  {
+    id: 102, slug: 'high-priestess', name: 'High Priestess', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 5, attack: 4, health: 5, rarity: 'rare', keywords: ['noBackfire'], collectible: true,
+    text: 'Your predictions never backfire.',
+  },
+  {
+    id: 103, slug: 'grand-augury', name: 'Grand Augury', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 5, rarity: 'rare', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 4 damage per Odds tier to the enemy Treasury. Backfire: take 4.',
+    prediction: { damagePerTier: 4, backfire: 4 },
+  },
+  {
+    id: 104, slug: 'the-last-prophet', name: 'The Last Prophet', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 8, attack: 6, health: 8, rarity: 'legendary', keywords: ['guard'], collectible: true,
+    text: 'Guard. When one of your predictions comes true, give all friendly units +2/+2.',
+    onPredictionHit: [{ k: 'buff', to: 'allFriendly', atk: 2, hp: 2 }],
+  },
+
   // ─── Tokens (not collectible) ──────────────────────────────────
   {
     id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',
