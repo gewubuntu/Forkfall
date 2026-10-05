@@ -123,7 +123,7 @@ describe('ERC-1155 metadata', () => {
     expect(m.image.startsWith('data:image/svg+xml;base64,')).toBe(true);
     expect(m.attributes).toEqual(expect.arrayContaining([
       { trait_type: 'Race', value: 'Brokers' }, { trait_type: 'Rarity', value: 'Legendary' },
-      { trait_type: 'Attack', value: 7, display_type: 'number' }, { trait_type: 'Keyword', value: 'Hold' },
+      { trait_type: 'Attack', value: 6, display_type: 'number' }, { trait_type: 'Keyword', value: 'Hold' },
     ]));
     const s = cardMetadata(STARTER_OFFSET + 17, { imageBase: 'https://x/metadata/images', appUrl: 'https://x' });
     expect(s).toMatchObject({ name: 'Intern (Starter)', image: 'https://x/metadata/images/10017.svg', external_url: 'https://x/collection' });

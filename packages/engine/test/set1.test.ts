@@ -159,7 +159,7 @@ describe('Set 1 card effects', () => {
     g = applyAction(g, me, { type: 'endTurn' }).state;
     g.players[g.active].stats.attackers.push(1); // the opponent attacked: the prediction comes true
     g = applyAction(g, g.active, { type: 'endTurn' }).state;
-    expect(g.players[me].board.map((u) => [u.attack, u.health])).toEqual([[8, 10], [5, 5]]);
+    expect(g.players[me].board.map((u) => [u.attack, u.health])).toEqual([[8, 11], [5, 5]]);
   });
 
   it('Smart Contract and The Swarm Mind act at the start of your turn', () => {
@@ -246,7 +246,7 @@ describe('Set 1 card effects', () => {
     unit(g, o, 147);
     g = play(g, { uid: hand(g, 39) });
     expect(g.players[o].board).toHaveLength(0);
-    expect(g.players[g.active].treasury).toBe(25 - 4);
+    expect(g.players[g.active].treasury).toBe(25 - 3); // Dark Pool 2, Jeet 1
   });
 
   it('Flash Loan gives 2 Gas this turn', () => {
