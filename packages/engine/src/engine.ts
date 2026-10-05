@@ -180,6 +180,7 @@ export function legalActions(g: GameState, seat: Seat): Action[] {
 }
 
 function validTargets(g: GameState, seat: Seat, c: CardDef): number[] {
+  if (c.targetIfPrediction && !hasActivePrediction(g, seat)) return [];
   const mine = g.players[seat].board.map((u) => u.uid);
   const theirs = g.players[other(seat)].board.map((u) => u.uid);
   switch (c.target) {

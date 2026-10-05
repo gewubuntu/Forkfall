@@ -7,6 +7,8 @@ import {
 
 const A = '0x' + 'a'.repeat(40);
 const B = '0x' + 'b'.repeat(40);
+/** Validator (34) as a plain 3/3 filler: pinned, so balance changes to Validator don't move these tests. */
+const V33 = { attack: 3, health: 3, maxHealth: 3 };
 
 function newMatch(r0: Race = 'agents', r1: Race = 'degens', seed = keccakHex('test')): GameState {
   return createMatch({
@@ -107,9 +109,9 @@ describe('combat', () => {
   it('guard must be attacked first', () => {
     const g = newMatch();
     const me = g.active, op = (1 - me) as Seat;
-    const atk = unit(g, me, 34);
+    const atk = unit(g, me, 34, V33);
     const guard = unit(g, op, 33);
-    unit(g, op, 34);
+    unit(g, op, 34, V33);
     expect(() => applyAction(g, me, { type: 'attack', attacker: atk, target: 'treasury' })).toThrow(/Guard/);
     const r = applyAction(g, me, { type: 'attack', attacker: atk, target: guard });
     const gd = r.state.players[op].board.find((u) => u.uid === guard)!;
@@ -127,7 +129,7 @@ describe('combat', () => {
     const g = newMatch();
     const me = g.active, op = (1 - me) as Seat;
     g.players[op].treasury = 3;
-    const u = unit(g, me, 34);
+    const u = unit(g, me, 34, V33);
     const r = applyAction(g, me, { type: 'attack', attacker: u, target: 'treasury' });
     expect(r.state.status).toBe('ended');
     expect(r.state.winner).toBe(me);
@@ -178,7 +180,7 @@ describe('race mechanics', () => {
     const pv = viewFor(s, op).players[me].predictions[0];
     expect('hidden' in pv).toBe(true);
     s = applyAction(s, me, { type: 'endTurn' }).state;
-    const a = unit(s, op, 34, { summonedTurn: 0 });
+    const a = unit(s, op, 34, { ...V33, summonedTurn: 0 });
     const before = s.players[me].treasury;
     s = applyAction(s, op, { type: 'attack', attacker: a, target: 'treasury' }).state;
     const res = applyAction(s, op, { type: 'endTurn' });
@@ -198,7 +200,7 @@ describe('race mechanics', () => {
   it('Rug Pull sacrifices a unit for Treasury damage', () => {
     const g0 = newMatch('degens', 'brokers');
     const me = g0.active;
-    const u = unit(g0, me, 34); // 3 attack
+    const u = unit(g0, me, 34, V33); // 3 attack
     const { g, uid } = withHand(g0, 29);
     const t = g.players[1 - me].treasury;
     const r = applyAction(g, me, { type: 'play', uid, target: u });
@@ -248,7 +250,7 @@ describe('Poncho set', () => {
     const me = g.active, opp = (1 - me) as Seat;
     const sentry = unit(g, opp, 44, { health: 1 });
     unit(g, opp, 45);
-    const atk = unit(g, me, 34, { summonedTurn: -5 });
+    const atk = unit(g, me, 34, { ...V33, summonedTurn: -5 });
     const r = applyAction(g, me, { type: 'attack', attacker: atk, target: sentry });
     expect(r.state.players[opp].hand.filter((h) => h.cardId === TOKEN_TACO)).toHaveLength(1);
     const r2 = applyAction(r.state, me, { type: 'endTurn' });
@@ -286,23 +288,24 @@ describe('views & fuzz', () => {
 });
 
 describe('Set 1 · Prophets batch 1', () => {
-  it('Augur must target an enemy unit when there is one, and plays untargeted only when there is none', () => {
+  it('Augur asks for a target only with an active prediction: then it must hit an enemy unit for 2', () => {
     const { g, uid } = withHand(newMatch('prophets', 'degens'), 53);
     const me = g.active;
     const op = (1 - me) as Seat;
     g.players[op].board = [];
-    const empty = legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid);
-    expect(empty).toEqual([{ type: 'play', uid }]); // no enemy unit: it's just a 4/5
-    const target = unit(g, op, 34);
-    const plays = legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid);
-    expect(plays).toEqual([{ type: 'play', uid, target }]); // the damage can't be skipped
-    expect(() => applyAction(g, me, { type: 'play', uid })).toThrow(IllegalAction);
-    const after = applyAction(g, me, { type: 'play', uid, target }).state;
-    expect(after.players[op].board.find((u) => u.uid === target)!.health).toBe(3); // no prediction: no damage
-    // With an active prediction it deals 2.
+    const target = unit(g, op, 34, V33);
+    // No prediction: a plain 4/4, no target to pick (the damage would be 0).
+    expect(legalActions(g, me).filter((a) => a.type === 'play' && a.uid === uid)).toEqual([{ type: 'play', uid }]);
+    expect(() => applyAction(g, me, { type: 'play', uid, target })).toThrow(IllegalAction);
+    expect(applyAction(g, me, { type: 'play', uid }).state.players[op].board[0].health).toBe(3);
+    // With an active prediction it must target an enemy unit, and deals 2.
     const seen = structuredClone(g);
     seen.players[me].predictions.push({ uid: seen.nextUid++, cardId: 9, condition: 'attacks', resolvesOnTurn: seen.turn + 1 });
-    const hit = applyAction(seen, me, { type: 'play', uid, target }).state;
-    expect(hit.players[op].board.find((u) => u.uid === target)!.health).toBe(1);
+    expect(legalActions(seen, me).filter((a) => a.type === 'play' && a.uid === uid)).toEqual([{ type: 'play', uid, target }]);
+    expect(() => applyAction(seen, me, { type: 'play', uid })).toThrow(IllegalAction);
+    expect(applyAction(seen, me, { type: 'play', uid, target }).state.players[op].board[0].health).toBe(1);
+    // With a prediction but no enemy unit, it's a plain 4/4 again.
+    seen.players[op].board = [];
+    expect(legalActions(seen, me).filter((a) => a.type === 'play' && a.uid === uid)).toEqual([{ type: 'play', uid }]);
   });
 });
