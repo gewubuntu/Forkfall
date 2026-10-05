@@ -1,4 +1,4 @@
-import { CARDS } from '@forkfall/engine';
+import { CARDS, COLLECTIBLE } from '@forkfall/engine';
 import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
@@ -88,11 +88,12 @@ describe('ERC-1155 metadata', () => {
     expect(parseTokenId(String(STARTER_OFFSET + 8))).toBeNull(); // no Legendary starter copies
     expect(parseTokenId('48')).toBe(48); // Poncho
     expect(parseTokenId(String(STARTER_OFFSET + 41))).toBeNull(); // collab cards have no starter copies
-    expect(parseTokenId('49')).toBeNull();
+    expect(parseTokenId(String(Math.max(...COLLECTIBLE.map((c) => c.id)) + 1))).toBeNull(); // past the last card
     expect(parseTokenId('1000')).toBeNull(); // tokens (Drone) are never minted
   });
   it('describes every token with attributes, and starter copies as soulbound', () => {
-    expect(tokenIds()).toHaveLength(48 + 36 + 48);
+    // Every card, its soulbound starter copy (the 36 starter cards), and its foil.
+    expect(tokenIds()).toHaveLength(COLLECTIBLE.length + 36 + COLLECTIBLE.length);
     const f = cardMetadata(20_008);
     expect(f.name).toBe('The Launcher (Foil)');
     expect(f.attributes).toEqual(expect.arrayContaining([{ trait_type: 'Edition', value: 'Foil' }]));

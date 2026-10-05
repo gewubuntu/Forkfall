@@ -6,8 +6,9 @@ export const TOKEN_BOND = 1001;
 export const TOKEN_TACO = 1002;
 
 /**
- * Core prototype set: 40 test cards (8 per race + 8 neutral), the Poncho collab set (ids 41–48, neutral,
- * from Base) and 3 tokens. Collectible ids map 1:1 to ERC-1155 token ids in CardRegistry.
+ * The core set: the 40 prototype cards (ids 1–40: 8 per race + 8 neutral) and Set 1 cards added in batches
+ * (ids 49+), the Poncho collab set (ids 41–48, neutral, from Base) and 3 tokens. Collectible ids map 1:1 to
+ * ERC-1155 token ids in CardRegistry.
  * All numbers are playtest starting values.
  */
 export const CARDS: CardDef[] = [
@@ -275,6 +276,61 @@ export const CARDS: CardDef[] = [
     cost: 7, attack: 5, health: 6, rarity: 'legendary', keywords: ['guard'], collectible: true,
     text: 'Guard. Add 2 Tacos to your hand. At the start of your turn, give all friendly units +1/+1.',
     onPlay: [{ k: 'addToHand', card: TOKEN_TACO, n: 2 }], startOfTurn: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+
+  // ─── Set 1 · Prophets, batch 1 ─────────────────────────────────
+  {
+    id: 49, slug: 'fortune-cookie', name: 'Fortune Cookie', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 1, rarity: 'common', keywords: [], collectible: true,
+    text: 'Foresee. Correct: draw 1 card per Odds tier. Backfire: take 1.',
+    prediction: { drawPerTier: 1, backfire: 1 },
+  },
+  {
+    id: 50, slug: 'street-oracle', name: 'Street Oracle', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 1, attack: 1, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, deal 1 damage to the enemy Treasury.',
+    onPredictionHit: [{ k: 'damage', to: 'enemyTreasury', n: 1 }],
+  },
+  {
+    id: 51, slug: 'second-sight', name: 'Second Sight', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1, plus 1 more if you have an active prediction.',
+    onPlay: [{ k: 'draw', n: 1 }, { k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 52, slug: 'hedge-prophet', name: 'Hedge Prophet', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 3, attack: 2, health: 4, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard. When this dies, draw 1.', onDeath: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 53, slug: 'augur', name: 'Augur', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 4, health: 4, rarity: 'common', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'If you have an active prediction, deal 2 damage to an enemy unit.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 0, nIfPrediction: 2 }],
+  },
+  {
+    id: 54, slug: 'contrarian', name: 'Contrarian', faction: 'prophets', chain: 'base', type: 'action',
+    cost: 2, rarity: 'uncommon', keywords: [], collectible: true, target: 'enemyUnit',
+    text: 'Deal 2 damage to an enemy unit. If you have an active prediction, draw 1.',
+    onPlay: [{ k: 'damage', to: 'chosen', n: 2 }, { k: 'drawIfPrediction', n: 1 }],
+  },
+  {
+    id: 55, slug: 'seers-circle', name: "Seers' Circle", faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 4, attack: 3, health: 5, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, give all friendly units +1/+1.',
+    onPredictionHit: [{ k: 'buff', to: 'allFriendly', atk: 1, hp: 1 }],
+  },
+  {
+    id: 56, slug: 'self-fulfilling-prophecy', name: 'Self-Fulfilling Prophecy', faction: 'prophets', chain: 'base', type: 'prediction',
+    cost: 3, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Foresee. Correct: deal 2 damage and draw 1 card per Odds tier. Backfire: take 2.',
+    prediction: { damagePerTier: 2, drawPerTier: 1, backfire: 2 },
+  },
+  {
+    id: 57, slug: 'the-long-bet', name: 'The Long Bet', faction: 'prophets', chain: 'base', type: 'unit',
+    cost: 6, attack: 5, health: 6, rarity: 'rare', keywords: [], collectible: true,
+    text: 'When one of your predictions comes true, deal 3 damage to the enemy Treasury.',
+    onPredictionHit: [{ k: 'damage', to: 'enemyTreasury', n: 3 }],
   },
 
   // ─── Tokens (not collectible) ──────────────────────────────────
