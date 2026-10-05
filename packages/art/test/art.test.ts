@@ -37,10 +37,11 @@ describe('sprites follow the pixel style guide', () => {
     }
   });
   it('adding cards never changes the art of earlier ones', () => {
-    // Every sprite as of the first Prophets batch (ids 1–57 and the 3 tokens), pinned.
+    // Every sprite as of the first Prophets batch (ids 1–57 and the 3 tokens), pinned. A sprite's size follows its
+    // Gas cost, so a balance change to a legacy card's cost re-pins this (Hype Man went from 3 to 4 Gas).
     const before = CARDS.filter((c) => c.id <= 57 || !c.collectible).map((c) => c.id).sort((a, b) => a - b);
     expect(before).toHaveLength(60);
-    expect(keccakHex(...before.map((id) => spritePixels(id).join()))).toBe('0x130f252821c6def8ad4e73edd036fb79e392ee6f57b557b48183c4008cbefa36');
+    expect(keccakHex(...before.map((id) => spritePixels(id).join()))).toBe('0x32164a2467c9ce59daa4ef27bbe67955381b6bdd3a652f4f576f73c0428db458');
   });
 });
 

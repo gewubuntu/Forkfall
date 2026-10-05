@@ -208,13 +208,13 @@ describe('race mechanics', () => {
   it('Portfolio drops Bonds on death', () => {
     const g0 = newMatch('agents', 'brokers');
     const me = g0.active, op = (1 - me) as Seat;
-    const pm = unit(g0, op, 21);
+    const pm = unit(g0, op, 21, { health: 3 });
     const { g, uid } = withHand(g0, 36); // Liquidator 3 dmg
     const r = applyAction(g, me, { type: 'play', uid, target: pm });
     expect(r.state.players[op].board.map((u) => u.cardId)).toEqual([1001, 1001]);
   });
   it('Ape reduces cost and applies a downside', () => {
-    const { g, uid } = withHand(newMatch('degens', 'agents'), 30, 1); // Hype Man cost 3, 1 gas
+    const { g, uid } = withHand(newMatch('degens', 'agents'), 30, 2); // Hype Man cost 4, 2 gas
     const r = applyAction(g, g.active, { type: 'play', uid, ape: true });
     expect(r.events.some((e) => e.t === 'apeDownside')).toBe(true);
   });
