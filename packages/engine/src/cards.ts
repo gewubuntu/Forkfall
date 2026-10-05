@@ -888,6 +888,49 @@ export const CARDS: CardDef[] = [
     onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'buff', to: 'allFriendlySwarm', atk: 1, hp: 1 }],
   },
 
+  // ─── Set 1 · Neutral ───────────────────────────────────────────
+  {
+    id: 161, slug: 'light-node', name: 'Light Node', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 1, attack: 1, health: 3, rarity: 'common', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 162, slug: 'block-explorer', name: 'Block Explorer', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 2, attack: 1, health: 2, rarity: 'common', keywords: [], collectible: true,
+    text: 'Draw 1.', onPlay: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 163, slug: 'bridge-toll', name: 'Bridge Toll', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 2, rarity: 'common', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 2 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 2 }],
+  },
+  {
+    id: 164, slug: 'flash-loan', name: 'Flash Loan', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 0, rarity: 'uncommon', keywords: [], collectible: true,
+    text: 'Gain 2 Gas this turn.', onPlay: [{ k: 'gainGas', n: 2 }],
+  },
+  {
+    id: 165, slug: 'multisig-wallet', name: 'Multisig Wallet', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 4, attack: 2, health: 6, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    text: 'Guard.',
+  },
+  {
+    id: 166, slug: 'layer-two', name: 'Layer Two', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 4, attack: 4, health: 4, rarity: 'rare', keywords: ['rush'], collectible: true,
+    text: 'Rush. Draw 1.', onPlay: [{ k: 'draw', n: 1 }],
+  },
+  {
+    id: 167, slug: 'dark-pool', name: 'Dark Pool', faction: 'neutral', chain: 'any', type: 'unit',
+    cost: 5, attack: 4, health: 6, rarity: 'rare', keywords: ['guard'], collectible: true,
+    text: 'Guard. When this dies, deal 3 damage to the enemy Treasury.',
+    onDeath: [{ k: 'damage', to: 'enemyTreasury', n: 3 }],
+  },
+  {
+    id: 168, slug: 'consensus-attack', name: 'Consensus Attack', faction: 'neutral', chain: 'any', type: 'action',
+    cost: 6, rarity: 'rare', keywords: [], collectible: true, target: 'anyUnit',
+    text: 'Deal 6 damage to a unit.', onPlay: [{ k: 'damage', to: 'chosen', n: 6 }],
+  },
+
   // ─── Tokens (not collectible) ──────────────────────────────────
   {
     id: TOKEN_DRONE, slug: 'drone-token', name: 'Drone', faction: 'agents', chain: 'base', type: 'unit',

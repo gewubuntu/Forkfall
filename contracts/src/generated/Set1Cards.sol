@@ -3,19 +3,19 @@
 pragma solidity ^0.8.28;
 
 // forgefmt: disable-start
-/// @notice Card data (160 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
+/// @notice Card data (168 collectible cards: core set + Poncho collab set) mirrored from the rules engine.
 library Set1Cards {
-    uint256 internal constant COUNT = 160;
+    uint256 internal constant COUNT = 168;
 
     function all()
         internal
         pure
         returns (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains)
     {
-        ids = new uint16[](160);
-        races = new uint8[](160);
-        rarities = new uint8[](160);
-        chains = new uint8[](160);
+        ids = new uint16[](168);
+        races = new uint8[](168);
+        rarities = new uint8[](168);
+        chains = new uint8[](168);
         ids[0] = 1; races[0] = 1; rarities[0] = 0; chains[0] = 1; // Launch Bot
         ids[1] = 2; races[1] = 1; rarities[1] = 0; chains[1] = 1; // Compute Node
         ids[2] = 3; races[2] = 1; rarities[2] = 0; chains[2] = 1; // Cron Job
@@ -176,6 +176,14 @@ library Set1Cards {
         ids[157] = 158; races[157] = 4; rarities[157] = 2; chains[157] = 2; // Degen Council
         ids[158] = 159; races[158] = 4; rarities[158] = 2; chains[158] = 2; // Ape Army
         ids[159] = 160; races[159] = 4; rarities[159] = 3; chains[159] = 2; // The Meme King
+        ids[160] = 161; races[160] = 0; rarities[160] = 0; chains[160] = 0; // Light Node
+        ids[161] = 162; races[161] = 0; rarities[161] = 0; chains[161] = 0; // Block Explorer
+        ids[162] = 163; races[162] = 0; rarities[162] = 0; chains[162] = 0; // Bridge Toll
+        ids[163] = 164; races[163] = 0; rarities[163] = 1; chains[163] = 0; // Flash Loan
+        ids[164] = 165; races[164] = 0; rarities[164] = 1; chains[164] = 0; // Multisig Wallet
+        ids[165] = 166; races[165] = 0; rarities[165] = 2; chains[165] = 0; // Layer Two
+        ids[166] = 167; races[166] = 0; rarities[166] = 2; chains[166] = 0; // Dark Pool
+        ids[167] = 168; races[167] = 0; rarities[167] = 2; chains[167] = 0; // Consensus Attack
     }
 
     /// @notice Card ids of the Poncho collab set (the Poncho booster's pool).
