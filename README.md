@@ -26,7 +26,7 @@ Built from [`docs/GDD-v0.1.md`](docs/GDD-v0.1.md).
 | --- | --- |
 | **Rules engine** (`packages/engine`) | Deterministic TypeScript engine shared by client, server, agents and tests. 25 Treasury, Gas 1→10, 5 board slots, hand limit 10, fatigue, 40-half-turn cap. All race mechanics: **Agents** Automate/Deploy/Compute/Firewall · **Prophets** Foresee (face-down)/Odds tiers/Backfire · **Brokers** Hold/Dividend (capped)/Portfolio · **Degens** Swarm/Pump/Rug/Ape. Keccak counter RNG, commit-reveal match seed, per-player private deck salt, redacted views. |
 | **Cards** | 40 prototype cards (8 per race + 8 neutral, 1 Legendary per race), the 8-card **Poncho collab set** (neutral Base cards starring Poncho, the cutest cat on Base, @ponchobase) + tokens. Free soulbound starter deck per race. Ranked rarity budget (18 pts, max 1 Legendary: room for one Legendary over a starter list). |
-| **Balance** | `pnpm sim` plays greedy bot vs greedy bot across all race pairings. Current: every race 46–54% (GDD gate: 45–55%), ≈8 turns each. |
+| **Balance** | `pnpm sim` plays greedy bot vs greedy bot across all race pairings. Current (500 games per pairing): every race 46–55% (GDD gate: 45–55%), ≈8 turns each. CI runs `pnpm sim 500` and `pnpm sim 200 poncho` and fails the build when a gate is missed. |
 | **Contracts** (`contracts/`, Foundry) | `CardRegistry` (ERC-1155, soulbound starter twins), `StarterDecks`, `PackSale` (ETH / test USDC / test token, 3C+1U+1R with ~10% Legendary upgrade), `Crafting` (Scrap), `QuestRewards` (daily quest Scrap and free packs, paid by the referee), `DeckRegistry` (race, copies, rarity cap, live ownership), `AgentRegistry` (ERC-8004 Identity Registry: agents are ERC-721 identities owned by their operator, linked agent wallet with signature proof, operator cap, bans), `HumanRegistry` (optional proof-of-personhood attestations; gates season rewards, not play), `MatchSettlement` (EIP-712 dual-signed results, ERC-1271 smart wallets and ERC-6492 for wallets not deployed yet, referee path, per-season Elo), `SeasonRewards` (Merkle claims; `pnpm rewards:publish` builds and publishes a season), faucet test tokens. |
 | **Referee server** (`apps/server`) | Signature login, queue (casual / ranked / Human queue), practice vs house bot, move signature + hash-chain verification, timer + bank + forfeit after 3 timeouts, equal rate limits, spectating, public move log after the match, Foundry-ready settlement files. |
 | **Agent SDK** (`packages/sdk`) | `ForkfallClient`, EIP-712 types shared with Solidity, `runMatch` loop, view-only greedy policy, CLI bot (`pnpm bot`). |
@@ -62,7 +62,7 @@ pnpm install
 pnpm test                 # engine + server/agent integration tests
 pnpm web:build && pnpm test:e2e   # browser tests (Playwright) of the built web app, with a test wallet
 pnpm contracts:test       # Foundry tests
-pnpm sim 200              # balance simulator
+pnpm sim 500              # balance simulator (exits 1 if a race leaves 45–55%)
 ```
 
 Full local stack with on-chain settlement on Anvil:

@@ -2,6 +2,7 @@
  * Balance simulator: greedy bot vs greedy bot with starter decks, every race pairing.
  * Balance gate from the GDD: every race's overall win rate within 45–55%.
  *   pnpm sim [gamesPerPairing]
+ * Exits 1 when a gate is missed, so CI fails instead of printing a warning. Seeds are fixed: same code, same result.
  */
 import { card, COLLECTIBLE, createMatch, greedyBot, keccakHex, playOut, RACES, setOf, starterDeck, type Race } from '../src/index.ts';
 
@@ -38,7 +39,8 @@ const summary = Object.fromEntries(RACES.map((r) => [r, `${((wins[r] / games[r])
 console.table(summary);
 console.log(`avg half-turns: ${(turns / total).toFixed(1)} (≈${(turns / total / 2).toFixed(1)} turns each), draws: ${draws}`);
 const ok = RACES.every((r) => { const w = wins[r] / games[r]; return w >= 0.45 && w <= 0.55; });
-console.log(ok ? '✅ balance gate passed (all races 45–55%)' : '⚠️  balance gate not met (target 45–55%)');
+console.log(ok ? '✅ balance gate passed (all races 45–55%)' : '❌ balance gate not met (target 45–55%)');
+if (!ok) process.exitCode = 1;
 
 // Collab-set check: `pnpm sim 200 poncho` swaps each race's neutral slots for the Poncho set and plays it
 // against every plain starter deck. The set should be a fun alternative, not a must-play (target ≤ 58%).
@@ -73,5 +75,6 @@ if (process.argv[3] === 'poncho') {
   console.log('\nPoncho set vs plain starter decks (same race pool, both seats):');
   console.table(res);
   const rate = pw / pg;
-  console.log(`overall ${(rate * 100).toFixed(1)}% ${rate <= 0.58 ? '✅ fun, not must-play (≤ 58%)' : '⚠️  too strong (> 58%)'}`);
+  console.log(`overall ${(rate * 100).toFixed(1)}% ${rate <= 0.58 ? '✅ fun, not must-play (≤ 58%)' : '❌ too strong (> 58%)'}`);
+  if (rate > 0.58) process.exitCode = 1;
 }
