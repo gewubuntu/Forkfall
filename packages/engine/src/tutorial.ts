@@ -2,6 +2,13 @@ import { card } from './cards.ts';
 import { applyAction, attackTargets, BOARD_SLOTS, canAttack, createScriptedMatch, legalActions } from './engine.ts';
 import type { Action, GameEvent, GameState, PredictionCondition, Race } from './types.ts';
 
+/** A unit's printed stats, and an action's buff, read from the card so the lessons follow balance changes. */
+const stats = (id: number) => `${card(id).attack}/${card(id).health}`;
+const buffOf = (id: number) => {
+  const b = card(id).onPlay?.find((e) => e.k === 'buff');
+  return b && b.k === 'buff' ? `+${b.atk}/+${b.hp}` : '';
+};
+
 /**
  * Lessons: guided matches against a gentle scripted bot. "basics" is the first match everyone plays (Gas,
  * units, attacking, Guard, Rush); each race then has its own lesson for its signature mechanic. Decks are
@@ -216,12 +223,12 @@ const BROKERS: Lesson = {
     {
       id: 'guard', target: '.tut-hand', done: playedBy(18, 3), auto: playAuto(18), title: 'Protect your investments',
       forbid: noAttacksUntilPlayed(18, 3, 'Keep holding for one more turn: Intern grows next turn, and Analyst again.'),
-      body: 'The bot has a swarm coming. Play Bond Desk: a 0/3 Guard with Hold. Enemy units must hit it first, which keeps your growing units safe.',
+      body: `The bot has a swarm coming. Play Bond Desk: a ${stats(18)} Guard with Hold. Enemy units must hit it first, which keeps your growing units safe.`,
     },
     { ...endStep('end2', 'End your turn. The bot’s units have to hit your Guard, not the units you’re growing.'), forbid: noAttacks('Keep holding: don’t attack this turn.') },
     {
       id: 'compound', target: '.tut-hand', done: played(22), auto: (g, legal) => playAuto(22, { pick: biggest(g, TUTORIAL_YOU) })(g, legal), title: 'Compound Interest',
-      body: 'Everything held again: Analyst paid another Dividend and Intern grew. Now Compound Interest: give Analyst +2/+2.',
+      body: `Everything held again: Analyst paid another Dividend and Intern grew. Now Compound Interest: give Analyst ${buffOf(22)}.`,
     },
     {
       id: 'cashout', target: '[data-treasury="1"]', done: (_g, ev) => ev.some((e) => e.t === 'damage' && e.seat === TUTORIAL_BOT && e.uid === 'treasury'),

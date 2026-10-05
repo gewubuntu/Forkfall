@@ -106,12 +106,12 @@ export const CARDS: CardDef[] = [
   // ─── Brokers (Robinhood Chain) ─────────────────────────────────
   {
     id: 17, slug: 'intern', name: 'Intern', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 1, attack: 1, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
+    cost: 1, attack: 2, health: 2, rarity: 'common', keywords: ['hold'], collectible: true,
     text: 'Hold.',
   },
   {
     id: 18, slug: 'bond-desk', name: 'Bond Desk', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 2, attack: 1, health: 4, rarity: 'common', keywords: ['hold', 'guard'], collectible: true,
+    cost: 2, attack: 0, health: 5, rarity: 'common', keywords: ['hold', 'guard'], collectible: true,
     text: 'Hold. Guard.',
   },
   {
@@ -293,7 +293,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 51, slug: 'second-sight', name: 'Second Sight', faction: 'prophets', chain: 'base', type: 'action',
-    cost: 2, rarity: 'common', keywords: [], collectible: true,
+    cost: 1, rarity: 'common', keywords: [], collectible: true,
     text: 'Draw 1, plus 1 more if you have an active prediction.',
     onPlay: [{ k: 'draw', n: 1 }, { k: 'drawIfPrediction', n: 1 }],
   },
@@ -399,7 +399,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 70, slug: 'assembly-line', name: 'Assembly Line', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 5, attack: 3, health: 5, rarity: 'common', keywords: [], collectible: true,
+    cost: 6, attack: 3, health: 5, rarity: 'common', keywords: [], collectible: true,
     text: 'Deploy 2. Automate: at the start of your next turn, Deploy 1.',
     onPlay: [{ k: 'deploy', n: 2 }, { k: 'automate', effects: [{ k: 'deploy', n: 1 }] }],
   },
@@ -427,7 +427,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 75, slug: 'kill-switch', name: 'Kill Switch', faction: 'agents', chain: 'base', type: 'action',
-    cost: 3, rarity: 'uncommon', keywords: [], collectible: true, target: 'anyUnit',
+    cost: 4, rarity: 'uncommon', keywords: [], collectible: true, target: 'anyUnit',
     text: 'Deal 3 damage to a unit. Automate: at the start of your next turn, deal 2 damage to a random enemy unit (or the enemy Treasury).',
     onPlay: [{ k: 'damage', to: 'chosen', n: 3 }, { k: 'automate', effects: [{ k: 'damage', to: 'randomEnemyUnitOrTreasury', n: 2 }] }],
   },
@@ -454,7 +454,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 80, slug: 'sentinel-array', name: 'Sentinel Array', faction: 'agents', chain: 'base', type: 'unit',
-    cost: 5, attack: 4, health: 5, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
+    cost: 5, attack: 4, health: 6, rarity: 'uncommon', keywords: ['guard', 'firewall'], collectible: true,
     text: 'Guard. Firewall: whenever an enemy unit is summoned, deal 1 damage to it.',
   },
   {
@@ -594,7 +594,7 @@ export const CARDS: CardDef[] = [
   // ─── Set 1 · Brokers ───────────────────────────────────────────
   {
     id: 105, slug: 'day-trader', name: 'Day Trader', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 1, attack: 2, health: 1, rarity: 'common', keywords: [], collectible: true,
+    cost: 1, attack: 3, health: 1, rarity: 'common', keywords: [], collectible: true,
     text: '',
   },
   {
@@ -691,7 +691,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 124, slug: 'insurance-fund', name: 'Insurance Fund', faction: 'brokers', chain: 'robinhood', type: 'unit',
-    cost: 4, attack: 2, health: 7, rarity: 'uncommon', keywords: ['guard'], collectible: true,
+    cost: 4, attack: 1, health: 8, rarity: 'uncommon', keywords: ['guard'], collectible: true,
     text: 'Guard.',
   },
   {
@@ -846,7 +846,7 @@ export const CARDS: CardDef[] = [
   },
   {
     id: 153, slug: 'telegram-pump', name: 'Telegram Pump', faction: 'degens', chain: 'robinhood', type: 'action',
-    cost: 4, rarity: 'uncommon', keywords: [], collectible: true,
+    cost: 5, rarity: 'uncommon', keywords: [], collectible: true,
     text: 'Pump all friendly units. They gain Rush this turn.',
     onPlay: [{ k: 'pump', to: 'allFriendly' }, { k: 'grantRush', to: 'allFriendly' }],
   },

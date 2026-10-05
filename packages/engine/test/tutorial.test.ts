@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, createLesson, createTutorial, LESSONS, tutorialBotMove } from '../src/index.ts';
+import { applyAction, card, createLesson, createTutorial, LESSONS, tutorialBotMove } from '../src/index.ts';
 import { playLesson, playRandom } from './student.ts';
 
 describe('lessons', () => {
@@ -88,5 +88,11 @@ describe('lessons', () => {
       g = applyAction(g, g.active, a).state;
     }
     expect(g.players[1].board.some((u) => u.cardId === 33)).toBe(true);
+  });
+  it('quotes card stats as the cards have them, so balance changes reach the lessons', () => {
+    const steps = LESSONS.find((l) => l.id === 'brokers')!.steps;
+    const bond = card(18), ci = card(22).onPlay!.find((e) => e.k === 'buff')!;
+    expect(steps.find((s) => s.id === 'guard')!.body).toContain(`a ${bond.attack}/${bond.health} Guard`);
+    expect(ci.k === 'buff' && steps.find((s) => s.id === 'compound')!.body).toContain(`+${ci.k === 'buff' ? ci.atk : 0}/+${ci.k === 'buff' ? ci.hp : 0}`);
   });
 });

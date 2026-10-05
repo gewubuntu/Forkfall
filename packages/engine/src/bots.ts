@@ -112,7 +112,10 @@ export function evaluate(g: GameState, seat: Seat): number {
   );
 }
 
-/** Moves whose payoff is the move after them: extra Gas, Compute, and buffs, Rush or Pump on a chosen unit. */
+/**
+ * Actions whose payoff is the move after them: extra Gas, Compute, and buffs, Rush or Pump on a chosen unit. Units
+ * are left out (a body is worth something on its own), so a Compute unit gets a second look only among the best few.
+ */
 function isEnabler(g: GameState, seat: Seat, a: Action): boolean {
   if (a.type !== 'play') return false;
   const h = g.players[seat].hand.find((x) => x.uid === a.uid);
@@ -124,6 +127,8 @@ function isEnabler(g: GameState, seat: Seat, a: Action): boolean {
 
 /** How many of the best first moves also get a second look. */
 const LOOKAHEAD_TOP = 3;
+/** At most this many enabler cards get a second look, each on its best target, which bounds a decision's cost. */
+const LOOKAHEAD_ENABLERS = 4;
 
 /**
  * Greedy with a short look within the turn: try every legal action and evaluate the result. The best few, and every
@@ -142,12 +147,21 @@ export function greedyBot(): Bot {
         first.push({ a, s, score: evaluate(s, seat) });
       } catch { continue; }
     }
-    const top = new Set([...first].sort((x, y) => y.score - x.score).slice(0, LOOKAHEAD_TOP));
+    const ranked = [...first].sort((x, y) => y.score - x.score);
+    const expand = new Set(ranked.slice(0, LOOKAHEAD_TOP));
+    // Enablers: the best-scoring play of each card (one Taco on its best target, not one per target), best cards first.
+    const seen = new Set<number>();
+    for (const f of ranked) {
+      if (seen.size >= LOOKAHEAD_ENABLERS) break;
+      if (f.a.type !== 'play' || seen.has(f.a.uid) || !isEnabler(g, seat, f.a)) continue;
+      seen.add(f.a.uid);
+      expand.add(f);
+    }
     let best: Action = { type: 'endTurn' };
     let bestScore = pass;
     for (const f of first) {
       let score = f.score;
-      if ((top.has(f) || isEnabler(g, seat, f.a)) && f.s.status === 'active' && f.s.active === seat) {
+      if (expand.has(f) && f.s.status === 'active' && f.s.active === seat) {
         for (const b of legalActions(f.s, seat)) {
           if (b.type === 'endTurn') continue;
           try { score = Math.max(score, evaluate(applyAction(f.s, seat, b).state, seat)); } catch { continue; }

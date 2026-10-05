@@ -70,11 +70,16 @@ function runAll(jobs: Job[]): Promise<(RaceResult | PonchoResult)[]> {
   let next = 0, done = 0;
   return new Promise((resolve, reject) => {
     const threads = Math.max(1, Math.min(availableParallelism(), jobs.length));
+    const workers: Worker[] = [];
+    let failed = false;
+    const fail = (e: Error) => { if (failed) return; failed = true; for (const w of workers) void w.terminate(); reject(e); };
     for (let t = 0; t < threads; t++) {
       const w = new Worker(new URL(import.meta.url), { execArgv: process.execArgv });
+      workers.push(w);
       let current = -1;
+      let retired = false; // terminated on purpose: no jobs left, or the run failed
       const feed = () => {
-        if (next >= jobs.length) { void w.terminate(); return; }
+        if (next >= jobs.length) { retired = true; void w.terminate(); return; }
         current = next++;
         w.postMessage(jobs[current]);
       };
@@ -83,7 +88,9 @@ function runAll(jobs: Job[]): Promise<(RaceResult | PonchoResult)[]> {
         if (++done === jobs.length) resolve(results);
         feed();
       });
-      w.on('error', reject);
+      w.on('error', fail);
+      // A worker that dies without an error event (process.exit, out of memory) would leave the run waiting forever.
+      w.on('exit', (code) => { if (!retired && code !== 0 && done < jobs.length) fail(new Error(`sim worker exited with code ${code} during job ${current}`)); });
       feed();
     }
   });
