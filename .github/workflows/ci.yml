@@ -15,7 +15,7 @@ jobs:
       - run: pnpm typecheck                  # TypeScript 7
       - run: pnpm lint                       # oxlint (.oxlintrc.json)
       - run: pnpm test
-      - run: pnpm sim 200
+      - run: pnpm sim 500 poncho  # balance gates (GDD), both at 500 games: every race 45–55%, Poncho set ≤ 58%
       - run: pnpm web:build
 
   web-e2e:
