@@ -1,4 +1,4 @@
-import { RULES_VERSION } from '@forkfall/engine';
+import { RULES_VERSION, UNRECORDED_RULES_SINCE } from '@forkfall/engine';
 import { ForkfallClient, replayLog, runMatch } from '@forkfall/sdk';
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
@@ -175,7 +175,8 @@ describe('finished matches are unloaded from memory and reloaded from the archiv
     expect((await current.a.log(current.id)).rules).toBe(RULES_VERSION);
 
     // Archived before versions were recorded: no version in the file or the index. Found again by replaying.
-    rewriteArchive(dir, id, (rec) => { delete rec.log.rules; });
+    // (Created while v1 was live, as every v1 match was.)
+    rewriteArchive(dir, id, (rec) => { delete rec.log.rules; rec.log.createdAt = UNRECORDED_RULES_SINCE[2] - 60_000; });
     writeFileSync(join(dir, 'index.jsonl'), '');
     const second = await referee(dir, clock);
     expect(second.archive.restoreInto(second.lobby)).toMatchObject({ replayed: 2, skipped: [] });

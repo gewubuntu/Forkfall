@@ -10,17 +10,6 @@ export const RULES_VERSION = 4;
 /** Fingerprint of the live card table's rules (see rulesFingerprint). */
 export const RULES_FINGERPRINT = '0xd726527a8290c4cf30884696c284ca2db920a54a0d4b72514d82563fee2c976f';
 
-/**
- * When each version went live (ms; the time it was frozen, or its merge into main). Only used to tell which version
- * a log that doesn't record one was played under.
- */
-export const RULES_SINCE: Record<number, number> = {
-  1: 0, // 1970-01-01T00:00:00.000Z
-  2: 1791195289000, // 2026-10-05T10:14:49.000Z
-  3: 1791203805000, // 2026-10-05T12:36:45.000Z
-  4: 1791207565697, // 2026-10-05T13:39:25.697Z
-};
-
 /** RULES_HISTORY[v]: how version v's cards differ from version v + 1. */
 export const RULES_HISTORY: Record<number, Record<number, CardPatch>> = {
   3: {

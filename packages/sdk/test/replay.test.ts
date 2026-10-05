@@ -1,4 +1,4 @@
-import { RULES_SINCE, RULES_VERSION } from '@forkfall/engine';
+import { RULES_VERSION } from '@forkfall/engine';
 import { type Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -174,12 +174,25 @@ describe('replayLog across rules versions', () => {
     const { log } = await signedMatch({ ...v1, unrecorded: true });
     expect(log.rules).toBeUndefined();
     expect(replayLog(log)).toMatchObject({ ok: true, rules: 1, rulesDetected: true });
-    // Created while v4 was live (a referee that hadn't deployed it yet): newer versions don't reproduce it, so the
-    // search goes back. v2 only changed cards these decks never draw, so it is the same game as v1.
-    const late = replayLog({ ...log, createdAt: RULES_SINCE[RULES_VERSION] + 1000 });
+    // Created later (a referee that ran behind main): newer versions don't reproduce it, so the search goes back.
+    // v2 only changed cards these decks never draw, so it is the same game as v1.
+    const late = replayLog({ ...log, createdAt: Date.now() });
     expect(late).toMatchObject({ ok: true, rulesDetected: true });
     expect(late.rules).toBeLessThanOrEqual(2);
     expect(late.frames.map((f) => ({ ...f.state, rules: 0 }))).toEqual(replayLog(m.log).frames.map((f) => ({ ...f.state, rules: 0 })));
+  });
+
+  it('never takes a later version for a log from before versions were recorded, even one it reproduces', async () => {
+    // A v3 game (production before versions) that v4 also replays to the same winner and turn count, through a
+    // different game: the Treasuries end differently. Created after v4 was frozen, it is still a v3 game.
+    const { log } = await signedMatch({ rules: 3, unrecorded: true, seed: 'w2', races: ['degens', 'agents'], createdAt: Date.now() });
+    const asV4 = replayLog({ ...log, rules: 4 });
+    expect(asV4.ok).toBe(true);
+    const truth = replayLog({ ...log, rules: 3 });
+    expect(asV4.final.players.map((p) => p.treasury)).not.toEqual(truth.final.players.map((p) => p.treasury));
+    const found = replayLog(log);
+    expect(found).toMatchObject({ ok: true, rules: 3, rulesDetected: true });
+    expect(found.final).toEqual(truth.final);
   });
 
   it('fails a log recorded under a version this build doesn’t know, saying so', () => {

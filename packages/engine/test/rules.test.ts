@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAction, card, CARDS, cardIn, cardPatches, cardsFor, createMatch, currentRulesPinned, keccakHex, legalActions,
-  RULES_SINCE, RULES_VERSION, rulesCandidates, rulesFingerprint, starterDeck, type CardDef, type GameState, type Seat,
+  bumpPlan, LAST_UNRECORDED_RULES, RULES_VERSION, rulesCandidates, UNRECORDED_RULES_SINCE, rulesFingerprint, starterDeck, type CardDef, type GameState, type Seat,
 } from '../src/index.ts';
 
 const A = '0x' + 'a'.repeat(40);
@@ -24,15 +24,28 @@ describe('rules versions', () => {
     expect(currentRulesPinned(), 'card rules changed without a new rules version: run `pnpm rules:bump`').toBe(true);
   });
 
-  it('rebuild every older card table exactly as it was played', () => {
-    // Fingerprints of packages/engine/src/cards.ts at the merges of #31 (v1), #32 (v2) and #33 (v3), taken from git.
-    const pinned: Record<number, string> = {
-      1: '0x87fe2708ecd0ecbe1f36071ba1e6b142506265e9de60425a2175c15ecf412e92',
-      2: '0x0218a5c6719cddb8f7fdcae8c0d908ba987db308ad4db603d5a911e9dd7de95d',
-      3: '0x5d26c17153c09a9127b0e46b7a27111ec099721b30b25e837fa0ee6b44cefdaa',
-    };
-    for (const v of [1, 2, 3]) expect(rulesFingerprint([...cardsFor(v).values()]), `v${v}`).toBe(pinned[v]);
+  // Every version's fingerprint, pinned once it exists: a version that shipped must never be redefined (a
+  // `pnpm rules:bump` against a stale base would). v1–v3: cards.ts at the merges of #31, #32 and #33, from git.
+  const SHIPPED: Record<number, string> = {
+    1: '0x87fe2708ecd0ecbe1f36071ba1e6b142506265e9de60425a2175c15ecf412e92',
+    2: '0x0218a5c6719cddb8f7fdcae8c0d908ba987db308ad4db603d5a911e9dd7de95d',
+    3: '0x5d26c17153c09a9127b0e46b7a27111ec099721b30b25e837fa0ee6b44cefdaa',
+    4: '0xd726527a8290c4cf30884696c284ca2db920a54a0d4b72514d82563fee2c976f',
+  };
+
+  it('rebuild every version’s card table exactly as it was pinned, and never redefine one', () => {
+    for (let v = 1; v <= RULES_VERSION; v++) {
+      const fp = rulesFingerprint([...cardsFor(v).values()]);
+      expect(SHIPPED[v], `pin v${v} in SHIPPED: '${fp}'`).toBeDefined();
+      expect(fp, `v${v} differs from its pinned fingerprint: was the base stale when you ran rules:bump?`).toBe(SHIPPED[v]);
+    }
     expect(cardsFor(RULES_VERSION).get(34)).toBe(card(34)); // the current version is the live table
+  });
+
+  it('keep what decides deck legality (collectible, faction, rarity) the same in every version', () => {
+    // validateDeck reads these from the live table, so changing one would stop old matches replaying.
+    const legality = (v: number) => [...cardsFor(v).values()].map((c) => [c.id, c.collectible, c.faction, c.rarity]);
+    for (let v = 1; v < RULES_VERSION; v++) expect(legality(v), `v${v}`).toEqual(legality(RULES_VERSION));
   });
 
   it('look cards up by version', () => {
@@ -80,13 +93,24 @@ describe('rules versions', () => {
     expect(() => match(1.5)).toThrow(/unknown rules version/);
   });
 
-  it('try the version live when an unrecorded match was created first, then older ones, then newer', () => {
-    const newer = (v: number) => Array.from({ length: RULES_VERSION - v }, (_, i) => v + 1 + i);
-    expect(rulesCandidates()).toEqual([...newer(0)].reverse());
-    expect(rulesCandidates(RULES_SINCE[3] + 1000)).toEqual([3, 2, 1, ...newer(3)]);
-    expect(rulesCandidates(RULES_SINCE[2] + 1000)).toEqual([2, 1, ...newer(2)]);
-    expect(rulesCandidates(RULES_SINCE[2] - 1000)).toEqual([1, ...newer(1)]);
-    expect(rulesCandidates(RULES_SINCE[RULES_VERSION] + 1000)[0]).toBe(RULES_VERSION);
+  it('try unrecorded matches under the version live when created, then older, then newer of that era, then later ones', () => {
+    const later = Array.from({ length: RULES_VERSION - LAST_UNRECORDED_RULES }, (_, i) => LAST_UNRECORDED_RULES + 1 + i);
+    expect(rulesCandidates()).toEqual([3, 2, 1, ...later]);
+    expect(rulesCandidates(Date.now())).toEqual([3, 2, 1, ...later]); // after v3: v4 shipped with recording
+    expect(rulesCandidates(UNRECORDED_RULES_SINCE[3] + 1000)).toEqual([3, 2, 1, ...later]);
+    expect(rulesCandidates(UNRECORDED_RULES_SINCE[2] + 1000)).toEqual([2, 1, 3, ...later]);
+    expect(rulesCandidates(UNRECORDED_RULES_SINCE[2] - 1000)).toEqual([1, 2, 3, ...later]);
+  });
+
+  it('plan a bump: one version past the base, redone on re-runs, dropped on revert, refused against a stale base', () => {
+    const v3 = { version: 3, fingerprint: '0x3' }, v4 = { version: 4, fingerprint: '0x4' };
+    expect(bumpPlan(v3, v3, '0x3')).toEqual({ action: 'unchanged' });
+    expect(bumpPlan(v3, v3, '0xnew')).toEqual({ action: 'bump', version: 4, patchOf: 3 });
+    expect(bumpPlan(v3, v4, '0xnewer')).toEqual({ action: 'bump', version: 4, patchOf: 3 }); // re-run on this branch
+    expect(bumpPlan(v3, v4, '0x4')).toEqual({ action: 'unchanged' });
+    expect(bumpPlan(v3, v4, '0x3')).toEqual({ action: 'revert' }); // cards back to the base's
+    expect(bumpPlan(v3, { version: 5, fingerprint: '0x5' }, '0xnew').action).toBe('refuse'); // base two behind
+    expect(bumpPlan(v4, v3, '0xnew').action).toBe('refuse'); // base ahead: merge it first
   });
 
   it('describe a change as patches on the newer table (null: absent before), and never allow removing a card', () => {

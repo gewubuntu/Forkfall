@@ -1,9 +1,10 @@
 /**
  * Freeze the card rules into a new version after a balance change, so matches played before it keep replaying.
  *   pnpm rules:bump [git-ref]
- * Compares the live card table with the one at `git-ref` (default origin/main), stores what changed as the
- * previous version's patch in src/rules-history.ts, bumps RULES_VERSION and pins the new fingerprint.
- * Run it once per pull request that changes cards; re-running on the same branch replaces that patch.
+ * Compares the live card table with the one at `git-ref` (default origin/main), stores what changed as the base
+ * version's patch in src/rules-history.ts, sets RULES_VERSION to the base's + 1 and pins the new fingerprint.
+ * Re-running it on the same branch redoes that version (or drops it if the cards are back to the base's). A base
+ * that isn't this branch's own (stale or ahead) is refused: fetch and merge it first. See bumpPlan.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -11,26 +12,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CARDS } from '../src/cards.ts';
-import { cardPatches, rulesFingerprint } from '../src/rules.ts';
-import { RULES_FINGERPRINT, RULES_HISTORY, RULES_SINCE, RULES_VERSION, type CardPatch } from '../src/rules-history.ts';
+import { bumpPlan, cardPatches, rulesFingerprint } from '../src/rules.ts';
+import { RULES_FINGERPRINT, RULES_HISTORY, RULES_VERSION, type CardPatch } from '../src/rules-history.ts';
 import type { CardDef } from '../src/types.ts';
 
 const HISTORY_FILE = new URL('../src/rules-history.ts', import.meta.url);
 
+function gitShow(ref: string, path: string): string {
+  const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+  return execFileSync('git', ['show', `${ref}:${path}`], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26, stdio: ['ignore', 'pipe', 'ignore'] });
+}
+
 /** The card table as it was at a git ref. */
 export async function cardsAt(ref: string): Promise<CardDef[]> {
-  const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
   const dir = mkdtempSync(join(tmpdir(), 'forkfall-rules-'));
   for (const f of ['cards.ts', 'types.ts']) {
-    const src = execFileSync('git', ['show', `${ref}:packages/engine/src/${f}`], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 26 });
+    const src = gitShow(ref, `packages/engine/src/${f}`);
     writeFileSync(join(dir, f.replace(/\.ts$/, '.mts')), src.replaceAll("from './types.ts'", "from './types.mts'"));
   }
   return (await import(pathToFileURL(join(dir, 'cards.mts')).href)).CARDS as CardDef[];
 }
 
-export function writeHistory(
-  version: number, fingerprint: string, since: Record<number, number>, history: Record<number, Record<number, CardPatch>>,
-) {
+export function writeHistory(version: number, fingerprint: string, history: Record<number, Record<number, CardPatch>>) {
   const block = (patches: Record<number, CardPatch>) => Object.entries(patches)
     .map(([id, p]) => `    ${id}: ${JSON.stringify(p)},`).join('\n');
   const versions = Object.keys(history).map(Number).sort((a, b) => b - a);
@@ -46,14 +49,6 @@ export const RULES_VERSION = ${version};
 /** Fingerprint of the live card table's rules (see rulesFingerprint). */
 export const RULES_FINGERPRINT = '${fingerprint}';
 
-/**
- * When each version went live (ms; the time it was frozen, or its merge into main). Only used to tell which version
- * a log that doesn't record one was played under.
- */
-export const RULES_SINCE: Record<number, number> = {
-${Object.keys(since).map(Number).sort((a, b) => a - b).map((v) => `  ${v}: ${since[v]}, // ${new Date(since[v]).toISOString()}`).join('\n')}
-};
-
 /** RULES_HISTORY[v]: how version v's cards differ from version v + 1. */
 export const RULES_HISTORY: Record<number, Record<number, CardPatch>> = {
 ${versions.map((v) => `  ${v}: {\n${block(history[v])}\n  },`).join('\n')}
@@ -63,17 +58,33 @@ ${versions.map((v) => `  ${v}: {\n${block(history[v])}\n  },`).join('\n')}
 
 async function main() {
   const ref = process.argv[2] ?? 'origin/main';
-  const fp = rulesFingerprint(CARDS);
-  if (fp === RULES_FINGERPRINT) { console.log(`card rules unchanged: still v${RULES_VERSION}`); return; }
+  // A stale base would make a version that already shipped look like this branch's own: fetch it first.
+  const remote = /^([\w.-]+)\/(.+)$/.exec(ref);
+  if (remote) {
+    try { execFileSync('git', ['fetch', remote[1], remote[2]], { stdio: 'ignore' }); } catch { console.warn(`could not fetch ${ref}: using the local copy`); }
+  }
+  const live = rulesFingerprint(CARDS);
+  let baseHistory = '';
+  try { baseHistory = gitShow(ref, 'packages/engine/src/rules-history.ts'); } catch { /* a base from before rules versions */ }
+  const baseVersion = Number(/export const RULES_VERSION = (\d+);/.exec(baseHistory)?.[1]);
+  if (!baseVersion) throw new Error(`${ref} has no rules versions: bump against a base that does`);
   const base = await cardsAt(ref);
-  const baseFp = rulesFingerprint(base);
-  // The branch already bumped against this base (the pinned fingerprint isn't the base's): redo that patch.
-  const rebump = baseFp !== RULES_FINGERPRINT;
-  const prev = rebump ? RULES_VERSION - 1 : RULES_VERSION;
-  const history = { ...RULES_HISTORY, [prev]: cardPatches(base, CARDS) };
-  writeHistory(prev + 1, fp, { ...RULES_SINCE, [prev + 1]: Date.now() }, history);
-  const n = Object.keys(history[prev]).length;
-  console.log(`card rules v${prev + 1}: ${n} card${n === 1 ? '' : 's'} differ${n === 1 ? 's' : ''} from v${prev} (${ref})`);
+  const plan = bumpPlan({ version: baseVersion, fingerprint: rulesFingerprint(base) }, { version: RULES_VERSION, fingerprint: RULES_FINGERPRINT }, live);
+  switch (plan.action) {
+    case 'unchanged': console.log(`card rules unchanged: still v${RULES_VERSION}`); return;
+    case 'revert':
+      writeFileSync(HISTORY_FILE, baseHistory);
+      console.log(`card rules are back to ${ref}'s: v${baseVersion}, this branch's version dropped`);
+      return;
+    case 'refuse': console.error(plan.reason); process.exitCode = 1; return;
+    case 'bump': {
+      const history = { ...RULES_HISTORY, [plan.patchOf]: cardPatches(base, CARDS) };
+      writeHistory(plan.version, live, history);
+      const n = Object.keys(history[plan.patchOf]).length;
+      console.log(`card rules v${plan.version}: ${n} card${n === 1 ? '' : 's'} differ${n === 1 ? 's' : ''} from v${plan.patchOf} (${ref})`);
+      console.log(`Pin v${plan.version}: ${live} in SHIPPED in packages/engine/test/rules.test.ts.`);
+    }
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) await main();
