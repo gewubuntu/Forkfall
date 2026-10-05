@@ -50,10 +50,7 @@ function raceGate(title: string, deckFor: (race: Race, pairing: string, i: numbe
 // Starter decks: what every new player plays. Pool decks: random ranked-legal decks from each race's whole core
 // pool, so every card in the set is played (a new card outside the starters shows up only here).
 if (!raceGate('starter decks', (race) => starterDeck(race))) process.exitCode = 1;
-// Report only for now: with their Legendary, Degens (Sticker Dragon) win about 65% and Brokers (The Whale) about 39%
-// of pool-deck games. Make this fail the build too once those two are rebalanced.
-const POOL_GATE_ENFORCED = false;
-if (!raceGate('pool decks', (race, pairing, i) => randomRankedDeck(race, `${pairing}-${i}`)) && POOL_GATE_ENFORCED) process.exitCode = 1;
+if (!raceGate('pool decks', (race, pairing, i) => randomRankedDeck(race, `${pairing}-${i}`))) process.exitCode = 1;
 
 // Collab-set check: `pnpm sim 200 poncho` swaps each race's neutral slots for the Poncho set and plays it
 // against every plain starter deck. The set should be a fun alternative, not a must-play (target ≤ 58%).
