@@ -1,8 +1,9 @@
 import {
-  dailyQuests, dayStartMs, FIRST_WIN_SCRAP, matchCounts, PACK_GOAL, PACK_PERIOD_DAYS, packPeriod, questDay, REROLLS_PER_DAY,
-  type GameEvent, type Race,
+  dailyQuests, dayStartMs, FIRST_WIN_SCRAP, bonusXp, matchCounts, matchXp, PACK_GOAL, PACK_PERIOD_DAYS, packPeriod, PASS_TIERS_TABLE, PASS_XP_PER_TIER,
+  passCosmeticId, passSeason, questDay, REROLLS_PER_DAY, tierFor, XP_BOT_DAILY_CAP, XP_FIRST_WIN, XP_MATCH_DAILY_CAP, XP_QUEST,
+  type GameEvent, type PassTrack, type Race,
 } from '@forkfall/engine';
-import type { QuestStatus } from '@forkfall/sdk';
+import type { PassStatus, QuestStatus } from '@forkfall/sdk';
 import { join } from 'node:path';
 import { keccak256, toHex, type Address, type Hex } from 'viem';
 import type { QuestRewarder } from './chain.ts';
@@ -33,13 +34,40 @@ export function finishedMatch(m: Match): FinishedMatch | null {
 }
 
 interface DayState { day: number; rerolls: number[]; rerollsUsed: number; progress: number[]; firstWin: boolean }
-interface PlayerState { today: DayState; /** Daily quests completed per pack period index. */ periods: Record<string, number> }
+/** Season pass progress for the current season (reset when a new season starts). */
+interface PassState {
+  season: number;
+  xp: number;
+  /** Match XP earned on `matchDay` (capped per day). */
+  matchDay: number;
+  matchXp: number;
+  /** The part of `matchXp` earned against house bots (capped lower). */
+  botXp?: number;
+  /** Highest tier whose rewards were queued, per track. */
+  freeTier: number;
+  premiumTier: number;
+  /** This season's premium pass, as last read from SeasonPass (true is final for the season). */
+  premium?: boolean;
+  premiumCheckedAt?: number;
+}
+/** A past season whose premium pass is still to be read once (bought near the end, before the last check saw it). */
+type ClosingPass = PassState & { nextAt?: number };
+interface PlayerState {
+  today: DayState;
+  /** Daily quests completed per pack period index. */
+  periods: Record<string, number>;
+  pass?: PassState;
+  /** Past seasons with tiers reached but no premium seen yet: read once more after the season ends. */
+  closing?: ClosingPass[];
+  /** Season cosmetics earned, kept across seasons. */
+  unlocked?: string[];
+}
 
 export interface Payout {
   claimId: Hex;
   address: string;
-  kind: 'quest' | 'firstWin' | 'pack';
-  /** Quest id, 'first-win', or 'pack-<period>'. */
+  kind: 'quest' | 'firstWin' | 'pack' | 'pass';
+  /** Quest id, 'first-win', 'pack-<period>', or 'pass-s<season>-<track>-<tier>'. */
   ref: string;
   day: number;
   scrap: number;
@@ -71,6 +99,8 @@ export interface QuestOptions {
   /** Who may be paid: verified humans and registered agents (not banned), like season rewards. Progress is
    *  tracked for everyone; rewards for others are held until they qualify. Omit to pay everyone. */
   eligible?: (address: Address) => Promise<boolean>;
+  /** Whether a player holds a season's premium pass (SeasonPass.hasPass). Omit: no premium track on this server. */
+  passHolder?: (address: Address, season: number) => Promise<boolean>;
   now?: () => number;
 }
 
@@ -85,6 +115,12 @@ const PERMANENT = /OverClaimCap|NothingToPay|UnknownKind|BadCount|AccessControlU
 const KEEP_DAYS = 40;
 /** How often held rewards re-check whether the player has verified. */
 const HOLD_RECHECK_MS = 5 * 60_000;
+/** How often the premium pass is re-read for a player who doesn't have it yet (and after a failed read). */
+const PREMIUM_RECHECK_MS = 5 * 60_000;
+/** A player's own sync (after buying, or opening the pass page) re-reads at most this often. */
+const PREMIUM_SYNC_MIN_MS = 10_000;
+/** Premium reads per payout tick, so the loop's RPC load and the wait for payouts stay bounded. */
+const PREMIUM_READS_PER_TICK = 20;
 
 /**
  * Daily quests, the first-win bonus and the free pack, tracked by the referee from finished matches (it replays
@@ -156,18 +192,31 @@ export class Quests {
       const won = m.winner === seat && !softOpponent;
       const qs = dailyQuests(address, day, p.today.rerolls);
       const period = packPeriod(day, this.periodDays).index;
+      const pass = this.passOf(p, day);
+      // House bots count for less (and for at most XP_BOT_DAILY_CAP a day), so the pass can't be farmed against them.
+      const vsBot = !!m.players[1 - seat]?.bot;
+      if (pass.matchDay !== day) { pass.matchDay = day; pass.matchXp = 0; pass.botXp = 0; }
+      const room = Math.min(XP_MATCH_DAILY_CAP - pass.matchXp, vsBot ? XP_BOT_DAILY_CAP - (pass.botXp ?? 0) : Infinity);
+      const fromMatch = Math.max(0, Math.min(matchXp(won, vsBot), room));
+      pass.matchXp += fromMatch;
+      if (vsBot) pass.botXp = (pass.botXp ?? 0) + fromMatch;
+      let xp = fromMatch;
       qs.forEach((q, slot) => {
         if (p.today.progress[slot] >= q.goal) return;
         p.today.progress[slot] = Math.min(q.goal, p.today.progress[slot] + q.progress({ seat: seat as 0 | 1, won, race: pl.race, turns: m.turns, events: m.events }));
         if (p.today.progress[slot] < q.goal) return;
         out.push(this.queue(address, 'quest', `${q.id}#${slot}`, day, q.scrap, 0));
+        xp += bonusXp(XP_QUEST, vsBot);
         p.periods[period] = (p.periods[period] ?? 0) + 1;
         if (p.periods[period] === this.packGoal) out.push(this.queue(address, 'pack', `pack-${period}`, day, 0, 1));
       });
       if (won && !p.today.firstWin) {
         p.today.firstWin = true;
         out.push(this.queue(address, 'firstWin', 'first-win', day, FIRST_WIN_SCRAP, 0));
+        xp += bonusXp(XP_FIRST_WIN, vsBot);
       }
+      pass.xp += xp;
+      out.push(...this.queuePassTiers(address, p, day));
     });
     this.save();
     return out;
@@ -218,6 +267,78 @@ export class Quests {
     };
   }
 
+  /** Season pass progress, both tracks and the state of every tier reward. */
+  passStatus(address: string): PassStatus {
+    const a = address.toLowerCase();
+    const day = questDay(this.now());
+    const season = passSeason(day);
+    const stored = this.data.players[a]?.pass;
+    const pass = stored?.season === season.season ? stored : undefined;
+    const xp = pass?.xp ?? 0;
+    const payout = (track: PassTrack, tier: number) => {
+      const x = this.data.payouts.find((y) => y.address === a && y.ref === passRef(season.season, track, tier));
+      return x ? { state: x.state, tx: x.tx, error: x.error } : undefined;
+    };
+    return {
+      season: season.season, startsAt: dayStartMs(season.first), endsAt: dayStartMs(season.last + 1),
+      xp, tier: tierFor(xp), xpPerTier: PASS_XP_PER_TIER,
+      matchXpToday: pass?.matchDay === day ? pass.matchXp : 0, matchXpCap: XP_MATCH_DAILY_CAP,
+      botXpToday: pass?.matchDay === day ? pass.botXp ?? 0 : 0, botXpCap: XP_BOT_DAILY_CAP,
+      premium: this.opts.passHolder ? pass?.premium === true : null,
+      paysOnChain: this.paysOnChain,
+      tiers: PASS_TIERS_TABLE.map((t) => ({
+        tier: t.tier, free: t.free, premium: t.premium, freePayout: payout('free', t.tier), premiumPayout: payout('premium', t.tier),
+      })),
+    };
+  }
+
+  /** Season cosmetics this player has earned (any season). */
+  passCosmetics(address: string): string[] {
+    return [...(this.data.players[address.toLowerCase()]?.unlocked ?? [])];
+  }
+
+  /**
+   * Re-reads whether the player holds this season's premium pass (after a purchase, or on the payout loop) and, once
+   * they do, queues the premium rewards for every tier already reached. Returns whether they hold it (null: unknown).
+   * `force` (the player's own request) still re-reads at most every `PREMIUM_SYNC_MIN_MS`.
+   */
+  async syncPremium(address: string, force = false): Promise<boolean | null> {
+    const check = this.opts.passHolder;
+    if (!check) return null;
+    const a = address.toLowerCase();
+    const day = questDay(this.now());
+    const p = this.player(a, day);
+    const pass = this.passOf(p, day);
+    if (pass.premium) return true;
+    const since = pass.premiumCheckedAt ? this.now() - pass.premiumCheckedAt : Infinity;
+    if (since < (force ? PREMIUM_SYNC_MIN_MS : PREMIUM_RECHECK_MS)) return false;
+    pass.premiumCheckedAt = this.now(); // a failed read waits like a negative one, so a down RPC isn't hammered
+    let has: boolean;
+    try { has = await check(a as Address, pass.season); } catch { return null; }
+    if (has && !pass.premium) {
+      pass.premium = true;
+      this.queuePassTiers(a, p, day, pass);
+      this.save();
+    }
+    return has;
+  }
+
+  /**
+   * One last premium read for a season that has ended: the contract sells a season until its final second, so a pass
+   * bought after the last check is only seen here. A failed read retries later; any answer settles the season.
+   */
+  private async closeSeason(a: string, p: PlayerState, c: ClosingPass): Promise<boolean> {
+    let has: boolean;
+    try { has = await this.opts.passHolder!(a as Address, c.season); } catch { c.nextAt = this.now() + PREMIUM_RECHECK_MS; return false; }
+    p.closing = p.closing?.filter((x) => x !== c);
+    if (!p.closing?.length) delete p.closing;
+    if (has) {
+      c.premium = true;
+      this.queuePassTiers(a, p, questDay(this.now()), c);
+    }
+    return true;
+  }
+
   /** Sends due payouts, one at a time. Failed ones retry with backoff; "already claimed" means it landed before. */
   async payDue(): Promise<{ paid: Payout[]; failed: Payout[] }> {
     const paid: Payout[] = []; const failed: Payout[] = [];
@@ -225,6 +346,7 @@ export class Quests {
     if (!r || this.busy) return { paid, failed };
     this.busy = true;
     try {
+      if (this.opts.passHolder) await this.syncPremiums();
       const eligible = new Map<string, boolean | null>();
       for (const p of this.data.payouts.filter((x) => (x.state === 'pending' || x.state === 'held') && x.nextAt <= this.now())) {
         if (this.opts.eligible) {
@@ -257,14 +379,81 @@ export class Quests {
     return { paid, failed };
   }
 
+  /**
+   * Premium passes bought since the last check: pay the premium tiers already reached, for the running season and for
+   * seasons that ended before their last purchase was seen. At most `PREMIUM_READS_PER_TICK` reads; saves once.
+   */
+  private async syncPremiums() {
+    const day = questDay(this.now());
+    const season = passSeason(day).season;
+    let reads = 0; let changed = false;
+    for (const [a, p] of Object.entries(this.data.players)) {
+      if (reads >= PREMIUM_READS_PER_TICK) break;
+      // A player who hasn't played since their season ended: move it to closing without waiting for their next match.
+      if (p.pass && p.pass.season !== season) { this.passOf(p, day); changed = true; }
+      for (const c of p.closing ?? []) { // closeSeason replaces p.closing, so this keeps iterating the old array
+        if (reads >= PREMIUM_READS_PER_TICK) break;
+        if ((c.nextAt ?? 0) > this.now()) continue;
+        reads++;
+        if (await this.closeSeason(a, p, c)) changed = true;
+      }
+      const pass = p.pass;
+      if (reads >= PREMIUM_READS_PER_TICK || !pass || pass.premium || pass.xp < PASS_XP_PER_TIER) continue;
+      if (pass.premiumCheckedAt && this.now() - pass.premiumCheckedAt < PREMIUM_RECHECK_MS) continue;
+      reads++;
+      if (await this.syncPremium(a)) changed = true;
+    }
+    if (changed) this.save();
+  }
+
   private player(address: string, day: number): PlayerState {
     const p = (this.data.players[address] ??= { today: fresh(day), periods: {} });
     if (p.today.day < day) p.today = fresh(day);
     return p;
   }
 
-  private queue(address: string, kind: Payout['kind'], ref: string, day: number, scrap: number, packs: number): Payout {
-    const claimId = keccak256(toHex(`forkfall-quest:${this.opts.chainId}:${address}:${day}:${ref}`));
+  /** This season's pass state (a new season starts from zero; cosmetics earned before stay). */
+  private passOf(p: PlayerState, day: number): PassState {
+    const season = passSeason(day).season;
+    if (p.pass?.season !== season) {
+      const old = p.pass;
+      // Tiers reached without premium seen: read that season's pass once more (it may have been bought at the end).
+      if (old && !old.premium && tierFor(old.xp) > 0 && this.opts.passHolder) {
+        p.closing = [...(p.closing ?? []), { ...old }].slice(-2);
+      }
+      p.pass = { season, xp: 0, matchDay: day, matchXp: 0, freeTier: 0, premiumTier: 0 };
+    }
+    return p.pass;
+  }
+
+  /** Queues the rewards (and unlocks the cosmetics) of every tier reached since the last call, per track. */
+  private queuePassTiers(address: string, p: PlayerState, day: number, pass: PassState = this.passOf(p, day)): Payout[] {
+    const reached = tierFor(pass.xp);
+    const out: Payout[] = [];
+    const tracks: PassTrack[] = pass.premium ? ['free', 'premium'] : ['free'];
+    for (const track of tracks) {
+      const key = track === 'free' ? 'freeTier' : 'premiumTier';
+      for (let tier = pass[key] + 1; tier <= reached; tier++) {
+        const r = PASS_TIERS_TABLE[tier - 1][track];
+        if (!r) continue;
+        if (r.cosmetic) {
+          const id = passCosmeticId(r.cosmetic, pass.season);
+          p.unlocked ??= [];
+          if (!p.unlocked.includes(id)) p.unlocked.push(id);
+        }
+        if (r.scrap || r.packs) {
+          const ref = passRef(pass.season, track, tier);
+          const claimId = keccak256(toHex(`forkfall-pass:${this.opts.chainId}:${address}:${pass.season}:${track}:${tier}`));
+          out.push(this.queue(address, 'pass', ref, day, r.scrap ?? 0, r.packs ?? 0, claimId));
+        }
+      }
+      pass[key] = Math.max(pass[key], reached);
+    }
+    return out;
+  }
+
+  private queue(address: string, kind: Payout['kind'], ref: string, day: number, scrap: number, packs: number, id?: Hex): Payout {
+    const claimId = id ?? keccak256(toHex(`forkfall-quest:${this.opts.chainId}:${address}:${day}:${ref}`));
     const p: Payout = {
       claimId, address, kind, ref, day, scrap, packKind: packs ? this.packKind : 0, packs,
       state: this.paysOnChain ? 'pending' : 'offchain', attempts: 0, nextAt: 0,
@@ -292,6 +481,8 @@ export class Quests {
     }
   }
 }
+
+const passRef = (season: number, track: PassTrack, tier: number) => `pass-s${season}-${track}-${tier}`;
 
 function fresh(day: number): DayState {
   return { day, rerolls: [0, 0, 0], rerollsUsed: 0, progress: [0, 0, 0], firstWin: false };

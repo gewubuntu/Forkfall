@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { LearnBanner } from '../components/LearnBanner.tsx';
+import { PassPanel } from '../components/PassPanel.tsx';
 import { QuestPanel } from '../components/QuestPanel.tsx';
 import { IncomingChallenges } from '../components/Challenges.tsx';
 import { avatarSvg, spriteSvg } from '../lib/art.ts';
@@ -40,6 +41,7 @@ export function Home() {
         </dl>
       </div>
       <IncomingChallenges />
+      <PassPanel />
       <QuestPanel />
       <div className="grid4">
         {NEXT.map((f) => (

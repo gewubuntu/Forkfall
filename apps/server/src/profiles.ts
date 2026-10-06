@@ -38,9 +38,12 @@ export class Profiles {
     return { title: p.title, cardBack: p.cardBack, badge: p.badge };
   }
 
+  /** Season pass cosmetics earned (the referee's quest tracker): set once both exist. */
+  passUnlocked?: (address: string) => string[];
+
   async unlocked(address: Address): Promise<string[]> {
     const counts = (await this.owned?.(address)) ?? new Map<number, number>();
-    return [...unlockedCosmetics((id) => counts.get(id) ?? 0, this.get(address).lessons)];
+    return [...unlockedCosmetics((id) => counts.get(id) ?? 0, this.get(address).lessons), ...(this.passUnlocked?.(address) ?? [])];
   }
 
   /** Records a finished lesson (the basics tutorial by default). Throws for an unknown lesson. */

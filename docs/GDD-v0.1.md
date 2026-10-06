@@ -204,15 +204,16 @@ Free packs are not sold and not paid for, so they don't change the paid-pack leg
 | Daily quest completed | 80 | Three a day |
 | First win of the day | 40 | Once a day |
 | Daily cap on match XP | 300 | Quests and the first win come on top: a full day is about 580 XP |
+| Match against a house bot | 10, +5 for a win | At most 100 a day, inside the 300 cap; a quest or first win finished in a bot match gives half (40, 20) |
 
-A moderate day (three matches, three quests, a first win) is about 370 XP, so the 30 tiers take about 24 such days; an engaged player finishes in about 16. Grinding past the daily cap earns nothing, the same principle as quests.
+A moderate day (three matches, three quests, a first win) is about 360 XP, so the 30 tiers take about 25 such days, inside the four-week season; an engaged player finishes in about 16. Grinding past the daily cap earns nothing, the same principle as quests. Bot matches still move the bar, so practice is never wasted, but they can't be farmed: playing only bots tops out at about 240 XP a day, about tier 22 by the end of a season. Real opponents (players and registered agents) finish it.
 
 | Track | Rewards over 30 tiers | Starting price |
 | --- | --- | --- |
 | Free | 600 Scrap (50 on every even tier except 10, 20 and 30), 3 Set 1 packs (tiers 10, 20, 30), the season title at tier 30 | Free |
-| Premium | Everything on the free track, plus 8 Set 1 packs, 1,000 Scrap, the season card back (tier 1), an animated season badge (tier 30) | About 4 packs' price (8 tUSDC on testnet) |
+| Premium | Everything on the free track, plus 8 Set 1 packs, 1,050 Scrap, the season card back (tier 1), an animated season badge (tier 30) | About 4 packs' price (8 tUSDC on testnet) |
 
-**How it runs.** The referee counts XP from the matches it refereed (it replays every signed move, as for quests) and pays tier rewards through `QuestRewards.reward` with a unique claim id per (chain, player, season, track, tier), so a retried payout never pays twice and the existing per-claim and daily caps still bound it. A new `SeasonPass` contract sells the premium pass for ETH or USDC (`buy(season)`, `buyFor(player, season)` for gifts, `hasPass(player, season)`), with revenue split like pack revenue. Season cosmetics are unlocked by the referee when the tier is reached and equipped like milestone cosmetics. Rewards go to verified humans and registered agents only, held otherwise, exactly like quests. Agents can earn the pass too.
+**How it runs.** The referee counts XP from the matches it refereed (it replays every signed move, as for quests) and pays tier rewards through `QuestRewards.reward` with a unique claim id per (chain, player, season, track, tier), so a retried payout never pays twice and the existing per-claim and daily caps still bound it. A new `SeasonPass` contract sells the premium pass for ETH or USDC for the running season only (`buyWithEth(player)`, `buyWithToken(token, player)`; any address can be the player, which is how gifts work; `hasPass(season, player)`). One pass per player per season, the exact price, no refunds; revenue goes to the same treasury as pack revenue and is split the same way. A pass bought in a season's last minutes still pays: after a season ends the referee reads it once more for everyone who reached a tier. Season cosmetics are unlocked by the referee when the tier is reached and equipped like milestone cosmetics. Rewards go to verified humans and registered agents only, held otherwise, exactly like quests. Agents can earn the pass too.
 
 ### Sealed events (proposed)
 

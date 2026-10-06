@@ -13,6 +13,7 @@ import { friendlyError } from '../chain/errors.ts';
 import { useHub } from '../chain/useHub.ts';
 import { useSeasonStats, useSettled, useSettleMatch } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
+import { PassPanel } from '../components/PassPanel.tsx';
 import { QuestPanel } from '../components/QuestPanel.tsx';
 import { ChallengeWaiting } from '../components/Challenges.tsx';
 import { useQueryClient } from '@tanstack/react-query';
@@ -564,8 +565,13 @@ function Rematch({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
 /** Quest progress after the match: refetched now that the referee has counted it. */
 function QuestProgress() {
   const qc = useQueryClient();
-  useEffect(() => { qc.invalidateQueries({ queryKey: ['quests'] }); }, [qc]);
-  return <div className="result-quests"><QuestPanel compact /></div>;
+  // The live 'quests' notice usually lands at the same moment: join an in-flight fetch rather than restart it, so the
+  // result screen doesn't spend the session's rate limit before the player signs (the server records before the match ends).
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ['quests'] }, { cancelRefetch: false });
+    qc.invalidateQueries({ queryKey: ['pass'] }, { cancelRefetch: false });
+  }, [qc]);
+  return <div className="result-quests"><PassPanel compact /><QuestPanel compact /></div>;
 }
 
 /** Damage, kills and cards played for the viewer (counting up), plus their MVP card. */

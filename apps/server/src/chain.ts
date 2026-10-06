@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { COLLECTIBLE } from '@forkfall/engine';
 import {
-  agentLeagueAbi, agentRegistryAbi, cardRegistryAbi, deckRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, vrfCoordinatorMockAbi,
+  agentLeagueAbi, agentRegistryAbi, cardRegistryAbi, deckRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, seasonPassAbi, vrfCoordinatorMockAbi,
   type MatchResult,
 } from '@forkfall/sdk';
 import {
@@ -121,6 +121,13 @@ export class Chain {
   async isHuman(a: Address) {
     if (!this.client) return false;
     return this.client.readContract({ address: this.book!.HumanRegistry, abi: humanRegistryAbi, functionName: 'isVerifiedHuman', args: [a] });
+  }
+  /** Whether this deployment sells the season pass (SeasonPass in the address book). */
+  get hasSeasonPass() { return !!this.client && !!this.book?.SeasonPass; }
+  /** Whether a player holds a season's premium pass. */
+  async hasPass(a: Address, season: number): Promise<boolean> {
+    if (!this.client || !this.book?.SeasonPass) return false;
+    return this.client.readContract({ address: this.book.SeasonPass as Address, abi: seasonPassAbi, functionName: 'hasPass', args: [season, a] });
   }
   async season(): Promise<number> {
     if (!this.client) return 1;

@@ -89,6 +89,20 @@ export const vrfCoordinatorMockAbi = parseAbi([
 ]);
 
 /** Daily quest payouts (Scrap and free packs), paid by the referee. */
+export const seasonPassAbi = parseAbi([
+  'function currentSeason() view returns (uint32)',
+  'function hasPass(uint32 season, address player) view returns (bool)',
+  'function ethPrice() view returns (uint256)',
+  'function tokenPrice(address token) view returns (uint256)',
+  'function epoch() view returns (uint256)',
+  'function buyWithEth(address player) payable',
+  'function buyWithToken(address token, address player)',
+  'event PassBought(uint32 indexed season, address indexed player, address indexed payer, address token, uint256 amount)',
+  'error AlreadyHasPass(uint32 season, address player)',
+  'error WrongPayment()',
+  'error TokenNotAccepted(address token)',
+]);
+
 export const questRewardsAbi = parseAbi([
   'function reward(address player, bytes32 claimId, uint256 scrap, uint8 packKind, uint256 packCount)',
   'function claimed(bytes32 claimId) view returns (bool)',
@@ -125,6 +139,8 @@ export interface HubContracts {
   HumanRegistry: `0x${string}`;
   AgentLeague?: `0x${string}`;
   QuestRewards?: `0x${string}`;
+  /** Season pass premium track (deployments from before it have none). */
+  SeasonPass?: `0x${string}`;
   SeasonRewards: `0x${string}`;
   TestUSDC: `0x${string}`;
   TestFALL: `0x${string}`;

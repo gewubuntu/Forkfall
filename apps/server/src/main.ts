@@ -90,8 +90,11 @@ try {
     eligible: chain.online
       ? async (a) => !(await chain.isBanned(a)) && ((await chain.isHuman(a)) || (await chain.isAgent(a)))
       : undefined,
+    // Season pass premium track: who bought this season's pass (SeasonPass), on deployments that have one.
+    passHolder: chain.online && chain.hasSeasonPass ? (a, season) => chain.hasPass(a, season) : undefined,
   });
 } catch (e) { fail([(e as Error).message, 'Check QUEST_PACK_DAYS, QUEST_PACK_GOAL and QUEST_PACK_KIND.']); }
+profiles.passUnlocked = (a) => quests.passCosmetics(a);
 
 const archive = new MatchArchive(archiveDir);
 const lobby = new Lobby({
