@@ -13,7 +13,7 @@ export function useQuests() {
   const qc = useQueryClient();
   const key = ['quests', me?.address];
   const up = useLiveTopic(client ? 'me' : null, (e) => {
-    if (e.kind === 'quests' || e.kind === 'reconnect') qc.invalidateQueries({ queryKey: key });
+    if (e.kind === 'quests' || e.kind === 'reconnect') qc.invalidateQueries({ queryKey: key }, { cancelRefetch: false });
   });
   return useQuery({
     queryKey: key,

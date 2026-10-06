@@ -13,6 +13,7 @@ import { DeckBuilder } from './pages/DeckBuilder.tsx';
 import { Decks } from './pages/Decks.tsx';
 import { Match } from './pages/Match.tsx';
 import { Matches } from './pages/Matches.tsx';
+import { Pass } from './pages/Pass.tsx';
 import { Play } from './pages/Play.tsx';
 import { Profile } from './pages/Profile.tsx';
 import { Replay } from './pages/Replay.tsx';
@@ -20,6 +21,7 @@ import { SignInGate } from './pages/SignInGate.tsx';
 
 const NAV = [
   { to: '/play', label: 'Play' },
+  { to: '/pass', label: 'Pass' },
   { to: '/collection', label: 'Collection' },
   { to: '/decks', label: 'Decks' },
   { to: '/matches', label: 'Matches' },
@@ -88,6 +90,7 @@ export function App() {
             <Route path="/play" element={<Play />} />
             <Route path="/match/:id" element={<Match />} />
             <Route path="/collection" element={<Collection />} />
+            <Route path="/pass" element={<Pass />} />
             <Route path="/decks" element={<Decks />} />
             <Route path="/decks/new" element={<DeckBuilder />} />
             <Route path="/matches" element={<Matches />} />

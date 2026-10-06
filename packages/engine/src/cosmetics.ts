@@ -1,4 +1,5 @@
 import { COLLECTIBLE, RACES, setOf } from './cards.ts';
+import { parsePassCosmetic, passCosmeticName, passCosmeticTier } from './pass.ts';
 import { LESSONS } from './tutorial.ts';
 import type { CardDef } from './types.ts';
 
@@ -9,10 +10,11 @@ import type { CardDef } from './types.ts';
  * equip one) and the web app (which shows progress and lets you equip).
  */
 export type CosmeticKind = 'title' | 'cardBack' | 'badge';
-export type MilestoneRule = 'tutorial' | 'lessons' | 'commons' | 'every' | 'playset';
+/** `pass`: a season pass cosmetic, unlocked by the referee when the player reaches its tier (never by a milestone). */
+export type MilestoneRule = 'tutorial' | 'lessons' | 'commons' | 'every' | 'playset' | 'pass';
 
 export interface CosmeticSet { key: string; label: string; cards: CardDef[] }
-export interface Cosmetic { id: string; kind: CosmeticKind; name: string; set?: string; rule: MilestoneRule; description: string }
+export interface Cosmetic { id: string; kind: CosmeticKind; name: string; set?: string; rule: MilestoneRule; description: string; season?: number }
 
 const RACE_LABEL: Record<string, string> = { agents: 'Agents', prophets: 'Prophets', brokers: 'Brokers', degens: 'Degens' };
 
@@ -36,10 +38,22 @@ export const COSMETICS: Cosmetic[] = [
   ]),
 ];
 
-export const cosmetic = (id: string): Cosmetic | undefined => COSMETICS.find((c) => c.id === id);
+/** A milestone cosmetic, or a season pass one (`title:season-3`, `back:season-3`, `badge:season-3`). */
+export const cosmetic = (id: string): Cosmetic | undefined => COSMETICS.find((c) => c.id === id) ?? passCosmetic(id);
+
+function passCosmetic(id: string): Cosmetic | undefined {
+  const p = parsePassCosmetic(id);
+  if (!p || p.season < 1) return undefined;
+  const { track, tier } = passCosmeticTier(p.kind);
+  return {
+    id, kind: p.kind, name: passCosmeticName(p.kind, p.season), rule: 'pass', season: p.season,
+    description: `Reach tier ${tier} of the season ${p.season} pass${track === 'premium' ? ' with the premium track' : ''}.`,
+  };
+}
 
 /** Whether a milestone is met, given copies owned per card (tradeable + starter + foil) and the lessons finished. */
 export function milestoneMet(rule: MilestoneRule, set: string | undefined, owned: (id: number) => number, lessons: readonly string[]): boolean {
+  if (rule === 'pass') return false;
   if (rule === 'tutorial') return lessons.includes('basics');
   if (rule === 'lessons') return LESSONS.every((l) => lessons.includes(l.id));
   const cards = COSMETIC_SETS.find((s) => s.key === set)?.cards ?? [];

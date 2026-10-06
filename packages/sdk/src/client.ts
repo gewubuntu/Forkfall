@@ -145,6 +145,29 @@ export interface QuestStatus {
   pack: { goal: number; completed: number; kind: number; periodDays: number; startsAt: number; endsAt: number; payout?: QuestPayoutStatus };
 }
 
+/** One season pass tier reward: Scrap, packs and/or a season cosmetic. */
+export interface PassRewardInfo { scrap?: number; packs?: number; cosmetic?: 'title' | 'cardBack' | 'badge' }
+
+/** Season pass progress (`GET /v1/pass`): XP, tiers reached, both tracks and each tier reward's payout. */
+export interface PassStatus {
+  season: number;
+  /** The season runs from `startsAt` to `endsAt` (ms). */
+  startsAt: number;
+  endsAt: number;
+  xp: number;
+  tier: number;
+  xpPerTier: number;
+  /** Match XP earned today, and its daily cap (quests and the first win come on top). */
+  matchXpToday: number;
+  matchXpCap: number;
+  /** Whether you hold this season's premium pass (null: this server has no premium track). */
+  premium: boolean | null;
+  paysOnChain: boolean;
+  /** Whether you can be paid (see QuestStatus.eligible). */
+  eligible?: boolean | null;
+  tiers: { tier: number; free?: PassRewardInfo; premium?: PassRewardInfo; freePayout?: QuestPayoutStatus; premiumPayout?: QuestPayoutStatus }[];
+}
+
 /** A player's lessons and equipped cosmetics (`GET /v1/profile`). */
 export interface PlayerProfile extends Equipped { tutorial: boolean; lessons: string[] }
 
@@ -479,6 +502,14 @@ export class ForkfallClient {
   quests(address?: Address) { return this.req<QuestStatus>('GET', `/v1/quests${address ? `?address=${address}` : ''}`); }
   /** Swap one of today's unfinished quests for another (one reroll a day). */
   rerollQuest(slot: number) { return this.req<QuestStatus>('POST', '/v1/quests/reroll', { slot }); }
+  /** Season pass progress. `sync`: re-read your premium pass now (after buying it), for your own address. */
+  pass(address?: Address, opts: { sync?: boolean } = {}) {
+    const q = new URLSearchParams();
+    if (address) q.set('address', address);
+    if (opts.sync) q.set('sync', '1');
+    const s = q.toString();
+    return this.req<PassStatus>('GET', `/v1/pass${s ? `?${s}` : ''}`);
+  }
   equip(want: Partial<Equipped>) { return this.req<{ profile: PlayerProfile }>('POST', '/v1/profile/cosmetics', want); }
 
   rewards(address: Address) { return this.req<{ seasons: PlayerReward[] }>('GET', `/v1/rewards?address=${address}`); }

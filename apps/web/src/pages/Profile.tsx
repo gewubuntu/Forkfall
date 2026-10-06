@@ -1,4 +1,4 @@
-import { COSMETICS, type Cosmetic, type CosmeticKind } from '@forkfall/engine';
+import { cosmetic, COSMETICS, type Cosmetic, type CosmeticKind } from '@forkfall/engine';
 import {
   agentLeagueAbi, agentRegistryAbi, agentURIFromFile, buildAgentRegistration, faucetTokenAbi, seasonRewardsAbi,
   type AgentWalletProof, type HumanStatus, type PlayerReward,
@@ -93,16 +93,18 @@ function CosmeticsCard() {
     setErr(null); setBusy(`${kind}:${id}`);
     try { await equip({ [kind]: id }); } catch (e) { setErr(friendlyError(e)); } finally { setBusy(null); }
   };
+  // Season pass cosmetics aren't a fixed list: show the ones this player has earned.
+  const seasonal = [...unlocked].map((id) => cosmetic(id)).filter((c): c is Cosmetic => c?.rule === 'pass');
   return (
     <section className="panel cosmetics" aria-labelledby="cos-h">
       <h2 id="cos-h">Cosmetics</h2>
-      <p className="muted small">Purely visual, never power. Earn them by finishing the <Link to="/learn">tutorial</Link> and completing sets in your <Link to="/collection">Collection</Link>. Opponents see what you equip.</p>
+      <p className="muted small">Purely visual, never power. Earn them by finishing the <Link to="/learn">tutorial</Link>, completing sets in your <Link to="/collection">Collection</Link> and climbing the <Link to="/pass">season pass</Link>. Opponents see what you equip.</p>
       {err && <div className="alert err">{err}</div>}
       {loading ? <span className="spinner" aria-label="Loading" /> : error ? <div className="alert err">{friendlyError(error)}</div> : KINDS.map(({ kind, label, help }) => (
         <div key={kind} className="cos-kind">
           <div className="cos-kind-head"><h3>{label}</h3><span className="muted small">{help}</span></div>
           <ul className="cos-list">
-            {COSMETICS.filter((c) => c.kind === kind).map((c) => {
+            {[...COSMETICS, ...seasonal].filter((c) => c.kind === kind).map((c) => {
               const on = equipped[kind] === c.id;
               const open = unlocked.has(c.id);
               return (
@@ -124,7 +126,7 @@ function CosmeticsCard() {
 
 function CosmeticPreview({ c }: { c: Cosmetic }) {
   if (c.kind === 'cardBack') return <span className="cos-prev"><CardBack back={c.id} /></span>;
-  if (c.kind === 'badge') return <span className="cos-prev"><span className={`cos-badge b-${c.set}`}>{emblem(c.id)}</span></span>;
+  if (c.kind === 'badge') return <span className="cos-prev"><span className={`cos-badge b-${c.set ?? c.id.slice(6)}`}>{emblem(c.id)}</span></span>;
   return <span className="cos-prev"><span className="cos-title">{emblem(c.id)}</span></span>;
 }
 

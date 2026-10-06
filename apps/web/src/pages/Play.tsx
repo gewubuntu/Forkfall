@@ -6,6 +6,7 @@ import type { Address, Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useMyDecks } from '../chain/useMyDecks.ts';
 import { LearnBanner } from '../components/LearnBanner.tsx';
+import { PassPanel } from '../components/PassPanel.tsx';
 import { QuestPanel } from '../components/QuestPanel.tsx';
 import { ChallengeWaiting, IncomingChallenges, loadWaiting, saveWaiting } from '../components/Challenges.tsx';
 import { isAddress } from 'viem';
@@ -272,6 +273,7 @@ export function Play() {
         </div>
       </section>
 
+      <PassPanel />
       <QuestPanel />
 
       <section aria-labelledby="live-h">

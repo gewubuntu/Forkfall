@@ -8,6 +8,7 @@ import {StarterDecks} from "../src/StarterDecks.sol";
 import {PackSale} from "../src/PackSale.sol";
 import {Crafting} from "../src/Crafting.sol";
 import {QuestRewards} from "../src/QuestRewards.sol";
+import {SeasonPass} from "../src/SeasonPass.sol";
 import {VRFCoordinatorMock} from "../src/vrf/VRFCoordinatorMock.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {HumanRegistry} from "../src/HumanRegistry.sol";
@@ -44,6 +45,7 @@ contract Deploy is ForkfallScript {
         PackSale packs;
         Crafting crafting;
         QuestRewards quests;
+        SeasonPass pass;
         AgentRegistry agents;
         HumanRegistry humans;
         DeckRegistry decks;
@@ -160,7 +162,13 @@ contract Deploy is ForkfallScript {
         d.packs.setTokenPrice(address(d.usdc), 2e6);
         d.packs.setTokenPrice(address(d.fall), 100 ether);
         d.packs.setKind(1, "Poncho booster", Set1Cards.poncho());
+        // Season pass premium track: about four packs' price. Seasons start Monday 5 Oct 2026, 00:00 UTC.
+        d.pass = new SeasonPass(admin, payable(admin), SEASON_PASS_EPOCH, packPrice * 4);
+        d.pass.setTokenPrice(address(d.usdc), 8e6);
     }
+
+    /// @notice Start of season pass season 1 (Monday 5 Oct 2026, 00:00 UTC): matches PASS_EPOCH_DAY in the engine.
+    uint256 internal constant SEASON_PASS_EPOCH = 1791158400;
 
     function writeBook(Deployed memory d, address deployer, address referee, uint256 startBlock) internal {
         string memory k = "book";
@@ -173,6 +181,7 @@ contract Deploy is ForkfallScript {
         vm.serializeAddress(k, "PackSale", address(d.packs));
         vm.serializeAddress(k, "Crafting", address(d.crafting));
         vm.serializeAddress(k, "QuestRewards", address(d.quests));
+        vm.serializeAddress(k, "SeasonPass", address(d.pass));
         if (address(d.vrfMock) != address(0)) vm.serializeAddress(k, "VRFCoordinatorMock", address(d.vrfMock));
         vm.serializeAddress(k, "AgentRegistry", address(d.agents));
         vm.serializeAddress(k, "HumanRegistry", address(d.humans));

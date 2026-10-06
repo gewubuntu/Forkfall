@@ -440,7 +440,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
 }
 
 const SET_COLOR: Record<string, string> = { ...RACE_COLOR, poncho: 'var(--poncho)' };
-const RULE_LABEL: Record<MilestoneRule, string> = { tutorial: 'Tutorial', lessons: 'Every lesson', commons: 'All Commons', every: 'Every card', playset: 'Full playset' };
+const RULE_LABEL: Record<MilestoneRule, string> = { tutorial: 'Tutorial', lessons: 'Every lesson', commons: 'All Commons', every: 'Every card', playset: 'Full playset', pass: 'Season pass' };
 
 /** Collection goals: progress per set (cards owned, playset copies) and the cosmetics each milestone unlocks. */
 function SetProgress({ total, loading }: { total: (id: number) => number; loading: boolean }) {

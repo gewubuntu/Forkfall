@@ -25,7 +25,7 @@ export function markLessonDone(id: string) {
 export const SET_EMBLEM: Record<string, string> = {
   agents: '🤖', prophets: '🔮', brokers: '📈', degens: '🎲', neutral: '⛓', poncho: '🌮', graduate: '🎓', scholar: '📜',
 };
-export const emblem = (id: string) => SET_EMBLEM[id.split(':')[1]] ?? '★';
+export const emblem = (id: string) => (id.split(':')[1]?.startsWith('season-') ? '🏆' : SET_EMBLEM[id.split(':')[1]] ?? '★');
 
 /** CSS class for a card back cosmetic (`back:poncho` → `cb-poncho`); none = the default back. */
 export const backClass = (id: string | null | undefined) => (id && cosmetic(id)?.kind === 'cardBack' ? `cb-${id.slice(5)}` : '');

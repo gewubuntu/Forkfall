@@ -259,6 +259,16 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         if (eligible) opts.quests.releaseHeld(a); // verified since: pay what was held without waiting for the re-check
         return { ...opts.quests.status(a), eligible };
       }
+      case 'GET /pass': {
+        if (!opts.quests) throw new ApiError(503, 'the season pass is not enabled on this server');
+        const a = url.searchParams.get('address') ?? session?.address;
+        if (!a || !/^0x[0-9a-fA-F]{40}$/.test(a)) throw new ApiError(400, 'address required');
+        // Only the player may force a fresh premium read (it costs an RPC call); others see the cached state.
+        if (url.searchParams.get('sync') === '1' && session?.address.toLowerCase() === a.toLowerCase()) await opts.quests.syncPremium(a, true);
+        const eligible = await opts.quests.eligibleFor(a);
+        if (eligible) opts.quests.releaseHeld(a);
+        return { ...opts.quests.passStatus(a), eligible };
+      }
       case 'POST /quests/reroll': {
         if (!opts.quests) throw new ApiError(503, 'quests are not enabled on this server');
         const who = need(session).address;
@@ -339,7 +349,7 @@ function serveStatic(path: string, res: ServerResponse, dir?: string) {
 
 const CONTRACT_KEYS = [
   'CardRegistry', 'StarterDecks', 'PackSale', 'Crafting', 'DeckRegistry', 'MatchSettlement',
-  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'AgentLeague', 'QuestRewards', 'TestUSDC', 'TestFALL',
+  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'AgentLeague', 'QuestRewards', 'SeasonPass', 'TestUSDC', 'TestFALL',
 ] as const;
 
 function hubContracts(book: AddressBook | null) {
