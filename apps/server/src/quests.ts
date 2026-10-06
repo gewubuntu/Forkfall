@@ -21,6 +21,10 @@ export interface FinishedMatch {
   winner: 0 | 1 | 'draw' | null;
   /** `bot`: the house bot's kind, if this seat is one. Wins against the easy `random` bot don't count. */
   players: { address: string; race: Race; bot: string | null }[];
+  /** Whether each seat is a registered or declared agent (metrics tell agents from humans). */
+  agents?: boolean[];
+  /** 'sealed' for a Sealed match (a house-bot seat there is not Practice). */
+  format?: 'sealed';
   events: GameEvent[];
   /** The friend challenge this match was played for, if any (its gift is delivered after it). */
   challenge?: string;
@@ -32,6 +36,8 @@ export function finishedMatch(m: Match): FinishedMatch | null {
   return {
     id: m.id, endedAt: m.endedAt, turns: m.state.turn, winner: m.state.winner, events: m.events,
     players: m.players.map((p) => ({ address: p.address, race: p.race, bot: p.bot ?? null })),
+    agents: m.players.map((p) => !!p.agent),
+    ...(m.format ? { format: m.format } : {}),
     ...(m.challenge ? { challenge: m.challenge } : {}),
   };
 }

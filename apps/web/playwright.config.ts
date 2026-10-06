@@ -41,7 +41,7 @@ export default defineConfig({
     timeout: 60_000,
     env: {
       OFFCHAIN: '1', PORT: String(PORT), BOT_DELAY_MS: '50',
-      MATCH_ARCHIVE_DIR: join(data, 'archive'), QUESTS_FILE: join(data, 'quests.json'), INVITES_FILE: join(data, 'invites.json'), SEALED_FILE: join(data, 'sealed.json'), SEALED_BOT_SECONDS: '2', PROFILES_FILE: join(data, 'profiles.json'),
+      MATCH_ARCHIVE_DIR: join(data, 'archive'), QUESTS_FILE: join(data, 'quests.json'), INVITES_FILE: join(data, 'invites.json'), SEALED_FILE: join(data, 'sealed.json'), METRICS_FILE: join(data, 'metrics.json'), SEALED_BOT_SECONDS: '2', PROFILES_FILE: join(data, 'profiles.json'),
       SETTLEMENT_DIR: join(data, 'settlements'),
     },
   },

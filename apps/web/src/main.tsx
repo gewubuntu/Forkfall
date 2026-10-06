@@ -10,6 +10,7 @@ import './styles/profile.css';
 import './styles/economy.css';
 import './styles/pass.css';
 import './styles/sealed.css';
+import './styles/metrics.css';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';

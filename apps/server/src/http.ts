@@ -13,6 +13,7 @@ import type { Profiles } from './profiles.ts';
 import type { Quests } from './quests.ts';
 import type { Invites } from './invites.ts';
 import type { Sealed } from './sealed.ts';
+import type { Metrics } from './metrics.ts';
 import { Live } from './live.ts';
 import { serveMetadata } from './metadata.ts';
 import type { StateStore } from './state.ts';
@@ -46,7 +47,7 @@ interface SavedSessions {
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests; invites?: Invites; sealed?: Sealed; store?: StateStore | null } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests; invites?: Invites; sealed?: Sealed; metrics?: Metrics; store?: StateStore | null } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
   /** token hash → session. Persisted (when a store is given) so a restart doesn't sign everyone out. */
@@ -95,6 +96,11 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
     try {
       if (serveMetadata(req, res, url.pathname, opts.publicUrl)) return;
       if (!url.pathname.startsWith('/v1/')) return serveStatic(url.pathname, res, opts.staticDir);
+      if (opts.metrics && url.pathname === '/v1/metrics' && url.searchParams.get('format') === 'csv') {
+        res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' });
+        res.end(opts.metrics.csv(Number(url.searchParams.get('days') ?? 30)));
+        return;
+      }
       const session = authSession(req);
       if (session) rateLimit(session, Date.now());
       const body = req.method === 'POST' ? await readJson(req) : {};
@@ -292,6 +298,10 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'GET /invites': {
         if (!opts.invites) throw new ApiError(503, 'referrals are not enabled on this server');
         return opts.invites.status(need(session).address);
+      }
+      case 'GET /metrics': {
+        if (!opts.metrics) throw new ApiError(503, 'metrics are not enabled on this server');
+        return opts.metrics.cachedReport(Number(url.searchParams.get('days') ?? 30));
       }
       case 'GET /sealed': return needSealed().status(need(session).address);
       case 'POST /sealed/start': return needSealed().start(need(session).address, body?.share, body?.commit);

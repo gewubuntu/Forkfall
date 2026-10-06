@@ -183,7 +183,7 @@ export function Economy() {
         promises a return. Each stage after the testnet starts only after its review. Today everything runs on testnet,
         with no real value.
       </p>
-      <p className="eco-back"><Link className="btn btn-ghost" to="/">Back to Forkfall</Link></p>
+      <p className="eco-back"><Link className="btn btn-ghost" to="/metrics">Live alpha numbers</Link> <Link className="btn btn-ghost" to="/">Back to Forkfall</Link></p>
     </div>
   );
 }

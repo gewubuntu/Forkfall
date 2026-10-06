@@ -5,6 +5,7 @@ import { WalletButton } from './components/WalletButton.tsx';
 import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
 import { Economy } from './pages/Economy.tsx';
+import { Metrics } from './pages/Metrics.tsx';
 import { Learn } from './pages/Learn.tsx';
 import { Challenge } from './pages/Challenge.tsx';
 import { ChallengeAlert } from './components/Challenges.tsx';
@@ -63,6 +64,8 @@ export function App() {
     if ((path === '/learn' || path.startsWith('/learn/')) && auth.status !== 'loading') return <Learn />;
     // The economy page is public: no wallet, no sign-in.
     if (path === '/economy' && auth.status !== 'loading') return <Economy />;
+    // The alpha numbers are public aggregates too.
+    if (path === '/metrics' && auth.status !== 'loading' && auth.status !== 'offline') return <Metrics />;
     // A challenge link works before sign-in: it shows who challenged you and walks you through connecting.
     if (path.startsWith('/challenge/') && auth.status !== 'loading' && auth.status !== 'offline') {
       return <Routes><Route path="/challenge/:code" element={<Challenge />} /></Routes>;

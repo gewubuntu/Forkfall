@@ -24,6 +24,7 @@ ENV NODE_ENV=production \
     QUESTS_FILE=/data/quests.json \
     INVITES_FILE=/data/invites.json \
     SEALED_FILE=/data/sealed.json \
+    METRICS_FILE=/data/metrics.json \
     PROFILES_FILE=/data/profiles.json \
     SETTLEMENT_DIR=/data/settlements \
     REWARDS_DIR=/data/rewards \

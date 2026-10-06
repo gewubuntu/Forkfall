@@ -3,9 +3,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
 import type { Address, Hex } from 'viem';
-import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, devVrfFulfiller, EXPLORER, giftDeliverer, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
+import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, devVrfFulfiller, EXPLORER, giftDeliverer, humanAttestor, leagueOps, metricsChain, questRewarder, refereeSettler } from './chain.ts';
 import { Invites, invitesFile } from './invites.ts';
 import { Sealed, sealedFile } from './sealed.ts';
+import { Metrics, metricsFile } from './metrics.ts';
 import { LeaguePayouts, leagueDir } from './league.ts';
 import { HumanVerification } from './humans.ts';
 import { Rewards, rewardsDir } from './rewards.ts';
@@ -141,6 +142,9 @@ const sealed = new Sealed({
 });
 profiles.passUnlocked = (a) => [...quests.passCosmetics(a), ...sealed.titles(a)];
 
+// Alpha metrics (the gate before paid packs): matches from onChange, packs and crafts from chain logs.
+const metrics = new Metrics({ file: env.METRICS_FILE || metricsFile(root, chainId), chain: metricsChain(chain) });
+
 // Archive finished matches and export a Foundry-ready settlement file as soon as a match has enough signatures.
 // Set before anything is restored: a finished match recovered at startup is archived through this too.
 lobby.onChange = (m) => {
@@ -151,6 +155,7 @@ lobby.onChange = (m) => {
     if (f) {
       const fresh = !quests.hasSeen(f.id);
       quests.record(f);
+      try { metrics.record(f); } catch (e) { console.error('metrics tracking failed', e); }
       // Notify once, when the match first counts (onChange also fires for every later signature/settlement step).
       if (fresh && quests.hasSeen(f.id)) for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
     }
@@ -223,6 +228,13 @@ const settleLoop = async () => {
 };
 if (settler) settleLoop();
 
+// Chain logs for the metrics (a few blocks behind the head is fine); a failed read retries on the next round.
+const metricsLoop = async () => {
+  try { await metrics.poll(); } catch (e) { console.error('metrics poll failed', (e as Error).message); }
+  setTimeout(metricsLoop, Number(env.METRICS_POLL_MS || 30_000));
+};
+if (metrics.onchain) metricsLoop();
+
 const questLoop = async () => {
   try {
     const r = await quests.payDue();
@@ -258,7 +270,7 @@ const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR || rewardsDir(root, chain.chainId));
-const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, invites, sealed, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR || leagueDir(root, chain.chainId)), store });
+const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, invites, sealed, metrics, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR || leagueDir(root, chain.chainId)), store });
 
 // Stop cleanly on a redeploy: stop taking new connections, let requests already in flight finish (a move being
 // verified is applied and answered), then save the queue and challenges and exit. Matches and sessions are saved
@@ -294,10 +306,11 @@ server.listen(port, () => {
   console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
   if (vrfFulfill) console.log('  pack randomness: local mock VRF coordinator, fulfilled by this server every 2 s');
   console.log('  live updates: WebSocket on /v1/live (clients fall back to polling without it)');
-  for (const [what, aside] of [['quests', quests.setAside], ['profiles', profiles.setAside], ['invites', invites.setAside], ['sealed', sealed.setAside]] as const) {
+  for (const [what, aside] of [['quests', quests.setAside], ['profiles', profiles.setAside], ['invites', invites.setAside], ['sealed', sealed.setAside], ['metrics', metrics.setAside]] as const) {
     if (aside) console.warn(`  WARNING: the ${what} file was not valid and was moved to ${aside}; started empty. Fix it and restore it while the server is stopped.`);
   }
   console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
+  console.log(`  alpha metrics: ON (GET /v1/metrics; packs and crafts ${metrics.onchain ? 'read from chain logs' : 'n/a without a chain'})`);
   console.log('  Sealed fun mode: ON (one free run a day; a house bot plays you after 45 s in the queue)');
   console.log(`  referrals: ON · challenge pack gifts: ${invites.offersGifts ? `ON (${chain.book!.PackGifts})` : 'off (no PackGifts in the address book)'}`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);

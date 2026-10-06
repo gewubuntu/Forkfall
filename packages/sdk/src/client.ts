@@ -218,6 +218,39 @@ export interface SealedStatus {
   rules: { wins: number; losses: number; packs: number; botAfterMs: number; widenMs: number };
 }
 
+
+/** One group's numbers for one UTC day (`GET /v1/metrics`). Rates are null while a day is incomplete or a denominator is empty. */
+export interface MetricsDay {
+  day: number;
+  /** ms of the day's start (UTC). */
+  at: number;
+  active: number;
+  newPlayers: number;
+  matches: number;
+  matchesPerActive: number | null;
+  /** null on a server without a chain. */
+  packs: number | null;
+  packsPerActive: number | null;
+  crafts: number | null;
+}
+/** Players first active on `day`: how many came back. Rates are null for cohorts under `minCohort` or not old enough. */
+export interface MetricsCohort { day: number; at: number; size: number; d1: number | null; d7: number | null; week: number | null; craftedByD7: number | null }
+export interface MetricsGateRow { id: 'd1' | 'd7' | 'matches' | 'packs' | 'craft'; label: string; target: number; value: number | null; met: boolean | null }
+export interface MetricsGroup { daily: MetricsDay[]; cohorts: MetricsCohort[]; craftShare: { crafted: number | null; players: number; rate: number | null } }
+/** `GET /v1/metrics?days=30`: aggregates only, never a wallet. */
+export interface MetricsReport {
+  generatedAt: number;
+  days: number;
+  /** Whether packs and crafts are read from a chain (else they are null, not zero). */
+  onchain: boolean;
+  /** Cohorts smaller than this show their size but no percentage. */
+  minCohort: number;
+  /** The alpha's gate over the last `gateDays` complete days, humans only. */
+  gate: { days: number; rows: MetricsGateRow[]; passed: boolean | null };
+  humans: MetricsGroup;
+  agents: MetricsGroup;
+}
+
 /** held: earned but waiting until the player is a verified human or registered agent. */
 export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain' | 'failed' | 'held'; tx?: Hex; error?: string }
 
@@ -542,6 +575,9 @@ export class ForkfallClient {
   sealedLeave() { return this.req<SealedStatus>('DELETE', '/v1/sealed/queue'); }
   /** End the run with its current record. */
   sealedAbandon() { return this.req<SealedStatus>('POST', '/v1/sealed/abandon', {}); }
+
+  /** The alpha's retention, matches, packs and crafting numbers (aggregates, public). */
+  metrics(days = 30) { return this.req<MetricsReport>('GET', `/v1/metrics?days=${days}`); }
 
   /** Your referrals and invite progress. */
   invites() { return this.req<InvitesStatus>('GET', '/v1/invites'); }
