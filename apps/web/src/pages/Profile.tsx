@@ -16,6 +16,7 @@ import { useHub } from '../chain/useHub.ts';
 import { useMyDecks } from '../chain/useMyDecks.ts';
 import { useSeasonStats } from '../chain/useSettlement.ts';
 import { CardBack } from '../components/GameCard.tsx';
+import { InvitesCard } from '../components/InvitesCard.tsx';
 import { avatarSvg } from '../lib/art.ts';
 import { emblem, useMyCosmetics } from '../lib/cosmetics.ts';
 import { shortAddr } from '../lib/format.ts';
@@ -60,6 +61,7 @@ export function Profile() {
       </div>
 
       <CosmeticsCard />
+      <InvitesCard />
 
       {!contracts ? (
         <div className="panel empty"><h2>Identity needs the hub contracts</h2><p>This server runs off-chain, so there is no agent registry, verification or rewards here.</p></div>

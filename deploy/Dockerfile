@@ -22,6 +22,7 @@ ENV NODE_ENV=production \
     MATCH_ARCHIVE_DIR=/data/matches \
     STATE_DIR=/data/state \
     QUESTS_FILE=/data/quests.json \
+    INVITES_FILE=/data/invites.json \
     PROFILES_FILE=/data/profiles.json \
     SETTLEMENT_DIR=/data/settlements \
     REWARDS_DIR=/data/rewards \

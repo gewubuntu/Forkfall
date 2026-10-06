@@ -11,3 +11,4 @@ export * from './deckcode.ts';
 export * from './decks.ts';
 export * from './rules.ts';
 export * from './pass.ts';
+export * from './referrals.ts';

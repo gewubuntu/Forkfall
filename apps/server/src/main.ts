@@ -2,8 +2,9 @@ import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/accounts';
-import type { Hex } from 'viem';
-import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, devVrfFulfiller, EXPLORER, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
+import type { Address, Hex } from 'viem';
+import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, devVrfFulfiller, EXPLORER, giftDeliverer, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
+import { Invites, invitesFile } from './invites.ts';
 import { LeaguePayouts, leagueDir } from './league.ts';
 import { HumanVerification } from './humans.ts';
 import { Rewards, rewardsDir } from './rewards.ts';
@@ -76,6 +77,11 @@ const league = chain.online ? leagueOps(chain, house) : null;
 // Player profiles: tutorial completion and equipped cosmetics (unlocks checked against on-chain balances).
 const profiles = new Profiles(env.PROFILES_FILE || profilesFile(root, chainId), (a) => chain.ownedCounts(a));
 
+/** Who can be paid (and who counts as a verified invitee): verified humans and registered agents, not banned. */
+const payable = chain.online
+  ? async (a: Address) => !(await chain.isBanned(a)) && ((await chain.isHuman(a)) || (await chain.isAgent(a)))
+  : undefined;
+
 // Daily quests: progress from finished matches, Scrap and free-pack payouts through QuestRewards (needs testnet ETH).
 let quests: Quests;
 try {
@@ -87,9 +93,7 @@ try {
     packGoal: env.QUEST_PACK_GOAL ? Number(env.QUEST_PACK_GOAL) : undefined,
     packKind: env.QUEST_PACK_KIND ? Number(env.QUEST_PACK_KIND) : undefined,
     // Like season rewards: verified humans and registered agents, not banned. Others' rewards wait until they qualify.
-    eligible: chain.online
-      ? async (a) => !(await chain.isBanned(a)) && ((await chain.isHuman(a)) || (await chain.isAgent(a)))
-      : undefined,
+    eligible: payable,
     // Season pass premium track: who bought this season's pass (SeasonPass), on deployments that have one.
     passHolder: chain.online && chain.hasSeasonPass ? (a, season) => chain.hasPass(a, season) : undefined,
   });
@@ -112,6 +116,16 @@ const lobby = new Lobby({
   unloadAfterSeconds: env.UNLOAD_AFTER_SECONDS ? Number(env.UNLOAD_AFTER_SECONDS) : undefined,
 });
 
+// Referrals (invite links and challenge links) and pack gifts held for friend challenges (PackGifts).
+const invites = new Invites({
+  file: env.INVITES_FILE || invitesFile(root, chainId),
+  chainId,
+  quests,
+  hasPlayed: (a) => lobby.hasPlayed(a),
+  eligible: payable,
+  gifts: chain.online ? giftDeliverer(chain, house) : null,
+});
+
 // Archive finished matches and export a Foundry-ready settlement file as soon as a match has enough signatures.
 // Set before anything is restored: a finished match recovered at startup is archived through this too.
 lobby.onChange = (m) => {
@@ -125,6 +139,7 @@ lobby.onChange = (m) => {
       if (fresh && quests.hasSeen(f.id)) for (const p of f.players) if (!p.bot) lobby.bus?.user(p.address, 'quests');
     }
   } catch (e) { console.error('quest tracking failed', e); }
+  try { const f = finishedMatch(m); if (f) invites.record(f); } catch (e) { console.error('invite tracking failed', e); }
   let archived = true;
   try {
     archive.save(lobby.archive(m.id));
@@ -203,6 +218,18 @@ const questLoop = async () => {
 };
 if (quests.paysOnChain) questLoop();
 
+// Referrals reaching their goal (paid through the quest loop above) and challenge gifts falling due.
+const inviteLoop = async () => {
+  try {
+    const r = await invites.tick();
+    for (const a of r.paid) console.log(`referral qualified: ${a}`);
+    for (const g of r.delivered) { console.log(`challenge gift ${g.code} delivered to ${g.to} ${g.tx ?? ''}`); lobby.bus?.user(g.to!, 'quests'); }
+    for (const g of r.failed) console.warn(`challenge gift ${g.code} for ${g.to} ${g.state === 'failed' ? 'failed' : 'will retry'}: ${g.error}`);
+  } catch (e) { console.error('invite loop error', e); }
+  setTimeout(inviteLoop, Number(env.QUEST_PAY_INTERVAL_MS || 5000));
+};
+inviteLoop();
+
 // Local Anvil: play the part of Chainlink's VRF nodes for the mock coordinator, so packs open like on a testnet.
 const vrfFulfill = devVrfFulfiller(chain, house);
 const vrfLoop = async () => {
@@ -215,7 +242,7 @@ const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR || rewardsDir(root, chain.chainId));
-const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR || leagueDir(root, chain.chainId)), store });
+const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, invites, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR || leagueDir(root, chain.chainId)), store });
 
 // Stop cleanly on a redeploy: stop taking new connections, let requests already in flight finish (a move being
 // verified is applied and answered), then save the queue and challenges and exit. Matches and sessions are saved
@@ -251,10 +278,11 @@ server.listen(port, () => {
   console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
   if (vrfFulfill) console.log('  pack randomness: local mock VRF coordinator, fulfilled by this server every 2 s');
   console.log('  live updates: WebSocket on /v1/live (clients fall back to polling without it)');
-  for (const [what, aside] of [['quests', quests.setAside], ['profiles', profiles.setAside]] as const) {
+  for (const [what, aside] of [['quests', quests.setAside], ['profiles', profiles.setAside], ['invites', invites.setAside]] as const) {
     if (aside) console.warn(`  WARNING: the ${what} file was not valid and was moved to ${aside}; started empty. Fix it and restore it while the server is stopped.`);
   }
   console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
+  console.log(`  referrals: ON · challenge pack gifts: ${invites.offersGifts ? `ON (${chain.book!.PackGifts})` : 'off (no PackGifts in the address book)'}`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);
   console.log(`  match archive → ${archiveDir} (${archived.indexed + archived.replayed} restored: ${archived.indexed} from the index, ${archived.replayed} replayed${archived.otherDeployment ? `; ${archived.otherDeployment} from another deployment left on disk` : ''})`);

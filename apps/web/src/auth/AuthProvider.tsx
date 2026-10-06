@@ -4,6 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Address } from 'viem';
 import { useConnection, useDisconnect, useSignMessage, useSignTypedData, useSwitchChain } from 'wagmi';
 import { clearSession, loadSession, saveSession, sessionSecretStore } from '../lib/session.ts';
+import { clearRef, pendingRef } from '../lib/invite.ts';
 
 const SERVER = import.meta.env.VITE_SERVER_URL ?? '';
 
@@ -131,7 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         chainId: hubChainId, nonce, expiresAt: expires,
       });
       const signature = await signMessageAsync({ message });
-      const r = await c.connectSession({ message, signature });
+      const ref = pendingRef();
+      const r = await c.connectSession({ message, signature }, ref && ref.toLowerCase() !== address.toLowerCase() ? { ref } : {});
+      clearRef(); // the referee counted it, or it never could (this wallet has played before)
       saveSession(address, { pk, delegation: { message, signature }, expiresAt: r.expiresAt, chainId: hubChainId });
       setClient(c); setExpiresAt(r.expiresAt); setMe(await c.me());
     } catch (e) {

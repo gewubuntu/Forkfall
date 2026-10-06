@@ -103,6 +103,34 @@ export const seasonPassAbi = parseAbi([
   'error TokenNotAccepted(address token)',
 ]);
 
+/** Buy packs for a friend (or hold them for a friend challenge) at PackSale's prices. */
+export const packGiftsAbi = parseAbi([
+  'function giftWithEth(address to, uint8 kind, uint256 count) payable returns (uint256 firstId)',
+  'function giftWithToken(address token, address to, uint8 kind, uint256 count) returns (uint256 firstId)',
+  'function holdWithEth(bytes32 giftId, uint8 kind, uint256 count) payable',
+  'function holdWithToken(address token, bytes32 giftId, uint8 kind, uint256 count)',
+  'function deliver(bytes32 giftId, address to) returns (uint256 firstId)',
+  'function refund(bytes32 giftId)',
+  'function quoteEth(uint256 count) view returns (uint256)',
+  'function quoteToken(address token, uint256 count) view returns (uint256)',
+  'function gifts(bytes32 giftId) view returns (address from, uint8 kind, uint8 count, uint8 state, uint40 refundableAt, address token, uint256 paid)',
+  'function HOLD_TIME() view returns (uint256)',
+  'event PacksGifted(address indexed from, address indexed to, uint256 firstPackId, uint256 count, uint8 kind, address token, uint256 paid)',
+  'event GiftHeld(bytes32 indexed giftId, address indexed from, uint256 count, uint8 kind, address token, uint256 paid)',
+  'event GiftDelivered(bytes32 indexed giftId, address indexed to, uint256 firstPackId)',
+  'event GiftRefunded(bytes32 indexed giftId, address indexed from)',
+  'error WrongPayment()',
+  'error TokenNotAccepted(address token)',
+  'error ZeroAddress()',
+  'error BadCount()',
+  'error GiftIdTaken(bytes32 giftId)',
+  'error NotHeld(bytes32 giftId)',
+  'error TooEarly(uint256 refundableAt)',
+]);
+
+/** PackGifts.gifts(id).state */
+export const GIFT_STATE = ['none', 'held', 'delivered', 'refunded'] as const;
+
 export const questRewardsAbi = parseAbi([
   'function reward(address player, bytes32 claimId, uint256 scrap, uint8 packKind, uint256 packCount)',
   'function claimed(bytes32 claimId) view returns (bool)',
@@ -141,6 +169,7 @@ export interface HubContracts {
   QuestRewards?: `0x${string}`;
   /** Season pass premium track (deployments from before it have none). */
   SeasonPass?: `0x${string}`;
+  PackGifts?: `0x${string}`;
   SeasonRewards: `0x${string}`;
   TestUSDC: `0x${string}`;
   TestFALL: `0x${string}`;

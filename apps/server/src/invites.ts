@@ -1,0 +1,283 @@
+import { matchCounts, passSeason, questDay, REFERRAL_CAP, REFERRAL_DAYS, REFERRAL_MATCHES, REFERRAL_PACKS, REFERRAL_VERIFY_DAYS } from '@forkfall/engine';
+import type { ChallengeGiftView, InvitesStatus, ReferralView } from '@forkfall/sdk';
+import { join } from 'node:path';
+import { keccak256, toHex, type Address, type Hex } from 'viem';
+import type { GiftDeliverer } from './chain.ts';
+import type { FinishedMatch, Quests } from './quests.ts';
+import { readJsonOrSetAside, writeFileAtomic } from './state.ts';
+
+/** Where referrals and challenge gifts are kept: apps/server/data/invites/<chainId>.json. */
+export const invitesFile = (root: string, chainId: number) => join(root, 'apps/server/data/invites', `${chainId}.json`);
+
+const DAY_MS = 86_400_000;
+/** How often a qualified referral re-checks whether the invited player has verified (and after a failed read). */
+const VERIFY_RECHECK_MS = 5 * 60_000;
+/** Chain reads (eligibility, gift state) per tick, so the loop's RPC load stays bounded. */
+const READS_PER_TICK = 20;
+const RETRY_MAX_MS = 60 * 60_000;
+const MAX_ATTEMPTS = 20;
+const SEEN_LIMIT = 5000;
+/** Gifts nobody can still act on are forgotten after this (the chain keeps the record). */
+const GIFT_KEEP_MS = 7 * DAY_MS;
+
+interface Invite {
+  inviter: string;
+  invited: string;
+  at: number;
+  via: 'link' | 'challenge';
+  /** Qualifying matches (at least four turns) the invited player finished within REFERRAL_DAYS. */
+  matches: number;
+  /** playing: counting matches · verifying: enough matches, waiting for the invited player to verify · paid · expired. */
+  state: 'playing' | 'verifying' | 'paid' | 'expired';
+  /** Season pass season the referral paid in (counts against the inviter's cap). */
+  season?: number;
+  /** The inviter was over the season's cap: only the invited player was paid. */
+  capped?: boolean;
+  checkAt?: number;
+}
+
+interface Gift {
+  code: string;
+  giftId: Hex;
+  from: string;
+  createdAt: number;
+  /** unpaid: id issued, nothing held on-chain yet · held · due: the match ended, deliver to `to` · delivered ·
+   *  refunded (by its buyer, after the hold) · none: never paid · failed: delivery kept failing. */
+  state: 'unpaid' | 'held' | 'due' | 'delivered' | 'refunded' | 'none' | 'failed';
+  count?: number;
+  kind?: number;
+  refundableAt?: number;
+  /** The friend who played the challenge, once its match ended. */
+  to?: string;
+  tx?: Hex;
+  error?: string;
+  attempts: number;
+  nextAt: number;
+}
+
+interface Store { invites: Record<string, Invite>; gifts: Record<string, Gift>; seen: string[] }
+
+export interface InvitesOptions {
+  file?: string;
+  chainId: number;
+  /** Pays referral packs on the quest payout loop (same eligibility gate, retries and budget). */
+  quests: Quests;
+  /** Whether a wallet has ever played here: only wallets that haven't can be invited. */
+  hasPlayed: (address: Address) => boolean;
+  /** Who counts as verified for a referral: humans and registered agents (not banned). Omit: everyone. */
+  eligible?: (address: Address) => Promise<boolean>;
+  /** PackGifts on this deployment (absent: challenge gifts aren't offered). */
+  gifts?: GiftDeliverer | null;
+  now?: () => number;
+}
+
+const same = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/**
+ * Referrals and pack gifts held for friend challenges. A wallet that has never played can be invited once, by an
+ * invite link or by accepting a challenge; when it finishes enough matches and verifies, both players get a pack
+ * through QuestRewards. A gift held for a challenge (PackGifts) is delivered to whoever plays the challenge.
+ */
+export class Invites {
+  private data: Store;
+  readonly setAside: string | null;
+  private busy = false;
+  private now: () => number;
+
+  constructor(private opts: InvitesOptions) {
+    const empty = (): Store => ({ invites: {}, gifts: {}, seen: [] });
+    const valid = (x: Record<string, unknown>) =>
+      typeof x.invites === 'object' && x.invites !== null && typeof x.gifts === 'object' && x.gifts !== null && Array.isArray(x.seen);
+    ({ data: this.data, setAside: this.setAside } = opts.file ? readJsonOrSetAside(opts.file, empty, { valid }) : { data: empty(), setAside: null });
+    this.now = opts.now ?? Date.now;
+  }
+
+  get offersGifts() { return !!this.opts.gifts; }
+
+  // ─── Referrals ───────────────────────────────────────────────
+  /**
+   * Record that `inviter` invited `invited`. Only a wallet that has never played and was never invited counts, and
+   * nobody invites themselves. Returns whether the invite was recorded.
+   */
+  invite(invited: string, inviter: string, via: Invite['via']): boolean {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(invited) || !/^0x[0-9a-fA-F]{40}$/.test(inviter)) return false;
+    const a = invited.toLowerCase();
+    const by = inviter.toLowerCase();
+    if (a === by || this.data.invites[a] || this.opts.hasPlayed(a as Address)) return false;
+    this.data.invites[a] = { inviter: by, invited: a, at: this.now(), via, matches: 0, state: 'playing' };
+    this.save();
+    return true;
+  }
+
+  /** Count a finished match: referral progress, and the challenge's held gift falls due. Idempotent per match. */
+  record(m: FinishedMatch) {
+    if (this.data.seen.includes(m.id)) return;
+    this.data.seen.push(m.id);
+    if (this.data.seen.length > SEEN_LIMIT) this.data.seen.splice(0, this.data.seen.length - SEEN_LIMIT);
+    for (const pl of m.players) {
+      if (pl.bot) continue;
+      const inv = this.data.invites[pl.address.toLowerCase()];
+      if (!inv || inv.state !== 'playing' || !matchCounts(m) || m.endedAt < inv.at || m.endedAt > inv.at + REFERRAL_DAYS * DAY_MS) continue;
+      inv.matches++;
+      if (inv.matches >= REFERRAL_MATCHES) { inv.state = 'verifying'; inv.checkAt = 0; }
+    }
+    const g = m.challenge ? this.giftFor(m.challenge) : undefined;
+    if (g && (g.state === 'held' || g.state === 'unpaid') && !g.to) {
+      const friend = m.players.find((p) => !same(p.address, g.from) && !p.bot);
+      if (friend) { g.to = friend.address.toLowerCase(); g.nextAt = 0; if (g.state === 'held') g.state = 'due'; }
+    }
+    this.save();
+  }
+
+  /** Your referrals (as inviter) and the one that brought you (as invited). */
+  status(address: string): InvitesStatus {
+    const a = address.toLowerCase();
+    const season = passSeason(questDay(this.now())).season;
+    const mine = Object.values(this.data.invites).filter((i) => i.inviter === a).sort((x, y) => y.at - x.at);
+    const by = this.data.invites[a];
+    const view = (i: Invite, side: 'inviter' | 'invited'): ReferralView => ({
+      inviter: i.inviter, invited: i.invited, at: i.at, via: i.via, matches: i.matches, goal: REFERRAL_MATCHES,
+      deadline: i.at + REFERRAL_DAYS * DAY_MS, state: i.state, capped: !!i.capped,
+      payout: this.opts.quests.payoutState(claimId(this.opts.chainId, i, side)),
+    });
+    return {
+      invited: mine.map((i) => view(i, 'inviter')),
+      invitedBy: by ? view(by, 'invited') : null,
+      gifts: Object.values(this.data.gifts).filter((g) => g.from === a && g.state === 'held')
+        .sort((x, y) => y.createdAt - x.createdAt).map((g) => ({ code: g.code, ...this.giftView(g.code, a)! })),
+      paidThisSeason: mine.filter((i) => i.state === 'paid' && i.season === season && !i.capped).length,
+      cap: REFERRAL_CAP, matchesGoal: REFERRAL_MATCHES, days: REFERRAL_DAYS, packs: REFERRAL_PACKS,
+    };
+  }
+
+  // ─── Challenge gifts ─────────────────────────────────────────
+  /**
+   * The gift id for a challenge's pack gift (issued once, to its challenger), confirmed against PackGifts when it's
+   * been paid. Only gifts paid by the challenger count: anyone else holding a gift under the id is ignored.
+   */
+  async attachGift(code: string, challenger: string): Promise<ChallengeGiftView> {
+    if (!this.opts.gifts) throw new Error('pack gifts are not enabled on this server');
+    let g = this.giftFor(code);
+    if (g && !same(g.from, challenger)) throw new Error('only the challenger can attach a gift');
+    if (!g) {
+      const giftId = keccak256(toHex(`forkfall-gift:${this.opts.chainId}:${code}:${crypto.randomUUID()}`));
+      g = { code, giftId, from: challenger.toLowerCase(), createdAt: this.now(), state: 'unpaid', attempts: 0, nextAt: 0 };
+      this.data.gifts[giftId] = g;
+      this.save();
+    }
+    if (g.state === 'unpaid') await this.confirm(g);
+    return this.giftView(code, challenger)!;
+  }
+
+  /** What a viewer may see of a challenge's gift: everyone sees that one waits; only the challenger sees its id. */
+  giftView(code: string, viewer: string | null): ChallengeGiftView | undefined {
+    const g = this.giftFor(code);
+    if (!g) return undefined;
+    const mine = same(g.from, viewer);
+    if (!mine && g.state === 'unpaid') return undefined;
+    return {
+      state: g.state, from: g.from, count: g.count ?? null, kind: g.kind ?? null, to: g.to ?? null, tx: g.tx ?? null,
+      refundableAt: g.refundableAt ?? null, ...(mine ? { giftId: g.giftId } : {}),
+    };
+  }
+
+  /** Read a gift's state on-chain and adopt it (only the challenger's own payment counts). */
+  private async confirm(g: Gift): Promise<boolean> {
+    try {
+      const h = await this.opts.gifts!.read(g.giftId);
+      if (h.state === 'none') return true;
+      if (!same(h.from, g.from)) { g.state = 'none'; g.error = 'held by someone else'; this.save(); return true; }
+      g.count = h.count; g.kind = h.kind; g.refundableAt = h.refundableAt;
+      g.state = h.state === 'held' ? (g.to ? 'due' : 'held') : h.state;
+      this.save();
+      return true;
+    } catch { return false; }
+  }
+
+  private giftFor(code: string): Gift | undefined {
+    return Object.values(this.data.gifts).find((g) => g.code === code);
+  }
+
+  // ─── The loop ────────────────────────────────────────────────
+  /** Expire, verify and pay referrals; deliver gifts whose challenge was played. Bounded chain reads per tick. */
+  async tick(): Promise<{ paid: string[]; delivered: Gift[]; failed: Gift[] }> {
+    const out = { paid: [] as string[], delivered: [] as Gift[], failed: [] as Gift[] };
+    if (this.busy) return out;
+    this.busy = true;
+    let reads = 0;
+    let changed = false;
+    try {
+      const now = this.now();
+      for (const inv of Object.values(this.data.invites)) {
+        if (inv.state === 'playing' && now > inv.at + REFERRAL_DAYS * DAY_MS) { inv.state = 'expired'; changed = true; continue; }
+        if (inv.state !== 'verifying' || (inv.checkAt ?? 0) > now || reads >= READS_PER_TICK) continue;
+        if (now > inv.at + REFERRAL_VERIFY_DAYS * DAY_MS) { inv.state = 'expired'; changed = true; continue; }
+        reads++;
+        let ok: boolean;
+        try { ok = this.opts.eligible ? await this.opts.eligible(inv.invited as Address) : true; } catch { ok = false; }
+        if (!ok) { inv.checkAt = now + VERIFY_RECHECK_MS; continue; }
+        this.pay(inv);
+        out.paid.push(inv.invited);
+        changed = true;
+      }
+      for (const g of Object.values(this.data.gifts)) {
+        if (!this.opts.gifts || g.nextAt > now || reads >= READS_PER_TICK) continue;
+        if (g.state === 'unpaid' && g.to) {
+          // Played before the payment was confirmed: one read settles whether a gift is held.
+          reads++;
+          if (!(await this.confirm(g))) { g.nextAt = now + 30_000; continue; }
+          if (g.state === 'unpaid') { g.state = 'none'; changed = true; }
+        }
+        if (g.state !== 'due' || !g.to) continue;
+        reads++;
+        try {
+          g.tx = await this.opts.gifts.deliver(g.giftId, g.to as Address);
+          g.state = 'delivered'; g.error = undefined; out.delivered.push(g);
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (/NotHeld/.test(msg)) { await this.confirm(g); if (g.state === 'due') g.state = 'failed'; }
+          else {
+            g.attempts++; g.error = msg; g.nextAt = now + Math.min(RETRY_MAX_MS, 30_000 * 2 ** g.attempts);
+            if (g.attempts >= MAX_ATTEMPTS) g.state = 'failed';
+          }
+          out.failed.push(g);
+        }
+        changed = true;
+      }
+    } finally { this.busy = false; }
+    if (changed) this.save();
+    return out;
+  }
+
+  /** Both get their pack; the inviter only while under the season's cap. */
+  private pay(inv: Invite) {
+    const season = passSeason(questDay(this.now())).season;
+    const paid = Object.values(this.data.invites).filter((i) => i.inviter === inv.inviter && i.state === 'paid' && i.season === season && !i.capped).length;
+    inv.state = 'paid';
+    inv.season = season;
+    inv.capped = paid >= REFERRAL_CAP;
+    const q = this.opts.quests;
+    q.queueReward(inv.invited, 'referral', `referral-from-${inv.inviter}`, claimId(this.opts.chainId, inv, 'invited'), 0, REFERRAL_PACKS);
+    if (!inv.capped) q.queueReward(inv.inviter, 'referral', `referral-${inv.invited}`, claimId(this.opts.chainId, inv, 'inviter'), 0, REFERRAL_PACKS);
+  }
+
+  private save() {
+    this.prune();
+    if (!this.opts.file) return;
+    writeFileAtomic(this.opts.file, JSON.stringify(this.data));
+  }
+
+  /**
+   * Forget gifts a week after they were made, unless one is still due: by then its challenge link expired long ago,
+   * so it was delivered, never paid, or is refundable by its buyer on-chain (PackGifts keeps that record).
+   */
+  private prune() {
+    const cutoff = this.now() - GIFT_KEEP_MS;
+    for (const [id, g] of Object.entries(this.data.gifts)) if (g.createdAt < cutoff && g.state !== 'due') delete this.data.gifts[id];
+  }
+}
+
+/** One claim id per (chain, inviter, invited, side): a retried or re-queued referral never pays twice. */
+function claimId(chainId: number, i: { inviter: string; invited: string }, side: 'inviter' | 'invited'): Hex {
+  return keccak256(toHex(`forkfall-referral:${chainId}:${i.inviter}:${i.invited}:${side}`));
+}

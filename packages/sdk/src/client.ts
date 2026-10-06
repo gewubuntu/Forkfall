@@ -123,6 +123,55 @@ export interface ChallengeView {
   matchId?: Hex;
   /** For the two players: 'reveal' while the match waits for both to join. */
   matchPhase?: 'reveal' | 'active' | 'ended' | 'cancelled';
+  /** Packs the challenger bought for whoever plays this challenge (PackGifts), delivered after the match. */
+  gift?: ChallengeGiftView;
+}
+
+/** A pack gift held for a friend challenge. */
+export interface ChallengeGiftView {
+  /** unpaid: id issued, nothing held yet · held · due: played, being delivered · delivered · refunded · none · failed */
+  state: 'unpaid' | 'held' | 'due' | 'delivered' | 'refunded' | 'none' | 'failed';
+  from: Address | string;
+  count: number | null;
+  kind: number | null;
+  /** The friend it goes to, once the match ended. */
+  to: string | null;
+  tx: Hex | null;
+  /** When the buyer can take it back if nobody played (ms). */
+  refundableAt: number | null;
+  /** Only for the challenger: the id to pay PackGifts.holdWith* under. */
+  giftId?: Hex;
+}
+
+/** One referral, seen by either side. */
+export interface ReferralView {
+  inviter: string;
+  invited: string;
+  at: number;
+  via: 'link' | 'challenge';
+  /** Qualifying matches (at least four turns) finished so far, of `goal`, before `deadline`. */
+  matches: number;
+  goal: number;
+  deadline: number;
+  /** playing · verifying: enough matches, waiting for the invited player to verify · paid · expired */
+  state: 'playing' | 'verifying' | 'paid' | 'expired';
+  /** The inviter was over the season's cap, so only the invited player was paid. */
+  capped: boolean;
+  /** This viewer's pack for it. */
+  payout?: QuestPayoutStatus;
+}
+
+/** `GET /v1/invites`: who you invited, who invited you, and the rules. */
+export interface InvitesStatus {
+  invited: ReferralView[];
+  invitedBy: ReferralView | null;
+  /** Pack gifts you attached to challenges that nobody played yet: refundable from `refundableAt`. */
+  gifts: (ChallengeGiftView & { code: string })[];
+  paidThisSeason: number;
+  cap: number;
+  matchesGoal: number;
+  days: number;
+  packs: number;
 }
 
 /** held: earned but waiting until the player is a verified human or registered agent. */
@@ -316,12 +365,13 @@ export class ForkfallClient {
     return data as T;
   }
 
-  async connect(opts: { agent?: boolean } = {}): Promise<ServerConfig> {
+  /** API sign-in (agents, bots). `ref`: the wallet that invited you, counted only if you've never played. */
+  async connect(opts: { agent?: boolean; ref?: Address } = {}): Promise<ServerConfig> {
     this.config = await this.req<ServerConfig>('GET', '/v1/config');
     const { message } = await this.req<{ message: string }>('GET', `/v1/auth/nonce?address=${this.address}`);
     const signature = await this.account.signMessage({ message });
     const { token } = await this.req<{ token: string }>('POST', '/v1/auth', {
-      address: this.address, message, signature, agent: !!opts.agent,
+      address: this.address, message, signature, agent: !!opts.agent, ...(opts.ref ? { ref: opts.ref } : {}),
     });
     this.token = token;
     this.liveClient?.reauth();
@@ -338,11 +388,11 @@ export class ForkfallClient {
    * Wallet sign-in with a session key: `delegation` is the wallet-signed SIWE message authorizing
    * this.account (the session key). Reusable until it expires; each call proves key possession afresh.
    */
-  async connectSession(delegation: Delegation): Promise<{ token: string; expiresAt: number }> {
+  async connectSession(delegation: Delegation, opts: { ref?: Address } = {}): Promise<{ token: string; expiresAt: number }> {
     this.config ??= await this.req<ServerConfig>('GET', '/v1/config');
     const nonce = await this.nonce();
     const proof = await this.account.signMessage({ message: sessionProofMessage(nonce) });
-    const r = await this.req<{ token: string; expiresAt: number }>('POST', '/v1/auth/session', { delegation, nonce, proof });
+    const r = await this.req<{ token: string; expiresAt: number }>('POST', '/v1/auth/session', { delegation, nonce, proof, ...(opts.ref ? { ref: opts.ref } : {}) });
     this.token = r.token;
     this.liveClient?.reauth();
     return r;
@@ -412,6 +462,15 @@ export class ForkfallClient {
     this.secrets.set(matchId, s);
     return matchId;
   }
+
+  /**
+   * Attach a pack gift to your challenge: returns its gift id (pay PackGifts.holdWithEth/holdWithToken under it),
+   * and once paid, call again to confirm. The packs go to whoever plays the challenge, after the match.
+   */
+  attachGift(code: string) { return this.req<ChallengeGiftView>('POST', `/v1/challenges/${code}/gift`, {}); }
+
+  /** Your referrals and invite progress. */
+  invites() { return this.req<InvitesStatus>('GET', '/v1/invites'); }
 
   /** Cancel your challenge, or decline one addressed to you. */
   cancelChallenge(code: string) { return this.req<ChallengeView>('DELETE', `/v1/challenges/${code}`); }

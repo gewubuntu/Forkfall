@@ -621,6 +621,12 @@ export class Lobby {
   }
 
   /** Recent matches, or one player's full history (newest first). */
+  /** Whether this wallet has a match here (running or finished; a match cancelled before it started doesn't count). */
+  hasPlayed(address: Address): boolean {
+    for (const m of this.matches.values()) if (m.phase !== 'cancelled' && this.seatOf(m, address) !== null) return true;
+    return false;
+  }
+
   list(player?: Address | null): MatchSummary[] {
     const mine = player ? (m: Match) => this.seatOf(m, player) !== null : () => true;
     return [...this.matches.values()]

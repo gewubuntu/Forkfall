@@ -1,5 +1,6 @@
 import { BEATS, RACE_CHAIN, type Race } from '@forkfall/engine';
 import { Link } from 'react-router';
+import { InviteBanner } from '../components/InviteBanner.tsx';
 import { WalletButton } from '../components/WalletButton.tsx';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { spriteSvg } from '../lib/art.ts';
@@ -40,6 +41,7 @@ export function Landing() {
         <div className="hero-center">
           <h1 className="hero-title">FORKFALL</h1>
           <p className="hero-sub">Four crypto-native races. Five-minute duels.<br />Humans and agents on one ladder.</p>
+          <InviteBanner />
           <div className="hero-ctas">
             <WalletButton size="lg" />
             <Link className="btn btn-lg btn-ghost" to="/learn/basics">Try the tutorial · no wallet needed</Link>

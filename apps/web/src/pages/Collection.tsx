@@ -2,11 +2,11 @@ import {
   card, COLLECTIBLE, COSMETIC_SETS, COSMETICS, MAX_COPIES, MAX_LEGENDARY_COPIES, milestoneMet, RACES, RARITIES, setOf,
   type CardDef, type Faction, type MilestoneRule, type Race, type Rarity,
 } from '@forkfall/engine';
-import { craftingAbi, faucetTokenAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
+import { craftingAbi, faucetTokenAbi, packGiftsAbi, packSaleAbi, starterDecksAbi } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { formatEther, formatUnits, maxUint256, parseEventLogs, type Address } from 'viem';
+import { formatEther, formatUnits, isAddress, maxUint256, parseEventLogs, type Address } from 'viem';
 import { useBalance, useBlockNumber, useReadContract, useReadContracts } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useTx } from '../chain/Tx.tsx';
@@ -135,6 +135,12 @@ function CollectionLive({ chainId }: { chainId: number }) {
     return () => clearInterval(t);
   }, [waiting, refetchPacks]);
   const eth = useBalance({ address: player, chainId: cid });
+  // Gifting packs (PackGifts, on deployments that have it) needs its own test USDC allowance.
+  const giftAllowanceRead = useReadContract({
+    address: c.TestUSDC, abi: faucetTokenAbi, functionName: 'allowance', args: [player, (c.PackGifts ?? c.PackSale) as Address], chainId: cid,
+    query: { enabled: !!c.PackGifts },
+  });
+  const giftAllowance = (giftAllowanceRead.data as bigint | undefined) ?? 0n;
 
   // ─── UI state ─────────────────────────────────────────────────
   const [qty, setQty] = useState(1);
@@ -146,6 +152,8 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const [rarity, setRarity] = useState<Rarity | 'all'>('all');
   const [ownedOnly, setOwnedOnly] = useState(false);
   const [confirmExtras, setConfirmExtras] = useState(false);
+  const [giftOpen, setGiftOpen] = useState(false);
+  const [giftTo, setGiftTo] = useState('');
 
   const total = balances.total;
   const ownedKinds = COLLECTIBLE.filter((cd) => total(cd.id) > 0).length;
@@ -160,8 +168,19 @@ function CollectionLive({ chainId }: { chainId: number }) {
   };
 
   const label = `${qty} ${KINDS[kind].short} pack${qty > 1 ? 's' : ''}`;
+  // A gift goes to a friend's wallet through PackGifts: same price, odds and pity timer, opened by them.
+  const gifting = giftOpen && !!c.PackGifts;
+  const friend = gifting && isAddress(giftTo) && giftTo.toLowerCase() !== player.toLowerCase() ? (giftTo as Address) : null;
+  const badGift = gifting && !friend;
+  const giftDone = (who: Address) => { setNotice(`🎁 Sent ${label} to ${who.slice(0, 6)}…${who.slice(-4)}. They open it from their Collection.`); setGiftTo(''); setGiftOpen(false); refresh(); };
   const buyEth = async () => {
     if (!ethPrice) return;
+    if (gifting) {
+      if (!friend) return;
+      const rc = await tx.run(`Gift ${label} to ${friend.slice(0, 6)}…`, { address: c.PackGifts!, abi: packGiftsAbi, functionName: 'giftWithEth', args: [friend, kind, BigInt(qty)], value: bundlePrice(ethPrice, qty) });
+      if (rc) giftDone(friend);
+      return;
+    }
     const rc = await tx.run(`Buy ${label}`, { address: c.PackSale, abi: packSaleAbi, functionName: 'buyWithEthOf', args: [kind, BigInt(qty)], value: bundlePrice(ethPrice, qty) });
     if (rc) refresh();
   };
@@ -169,6 +188,16 @@ function CollectionLive({ chainId }: { chainId: number }) {
   const buyUsdc = async () => {
     if (!usdcPrice) return;
     const cost = bundlePrice(usdcPrice, qty);
+    if (gifting) {
+      if (!friend) return;
+      if (giftAllowance < cost) {
+        const ok = await tx.run('Approve test USDC for gifts', { address: c.TestUSDC, abi: faucetTokenAbi, functionName: 'approve', args: [c.PackGifts!, maxUint256] });
+        if (!ok) return;
+      }
+      const rc = await tx.run(`Gift ${label} to ${friend.slice(0, 6)}… with tUSDC`, { address: c.PackGifts!, abi: packGiftsAbi, functionName: 'giftWithToken', args: [c.TestUSDC, friend, kind, BigInt(qty)] });
+      if (rc) { giftAllowanceRead.refetch(); giftDone(friend); }
+      return;
+    }
     if (allowance < cost) {
       const ok = await tx.run('Approve test USDC', { address: c.TestUSDC, abi: faucetTokenAbi, functionName: 'approve', args: [c.PackSale, maxUint256] });
       if (!ok) return;
@@ -315,13 +344,29 @@ function CollectionLive({ chainId }: { chainId: number }) {
                 <span><b>{qty}</b> pack{qty > 1 ? 's' : ''}{qty >= 5 && <span className="save"> −{qty >= 10 ? 15 : 10}%</span>}</span>
                 <button className="btn" onClick={() => setQty((q) => Math.min(10, q + 1))} disabled={qty >= 10} aria-label="More">+</button>
               </div>
+              {c.PackGifts && (
+                <div className={`gift-to ${gifting ? 'on' : ''}`}>
+                  <label className="gift-toggle">
+                    <input type="checkbox" checked={giftOpen} onChange={(e) => setGiftOpen(e.target.checked)} />
+                    <span>🎁 Gift {qty > 1 ? 'them' : 'it'} to a friend</span>
+                  </label>
+                  {gifting && (
+                    <label className="gift-addr small">
+                      Friend’s wallet
+                      <input value={giftTo} onChange={(e) => setGiftTo(e.target.value.trim())} placeholder="0x…" spellCheck={false} aria-invalid={!!giftTo && badGift} />
+                      {giftTo && badGift && <span className="err">{giftTo.toLowerCase() === player.toLowerCase() ? 'That’s your own wallet.' : 'Not an address yet.'}</span>}
+                      <span className="muted">They get sealed packs to open themselves: same odds and pity timer as yours.</span>
+                    </label>
+                  )}
+                </div>
+              )}
               <div className="buy-row">
-                <button className="btn btn-primary" disabled={tx.busy || !ethPrice} onClick={buyEth}>
-                  Buy for {ethPrice ? `${formatEther(bundlePrice(ethPrice, qty))} ETH` : '…'}
+                <button className="btn btn-primary" disabled={tx.busy || !ethPrice || badGift} onClick={buyEth}>
+                  {gifting ? 'Gift' : 'Buy'} for {ethPrice ? `${formatEther(bundlePrice(ethPrice, qty))} ETH` : '…'}
                 </button>
-                <button className="btn" disabled={tx.busy || !usdcPrice || usdcBal < bundlePrice(usdcPrice ?? 0n, qty)} onClick={buyUsdc}
+                <button className="btn" disabled={tx.busy || !usdcPrice || badGift || usdcBal < bundlePrice(usdcPrice ?? 0n, qty)} onClick={buyUsdc}
                   title={usdcBal < bundlePrice(usdcPrice ?? 0n, qty) ? 'Not enough test USDC' : undefined}>
-                  Buy for {usdcPrice ? `${formatUnits(bundlePrice(usdcPrice, qty), 6)} tUSDC` : '…'}
+                  {gifting ? 'Gift' : 'Buy'} for {usdcPrice ? `${formatUnits(bundlePrice(usdcPrice, qty), 6)} tUSDC` : '…'}
                 </button>
               </div>
               <div className="faucet">

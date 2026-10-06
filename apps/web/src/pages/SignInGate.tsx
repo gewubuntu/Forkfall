@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useConnection } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
+import { InviteBanner } from '../components/InviteBanner.tsx';
 import { avatarSvg } from '../lib/art.ts';
 import { chainDotClass, shortAddr } from '../lib/format.ts';
 import { SESSION_LENGTHS } from '../lib/session.ts';
@@ -26,6 +27,7 @@ export function SignInGate() {
             : 'Sign one message to start a play session. No transaction, no gas.'}
         </p>
 
+        {!wrongChain && <InviteBanner />}
         <div className="who">
           <img className="avatar" src={avatarSvg(auth.wallet!)} alt="" />
           <div style={{ flex: 1 }}>

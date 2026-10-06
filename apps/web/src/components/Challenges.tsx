@@ -7,6 +7,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
 import { avatarSvg } from '../lib/art.ts';
+import { AttachGift } from './ChallengeGift.tsx';
 import { useLiveTopic } from '../lib/live.ts';
 import { shortAddr, timeLeft } from '../lib/format.ts';
 
@@ -115,6 +116,7 @@ export function ChallengeWaiting({ code, onDone, rematch = false }: { code: stri
           {'share' in navigator && <button className="btn btn-ghost" onClick={share}>Share</button>}
         </div>
       )}
+      {c && <AttachGift c={c} onChange={poll} />}
       {err && <div className="alert err">{err}</div>}
       <button className="btn btn-ghost" onClick={cancel}>Cancel challenge</button>
     </div>

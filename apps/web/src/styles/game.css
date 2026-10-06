@@ -474,3 +474,9 @@
 @media (max-width: 640px) { .challenge-card .race-pick { grid-template-columns: repeat(2, 1fr); } }
 
 .toast.challenge-alert { background: #2a1024; border: 1px solid color-mix(in srgb, var(--degens) 55%, transparent); color: #ffd1ea; z-index: 60; }
+
+/* Pack gifts attached to a friend challenge */
+.gift-attach { display: grid; gap: 8px; padding: 12px; border-radius: var(--r-sm); border: 1px solid #5a4a1a; background: linear-gradient(160deg, #1d1a10, transparent 70%); text-align: left; }
+.gift-attach .ga-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gift-note { padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid #5a4a1a; background: #1d1a10; font-weight: 600; text-align: left; }
+.gift-note.failed, .gift-note.refunded { border-color: var(--line); background: var(--bg-2); font-weight: 400; }

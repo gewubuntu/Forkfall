@@ -11,6 +11,7 @@ import type { HumanVerification } from './humans.ts';
 import type { Rewards } from './rewards.ts';
 import type { Profiles } from './profiles.ts';
 import type { Quests } from './quests.ts';
+import type { Invites } from './invites.ts';
 import { Live } from './live.ts';
 import { serveMetadata } from './metadata.ts';
 import type { StateStore } from './state.ts';
@@ -44,7 +45,7 @@ interface SavedSessions {
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests; store?: StateStore | null } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests; invites?: Invites; store?: StateStore | null } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
   /** token hash → session. Persisted (when a store is given) so a restart doesn't sign everyone out. */
@@ -104,6 +105,17 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       send(res, status, { error: (e as Error).message });
     }
   };
+
+  /** Sign-in with an invite (`ref`): counted only for a wallet that has never played (Invites checks). */
+  function invited(address: string, ref: unknown) {
+    if (opts.invites && typeof ref === 'string' && isAddress(ref)) opts.invites.invite(address, ref, 'link');
+  }
+
+  /** A challenge view with the pack gift held for it, if any. */
+  function withGift<T extends { code: string }>(view: T, viewer: string | null): T {
+    const gift = opts.invites?.giftView(view.code, viewer);
+    return gift ? { ...view, gift } : view;
+  }
 
   function authSession(req: IncomingMessage): Session | null {
     const h = req.headers.authorization;
@@ -168,6 +180,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         nonces.delete(address);
         const token = randomBytes(24).toString('hex');
         addSession(token, { address, agent: !!body.agent });
+        invited(address, body.ref);
         return { token, address };
       }
       case 'POST /auth/session': {
@@ -180,6 +193,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         const v = await verifySessionLogin({ delegation: body.delegation, nonce, proof: body.proof, chain: lobby.opts.chain, origin });
         const token = randomBytes(24).toString('hex');
         addSession(token, { address: v.wallet, agent: false, sessionKey: v.sessionKey, delegation: v.delegation, expiresAt: v.expiresAt });
+        invited(v.wallet, body.ref);
         return { token, address: v.wallet, sessionKey: v.sessionKey, expiresAt: v.expiresAt };
       }
       case 'GET /auth/me': {
@@ -244,11 +258,31 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         const who = need(session);
         return lobby.createChallenge(who.address, body, who.agent);
       }
-      case 'GET /challenges': return lobby.challengesFor(need(session).address);
-      case 'GET /challenges/:code': return lobby.challengeView(lobby.challenge(p[1]), session?.address ?? null);
+      case 'GET /challenges': {
+        const who = need(session).address;
+        const { outgoing, incoming } = lobby.challengesFor(who);
+        return { outgoing: outgoing.map((c) => withGift(c, who)), incoming: incoming.map((c) => withGift(c, who)) };
+      }
+      case 'GET /challenges/:code': return withGift(lobby.challengeView(lobby.challenge(p[1]), session?.address ?? null), session?.address ?? null);
       case 'POST /challenges/:code/accept': {
         const who = need(session);
+        // A wallet that has never played, accepting a challenge, was invited by the challenger (checked before the
+        // match exists, since the match itself would make it a known player).
+        const c = lobby.challenge(p[1]);
+        if (c.state === 'open' && (!c.to || c.to.toLowerCase() === who.address.toLowerCase())) opts.invites?.invite(who.address, c.from.address, 'challenge');
         return lobby.acceptChallenge(who.address, p[1], body, who.agent);
+      }
+      case 'POST /challenges/:code/gift': {
+        if (!opts.invites?.offersGifts) throw new ApiError(503, 'pack gifts are not enabled on this server');
+        const who = need(session).address;
+        const c = lobby.challenge(p[1]);
+        if (c.from.address.toLowerCase() !== who.toLowerCase()) throw new ApiError(403, 'only the challenger can attach a gift');
+        if (!opts.invites.giftView(c.code, who) && c.state !== 'open') throw new ApiError(409, `this challenge was already ${c.state}`);
+        return opts.invites.attachGift(c.code, who);
+      }
+      case 'GET /invites': {
+        if (!opts.invites) throw new ApiError(503, 'referrals are not enabled on this server');
+        return opts.invites.status(need(session).address);
       }
       case 'DELETE /challenges/:code': return lobby.closeChallenge(need(session).address, p[1]);
       case 'GET /quests': {
@@ -351,7 +385,7 @@ function serveStatic(path: string, res: ServerResponse, dir?: string) {
 
 const CONTRACT_KEYS = [
   'CardRegistry', 'StarterDecks', 'PackSale', 'Crafting', 'DeckRegistry', 'MatchSettlement',
-  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'AgentLeague', 'QuestRewards', 'SeasonPass', 'TestUSDC', 'TestFALL',
+  'AgentRegistry', 'HumanRegistry', 'SeasonRewards', 'AgentLeague', 'QuestRewards', 'SeasonPass', 'PackGifts', 'TestUSDC', 'TestFALL',
 ] as const;
 
 function hubContracts(book: AddressBook | null) {

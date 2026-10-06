@@ -21,6 +21,9 @@ import { ConnectModalProvider } from './components/ConnectModal.tsx';
 import { TxProvider } from './chain/Tx.tsx';
 import { wagmiConfig } from './wagmi.ts';
 
+import { captureRef } from './lib/invite.ts';
+
+captureRef();
 const queryClient = new QueryClient();
 
 createRoot(document.getElementById('root')!).render(
