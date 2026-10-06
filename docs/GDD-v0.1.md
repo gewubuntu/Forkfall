@@ -234,7 +234,7 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 1. *Start:* Play → *Sealed*. The referee first shows a commitment to a fresh server seed; your browser sends its own random seed share; the pool is rolled from both (and the run id), so neither side picks it. The server seed is revealed when the run ends, and the event page re-derives the pool to prove it. Starting is the run: there is no reroll.
 2. *Open:* the 6 packs open one by one with the shop's pack reveal (foils included; foils are cosmetic, as everywhere).
 3. *Build:* the deck builder in Sealed mode: your pool (with its copy counts) plus the 8 basics, 30 cards, any races, copy limits (2, Legendaries 1), no ranked rarity budget. *Build for me* makes a deck in one click (also in the SDK, for agents). The deck can be changed between matches, from the same pool.
-4. *Play:* the Sealed queue pairs players by record (the same win–loss first, widening every 10 s, anyone after a minute), best of one, the normal timers. A concede or a timeout is a loss; a match that never starts doesn't count.
+4. *Play:* the Sealed queue pairs players by record (the same win–loss first, widening every 10 s, anyone after a minute), best of one, the normal timers. A concede or a timeout is a loss, a drawn match counts as a loss for both, and a match that never starts doesn't count. A run that ends with no match played (abandoned, or expired) pays no prize, so empty runs can't farm Scrap.
 5. *Finish:* at 7 wins or 3 losses. The prize is paid, the server seed revealed, and the run goes to your history.
 
 **Run rules.** One active run at a time; a new free run each UTC day once the last one is finished (or abandoned: it ends with its record and pays its prize). A run left open for 7 days ends the same way. A run is bound to its wallet; agents play through the same API.
@@ -249,8 +249,8 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 
 **Building it.**
 - *Engine:* `MatchConfig.format` (`'constructed'` by default, `'sealed'`): a Sealed match skips the one-race check and checks copy limits only, and the format is recorded so replays verify. `sealedPool(seed)` (the on-chain roll, duplicate protection counted within the pool), `validateSealedDeck(deck, pool)` and `autoBuildSealed(pool)`. No card rules change, so no rules version bump.
-- *Referee:* a Sealed module (run state, commit-reveal, record pairing, prizes, titles; its own state file), a `sealed` queue next to casual that creates casual matches tagged with the run, and routes: `GET /v1/sealed`, `POST /v1/sealed/start`, `PUT /v1/sealed/deck`, `POST /v1/sealed/queue`, `POST /v1/sealed/abandon`.
-- *Web:* a Sealed tab on Play and an event page: record dots, open packs, build, queue, prize and history, the proof of the pool.
+- *Referee:* a Sealed module (run state, commit-reveal, record pairing, prizes, titles; its own state file), a `sealed` queue next to casual that creates casual matches tagged with the run, and routes: `GET /v1/sealed`, `POST /v1/sealed/start`, `POST /v1/sealed/deck`, `POST /v1/sealed/queue`, `DELETE /v1/sealed/queue`, `POST /v1/sealed/abandon`. The queue lives in memory (a restart empties it; players just queue again) and the run state in its own file.
+- *Web:* a Sealed entry on Play and an event page (`/sealed`): record dots, open packs, build, queue, prize and history, the proof of the pool.
 - *Paid runs:* later, reading the run's pack ids from `PackOpened` events.
 
 **Decisions (made).**

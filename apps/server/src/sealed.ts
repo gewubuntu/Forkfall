@@ -70,6 +70,8 @@ export interface SealedOptions {
   quests: Quests;
   host: SealedHost;
   now?: () => number;
+  /** How long a lone player waits before a house bot plays them (default 45 s; tests shorten it). */
+  botAfterMs?: number;
 }
 
 const lc = (a: string) => a.toLowerCase();
@@ -86,6 +88,7 @@ export class Sealed {
   private queue = new Map<string, QueueEntry>();
   private pending = new Map<string, { serverSeed: Hex; commit: Hex }>();
   private busy = false;
+  private botAfterMs: number;
 
   constructor(private opts: SealedOptions) {
     const empty = (): Store => ({ runs: {}, titles: {}, counts: {} });
@@ -93,6 +96,7 @@ export class Sealed {
     ({ data: this.data, setAside: this.setAside } = opts.file ? readJsonOrSetAside(opts.file, empty, { valid }) : { data: empty(), setAside: null });
     this.data.counts ??= {};
     this.now = opts.now ?? Date.now;
+    this.botAfterMs = opts.botAfterMs ?? SEALED_BOT_AFTER_MS;
   }
 
   /** Sealed titles this wallet has earned (to merge into what it may equip). */
@@ -115,7 +119,7 @@ export class Sealed {
       canStart: !current && !startedToday,
       nextStartAt: !current && startedToday ? dayStartMs(today + 1) : null,
       titles: this.titles(a),
-      rules: { wins: SEALED_WINS, losses: SEALED_LOSSES, packs: SEALED_PACKS, botAfterMs: SEALED_BOT_AFTER_MS, widenMs: SEALED_WIDEN_MS },
+      rules: { wins: SEALED_WINS, losses: SEALED_LOSSES, packs: SEALED_PACKS, botAfterMs: this.botAfterMs, widenMs: SEALED_WIDEN_MS },
     };
   }
 
@@ -130,7 +134,7 @@ export class Sealed {
       ...(r.endedBy ? { endedBy: r.endedBy } : {}),
       matches: r.matches,
       activeMatch: m ? { id: m.id, phase: m.phase } : null,
-      queued: q && q.runId === r.id ? { since: q.at, botAt: q.at + SEALED_BOT_AFTER_MS } : null,
+      queued: q && q.runId === r.id ? { since: q.at, botAt: q.at + this.botAfterMs } : null,
       prize: r.prize ? {
         scrap: r.prize.scrap, packs: r.prize.packs, titleStep: r.prize.titleStep,
         payout: r.prize.claimId ? this.opts.quests.payoutState(r.prize.claimId) : undefined,
@@ -314,7 +318,7 @@ export class Sealed {
         }
         if (best) { this.pair(a, best); paired.add(a.address); paired.add(best.address); }
       }
-      for (const e of entries) if (!paired.has(e.address) && now - e.at >= SEALED_BOT_AFTER_MS) this.pairBot(e);
+      for (const e of entries) if (!paired.has(e.address) && now - e.at >= this.botAfterMs) this.pairBot(e);
     } finally { this.busy = false; }
   }
 

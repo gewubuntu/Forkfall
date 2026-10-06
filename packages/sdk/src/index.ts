@@ -6,3 +6,4 @@ export * from './replay.ts';
 export * from './agents.ts';
 export * from './live.ts';
 export * from './elo.ts';
+export * from './sealed.ts';

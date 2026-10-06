@@ -1,5 +1,5 @@
 import { autoBuildSealed, SEALED_BOT_AFTER_MS, SEALED_RUN_DAYS, SEALED_WIDEN_MS, sealedPool, sealedPoolSeed } from '@forkfall/engine';
-import { commitSeed, ForkfallClient, replayLog } from '@forkfall/sdk';
+import { commitSeed, ForkfallClient, replayLog, verifySealedRun } from '@forkfall/sdk';
 import type { AddressInfo } from 'node:net';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { Chain } from '../src/chain.ts';
@@ -288,5 +288,18 @@ describe('Sealed over HTTP', () => {
       expect(log.format).toBe('sealed');
       expect(replayLog(log).ok).toBe(true); // the log verifies under the Sealed deck rules
     } finally { server.close(); }
+  });
+});
+
+describe('verifySealedRun', () => {
+  it('accepts an honest finished run and rejects a swapped pool or seed', () => {
+    const { sealed, begin } = setup();
+    begin(A);
+    expect(verifySealedRun(sealed.status(A).run!).ok).toBe(false); // seed not revealed yet
+    sealed.abandon(A);
+    const run = sealed.status(A).history[0];
+    expect(verifySealedRun(run)).toMatchObject({ ok: true });
+    expect(verifySealedRun({ ...run, packs: [...run.packs].reverse() })).toMatchObject({ ok: false, poolOk: false });
+    expect(verifySealedRun({ ...run, serverSeed: ('0x' + '44'.repeat(32)) as Hex })).toMatchObject({ ok: false, commitOk: false });
   });
 });

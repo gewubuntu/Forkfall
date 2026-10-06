@@ -131,6 +131,7 @@ const sealed = new Sealed({
   file: env.SEALED_FILE || sealedFile(root, chainId),
   chainId,
   quests,
+  botAfterMs: env.SEALED_BOT_SECONDS ? Number(env.SEALED_BOT_SECONDS) * 1000 : undefined,
   host: {
     matches: lobby.matches,
     houseAddress: house.address,
