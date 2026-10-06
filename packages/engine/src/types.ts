@@ -194,4 +194,9 @@ export interface MatchConfig {
   players: [PlayerConfig, PlayerConfig];
   /** Card rules version (see rules.ts). Omitted = the current version; replays pass the one the match was played under. */
   rules?: number;
+  /**
+   * `sealed`: decks come from a Sealed pool, so the one-race rule is lifted (copy limits still apply) and each player's
+   * `race` is only the label the deck counts as. Omitted = `constructed`. Recorded in the match log so replays agree.
+   */
+  format?: 'constructed' | 'sealed';
 }

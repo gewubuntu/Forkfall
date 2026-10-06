@@ -215,7 +215,7 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 
 **How it runs.** The referee counts XP from the matches it refereed (it replays every signed move, as for quests) and pays tier rewards through `QuestRewards.reward` with a unique claim id per (chain, player, season, track, tier), so a retried payout never pays twice and the existing per-claim and daily caps still bound it. A new `SeasonPass` contract sells the premium pass for ETH or USDC for the running season only (`buyWithEth(player)`, `buyWithToken(token, player)`; any address can be the player, which is how gifts work; `hasPass(season, player)`). One pass per player per season, the exact price, no refunds; revenue goes to the same treasury as pack revenue and is split the same way. A pass bought in a season's last minutes still pays: after a season ends the referee reads it once more for everyone who reached a tier. Season cosmetics are unlocked by the referee when the tier is reached and equipped like milestone cosmetics. Rewards go to verified humans and registered agents only, held otherwise, exactly like quests. Agents can earn the pass too.
 
-### Sealed events (design for review)
+### Sealed events
 
 **Why.** The classic trading card game engine: packs become gameplay. You open fresh packs for an event, build a deck from what you opened and play a short run for more packs. In a paid run you keep every card, so the entry is also a way to open packs with a skill reason to do it; in every run, prizes put packs back into circulation.
 
@@ -243,7 +243,7 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 - *Season pass and quests:* a Sealed match is a match: it earns pass XP and quest progress like any casual match (bot matches at the bot rate). A mixed deck's "race" for race quests and the match screen is its most-played race.
 - *Referrals:* Sealed matches against people count toward a friend's 5 matches.
 - *On-chain:* results settle as casual matches (no rating, no registered deck needed), so no contract changes.
-- *Prizes:* through `QuestRewards`, one claim id per (chain, player, run, part); a prize above the 2-pack per-claim cap is split into parts. They share the global daily budget with quests and the pass.
+- *Prizes:* through `QuestRewards`, one claim per run (the table above stays inside the per-claim caps of 500 Scrap and 2 packs), unique per (chain, player, run). They share the global daily budget with quests and the pass.
 
 **Titles.** Three Sealed titles, unlocked by the referee and equipped like other cosmetics: *Sealed Rookie* (finish a run), *Sealed Veteran* (three runs with 5+ wins), *Unsealed* (a 7-win run).
 
@@ -253,17 +253,16 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 - *Web:* a Sealed tab on Play and an event page: record dots, open packs, build, queue, prize and history, the proof of the pool.
 - *Paid runs:* later, reading the run's pack ids from `PackOpened` events.
 
-**Decisions for the user (open).**
-1. *Best of one or best of three:* recommended best of one (a full run is then about 6 five-minute matches, 30–45 minutes; best of three triples it).
-2. *An empty queue:* the alpha has few players, so a record-matched queue alone would often leave people waiting. Recommended: after 45 s with no opponent, offer a house bot playing its own Sealed deck (rolled from its own seed, shown in the replay). Its matches count for the run, at the bot rate for pass XP, and never count for referrals.
-3. *Free-run prizes:* the decided table pays about 2.3 packs a run at a 50% win rate (2.9 at 60%, 3.7 at 70%, which a good player may reach against the house bot). Daily, that's about 16–26 packs a week per player, far more than quests and the pass together, and enough runs (about 440 a day) would spend the whole shared daily budget and stall quest and pass rewards. Two ways to go:
+**Decisions (made).**
+1. *Best of one.* A run is about 6 five-minute matches.
+2. *An empty queue.* After 45 seconds with no opponent, a Sealed player is matched against a house bot playing its own Sealed deck (rolled from its own seed, shown in the replay). The queue says so from the start ("no opponent in 45 s: you'll play a house bot") with a countdown, and the match is badged as a bot match. Its matches count for the run, earn pass XP at the bot rate, and never count for referrals.
+3. *Free-run prizes (a gentler table; paid runs later keep the original one).* Paid through `QuestRewards` as one claim per run:
 
-| Wins | 0–1 | 2–3 | 4–5 | 6 | 7 |
-| --- | --- | --- | --- | --- | --- |
-| A: the decided table (keep for paid runs either way) | 1 pack | 2 packs | 3 packs | 4 packs | 5 packs + title step |
-| B: a gentler free-run table (recommended) | 50 Scrap | 100 Scrap | 1 pack (+50 Scrap at 5) | 1 pack + 100 Scrap | 2 packs + title step |
+| Wins | 0–1 | 2–3 | 4 | 5 | 6 | 7 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Free-run prize | 50 Scrap | 100 Scrap | 1 pack | 1 pack + 50 Scrap | 1 pack + 100 Scrap | 2 packs + a title step |
 
-   Table B pays about 0.4 packs and 60 Scrap a run at 50% (about 3 packs a week of daily play, 8 at a 70% win rate): every run pays something, a 7-win run still feels like a jackpot, and paid runs keep table A.
+   About 0.4 packs and 60 Scrap a run at a 50% win rate (about 3 packs a week of daily play, 8 at a 70% win rate). Original table kept for paid runs: 1, 2, 3, 4 or 5 packs for 0–1, 2–3, 4–5, 6 or 7 wins.
 
 ### Gifts and referrals
 
@@ -274,7 +273,7 @@ Built (testnet alpha), except the prize-pool meter (stage 2). The season pass ca
 - **Referral:** your invite link (`/?ref=<your address>`, on Profile) or any of your challenge links. A wallet counts as invited only if it has never played on this referee, the first time it signs in through a link or accepts your challenge; nobody invites themselves, and nobody is invited twice. When the invited player finishes 5 matches of at least four turns against people or agents (practice against a house bot doesn't count) within 14 days of the invite and verifies as human or registers as an agent (within 40 days), both get a Set 1 pack through `QuestRewards`, with a unique claim id per (chain, inviter, invited, side), so a retry never pays twice. The inviter is paid for at most 10 referrals per season pass season; past that the invited player is still paid. The inviter's pack follows the reward rule like any other (held until the inviter verifies). Profile shows your link, each friend's progress and the packs. Farming is bounded by three gates together: the matches must be against real opponents, verification is required, and the inviter's cap holds whatever the invited side does. On testnet, where verification is one click and pairs of linked wallets can play each other, none of the three gates stops a determined farmer: the backstop is `QuestRewards` itself, whose per-claim caps and global daily budget bound what referrals can pay out in a day, and a real proof-of-personhood provider closes the gap before anything of value is at stake.
 - **Prize-pool meter:** from stage 2 the shop shows the season prize pool and the share of every pack that goes into it (30%), so buying a pack visibly grows the prize.
 
-**Build order:** season pass first (cheapest, safest legally, drives daily play; **built**, see *Season pass*), then gifts and referrals (**built**), then Sealed (designed above; waiting on the open decisions). In the testnet alpha, measure day-1 and day-7 retention, matches per player per day, packs opened per active player and the share of players who craft: those numbers are the alpha's gate before paid packs.
+**Build order:** season pass first (cheapest, safest legally, drives daily play; **built**, see *Season pass*), then gifts and referrals (**built**), then Sealed (**built**, see *Sealed events*). In the testnet alpha, measure day-1 and day-7 retention, matches per player per day, packs opened per active player and the share of players who craft: those numbers are the alpha's gate before paid packs.
 
 ### Onboarding and cosmetics
 
