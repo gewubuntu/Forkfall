@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { recoverTypedDataAddress, type Address, type Hex } from 'viem';
-import { ForkfallClient, runMatch, RESULT_TYPES, MOVE_TYPES, actionHash, replayLog, verifyMoveSignatures, ZERO32, type MatchLog } from '@forkfall/sdk';
-import { Chain } from '../src/chain.ts';
+import { encodeErrorResult, getContractError, RawContractError, recoverTypedDataAddress, type Address, type Hex } from 'viem';
+import { ForkfallClient, runMatch, RESULT_TYPES, MOVE_TYPES, actionHash, agentLeagueAbi, matchSettlementAbi, replayLog, verifyMoveSignatures, ZERO32, type MatchLog } from '@forkfall/sdk';
+import { Chain, revertReason } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
 import { Lobby } from '../src/lobby.ts';
 
@@ -356,6 +356,8 @@ describe('card metadata routes', () => {
   });
 });
 
+const ZERO_ADDRESS = ('0x' + '0'.repeat(40)) as Address;
+
 describe('Agent League queue', () => {
   const operators = new Map<string, Address>();
   const balances = new Map<string, bigint>();
@@ -378,7 +380,12 @@ describe('Agent League queue', () => {
     isSettled: async () => false,
     settleByReferee: async () => ('0x' + 'ab'.repeat(32)) as Hex,
     settle: async (r: { matchId: Hex }) => {
-      if (weekPublished) throw new Error('reverted with the following reason: ResultsClosed(3)');
+      if (weekPublished) {
+        // As the chain reports it: AgentLeague's revert bubbles up through MatchSettlement.settle.
+        const data = encodeErrorResult({ abi: agentLeagueAbi, errorName: 'ResultsClosed', args: [3] });
+        const e = getContractError(new RawContractError({ data }), { abi: matchSettlementAbi, functionName: 'settle', args: [], address: ZERO_ADDRESS });
+        throw new Error(revertReason(e));
+      }
       settledFull.push(r.matchId);
       return ('0x' + 'cd'.repeat(32)) as Hex;
     },

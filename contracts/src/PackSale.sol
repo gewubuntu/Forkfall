@@ -25,7 +25,8 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 ///      - Otherwise a two-step commit/blockhash: buying commits to a future block, opening reads that block's
 ///        hash. Fine for testnets: a block producer could in principle withhold a block to re-roll, and contents
 ///        depend on the opener's holdings when opening. A pack opened after its hash aged out (>256 blocks) rolls
-///        from its own id instead, with no Legendary upgrade, pity or foils, so waiting is never a free re-roll.
+///        from its own id instead, with no Legendary upgrade, pity or foils, so waiting can't buy a Legendary or foil
+///        (the owner can still choose between that plain roll and the one their reveal block gave).
 contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     using SafeERC20 for IERC20;
 
@@ -413,7 +414,8 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     /// @notice Packs left until the pity timer guarantees a Legendary for `who` (1 = the next pack), for the
     ///         randomness source packs are sold with now (VRF and blockhash packs count separately).
     function packsUntilPity(address who) external view returns (uint256) {
-        return PITY_PACKS - (vrf.coordinator != address(0) ? vrfPacksSinceLegendary[who] : packsSinceLegendary[who]);
+        uint256 since = vrf.coordinator != address(0) ? vrfPacksSinceLegendary[who] : packsSinceLegendary[who];
+        return since >= PITY_PACKS ? 1 : PITY_PACKS - since;
     }
 
     /// @notice Deterministic pack contents for a random word, opener and pity flag. Foils come back as

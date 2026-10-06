@@ -7,17 +7,24 @@ import { useAuth } from '../auth/AuthProvider.tsx';
 import { useTx } from './Tx.tsx';
 import { useHub } from './useHub.ts';
 
-/** Which of these matches already settled on MatchSettlement. */
-export function useSettled(matchIds: Hex[]): { settled: Map<Hex, boolean>; isLoading: boolean } {
+/** A match to look up on MatchSettlement: its id and its two players. */
+export interface SettledQuery { matchId: Hex; players: readonly { address: string }[] }
+
+/**
+ * Which of these matches already settled on MatchSettlement, for their own players: a casual result someone else
+ * settled under the same id doesn't count (`settledFor`).
+ */
+export function useSettled(matches: SettledQuery[]): { settled: Map<Hex, boolean>; isLoading: boolean } {
   const { chainId, contracts } = useHub();
   const q = useReadContracts({
-    contracts: matchIds.map((id) => ({
-      address: contracts?.MatchSettlement, abi: matchSettlementAbi, functionName: 'settled', args: [id], chainId: chainId as never,
+    contracts: matches.map((m) => ({
+      address: contracts?.MatchSettlement, abi: matchSettlementAbi, functionName: 'settledFor',
+      args: [m.matchId, m.players[0].address as Address, m.players[1].address as Address], chainId: chainId as never,
     } as const)),
-    query: { enabled: !!contracts && matchIds.length > 0 },
+    query: { enabled: !!contracts && matches.length > 0 },
   });
   const settled = new Map<Hex, boolean>();
-  matchIds.forEach((id, i) => { const r = q.data?.[i]?.result; if (r !== undefined) settled.set(id, r as boolean); });
+  matches.forEach((m, i) => { const r = q.data?.[i]?.result; if (r !== undefined) settled.set(m.matchId, r as boolean); });
   return { settled, isLoading: q.isLoading };
 }
 

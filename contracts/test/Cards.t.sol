@@ -164,6 +164,7 @@ contract CardsTest is Fixture {
             }
         }
         assertEq(d.packs.packsSinceLegendary(alice), 25);
+        assertEq(d.packs.packsUntilPity(alice), 1);
     }
 
     function test_packIdsOfTracksOwners() public {

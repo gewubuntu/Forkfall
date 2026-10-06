@@ -11,7 +11,7 @@ import type { Hex } from 'viem';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
 import { useHub } from '../chain/useHub.ts';
-import { useSeasonStats, useSettled, useSettleMatch } from '../chain/useSettlement.ts';
+import { useSeasonStats, useSettled, useSettleMatch, type SettledQuery } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
 import { PassPanel } from '../components/PassPanel.tsx';
 import { QuestPanel } from '../components/QuestPanel.tsx';
@@ -479,7 +479,7 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
                 </button>
               </>
             ) : both ? (
-              <SettleNow matchId={s.matchId} ready={!!settle && !settle.byReferee} />
+              <SettleNow match={s} ready={!!settle && !settle.byReferee} />
             ) : (
               <RefereeWait s={s} />
             )}
@@ -611,7 +611,7 @@ function RatingChange({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
   const season = s.result?.season ?? 0;
   const me = s.players[seat].address as Hex, op = s.players[1 - seat].address as Hex;
   const { stats } = useSeasonStats(rated && contracts ? [me, op] : [], season);
-  const { settled } = useSettled(rated && contracts ? [s.matchId] : []);
+  const { settled } = useSettled(rated && contracts ? [s] : []);
   const ra = stats.get(me.toLowerCase())?.rating, rb = stats.get(op.toLowerCase())?.rating;
   const done = settled.get(s.matchId);
   const key = `ff.prerating.${s.matchId}`;
@@ -641,10 +641,11 @@ function RatingChange({ s, seat }: { s: MatchSnapshot; seat: 0 | 1 }) {
   );
 }
 
-function SettleNow({ matchId, ready }: { matchId: Hex; ready: boolean }) {
+function SettleNow({ match, ready }: { match: SettledQuery; ready: boolean }) {
+  const { matchId } = match;
   const { contracts } = useHub();
   const settle = useSettleMatch();
-  const { settled } = useSettled([matchId]);
+  const { settled } = useSettled([match]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (settled.get(matchId)) return <p className="ok">✓ Settled on-chain. It counts in your record{' '}<Link to="/matches">on the Matches page</Link>.</p>;

@@ -151,12 +151,13 @@ contract SettlementTest is Fixture {
         squat.playerB = vm.addr(yPk);
         d.settlement.settle(squat, sign(xPk, squat), sign(yPk, squat), "");
         assertTrue(d.settlement.settled(ranked.matchId));
-        assertFalse(d.settlement.settledFinal(ranked.matchId));
+        assertFalse(d.settlement.settledFor(ranked.matchId, bob, alice));
+        assertTrue(d.settlement.settledFor(ranked.matchId, squat.playerB, squat.playerA));
 
         (bytes memory sa, bytes memory sb, bytes memory sr) =
             (sign(alicePk, ranked), sign(bobPk, ranked), refSig(ranked));
         d.settlement.settle(ranked, sa, sb, sr);
-        assertTrue(d.settlement.settledFinal(ranked.matchId));
+        assertTrue(d.settlement.settledFor(ranked.matchId, alice, bob));
         assertEq(d.settlement.stats(1, alice).wins, 1);
         assertEq(d.settlement.stats(1, bob).losses, 1);
 
@@ -165,6 +166,17 @@ contract SettlementTest is Fixture {
         (bytes memory sx, bytes memory sy) = (sign(xPk, squat), sign(yPk, squat));
         vm.expectRevert(abi.encodeWithSelector(MatchSettlement.AlreadySettled.selector, ranked.matchId));
         d.settlement.settle(squat, sx, sy, "");
+    }
+
+    function test_refereeCannotReplaceACasualResultBetweenTheSamePlayers() public {
+        MatchSettlement.MatchResult memory r = result(0, alice);
+        (bytes memory sa, bytes memory sb) = (sign(alicePk, r), sign(bobPk, r));
+        d.settlement.settle(r, sa, sb, "");
+        assertTrue(d.settlement.settledFor(r.matchId, alice, bob));
+        vm.prank(referee);
+        vm.expectRevert(abi.encodeWithSelector(MatchSettlement.AlreadySettled.selector, r.matchId));
+        d.settlement.settleByReferee(r, sa);
+        assertEq(d.settlement.stats(0, alice).wins, 1);
     }
 
     function test_casualSkipsDeckChecksAndElo() public {

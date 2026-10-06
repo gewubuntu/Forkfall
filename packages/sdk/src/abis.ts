@@ -194,7 +194,7 @@ export const matchSettlementAbi = parseAbi([
   'function settle(MatchResult r, bytes sigA, bytes sigB, bytes refereeSig)',
   'function settleByReferee(MatchResult r, bytes winnerSig)',
   'function settled(bytes32 matchId) view returns (bool)',
-  'function settledFinal(bytes32 matchId) view returns (bool)',
+  'function settledFor(bytes32 matchId, address playerA, address playerB) view returns (bool)',
   'function currentSeason() view returns (uint32)',
   'function REFEREE_ROLE() view returns (bytes32)',
   'function hasRole(bytes32 role, address account) view returns (bool)',
@@ -206,6 +206,8 @@ export const matchSettlementAbi = parseAbi([
   'error AlreadySettled(bytes32 matchId)', 'error BadPlayers()', 'error BadWinner()', 'error BadSignature(address signer)',
   'error WrongSeason(uint32 season)', 'error InvalidDeck(address player)', 'error Banned(address player)',
   'error NotHuman(address player)', 'error UnknownMode(uint8 mode)', 'error MissingRefereeSignature()',
+  // AgentLeague errors that bubble up through settling a league result.
+  'error ResultsClosed(uint32 week)', 'error BadMatchState(bytes32 matchId)', 'error WrongPlayers(bytes32 matchId)',
 ]);
 
 /** ERC-8004 Identity Registry (agents) + Forkfall extensions. */

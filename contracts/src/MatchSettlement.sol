@@ -78,8 +78,10 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     /// @notice AgentLeague receiving league results (zero = league disabled).
     ILeague public league;
     mapping(bytes32 => bool) public settled;
-    /// @dev Settled only by the two players' signatures (casual), so a referee-backed result may still replace it.
-    mapping(bytes32 => bool) private _unbacked;
+    /// @dev Players (`_pairOf`) of a result settled only by their two signatures (casual); zero once referee-backed.
+    ///      A referee-backed result between other players may replace it: anyone can make such a casual result
+    ///      with two of their own wallets.
+    mapping(bytes32 => bytes32) private _casualPair;
     mapping(uint32 => mapping(address => Stats)) private _stats;
 
     // Elo expected score (x1000) for rating gaps 0, 25, 50, ... 800.
@@ -202,9 +204,14 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     }
 
     /// @param refereeBacked The referee signs this result, so it outranks an earlier casual result with the same id
-    ///        (anyone can make one of those with two of their own wallets).
+    ///        between other players.
     function _precheck(MatchResult calldata r, bool refereeBacked) internal view returns (bytes32) {
-        if (settled[r.matchId] && !(refereeBacked && _unbacked[r.matchId])) revert AlreadySettled(r.matchId);
+        if (settled[r.matchId]) {
+            bytes32 casual = _casualPair[r.matchId];
+            if (!refereeBacked || casual == bytes32(0) || casual == _pairOf(r.playerA, r.playerB)) {
+                revert AlreadySettled(r.matchId);
+            }
+        }
         if (r.playerA == address(0) || r.playerB == address(0) || r.playerA == r.playerB) revert BadPlayers();
         if (r.winner != address(0) && r.winner != r.playerA && r.winner != r.playerB) revert BadWinner();
         if (r.mode > MODE_LEAGUE) revert UnknownMode(r.mode);
@@ -248,7 +255,7 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
 
     function _record(MatchResult calldata r, bool byReferee, bool refereeBacked) internal {
         settled[r.matchId] = true;
-        _unbacked[r.matchId] = !refereeBacked;
+        _casualPair[r.matchId] = refereeBacked ? bytes32(0) : _pairOf(r.playerA, r.playerB);
         address loser = r.winner == address(0) ? address(0) : (r.winner == r.playerA ? r.playerB : r.playerA);
         if (r.mode == MODE_LEAGUE) {
             league.recordResult(r.matchId, r.winner);
@@ -304,10 +311,15 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
         if (s.rating == 0) s.rating = uint32(START_RATING);
     }
 
-    /// @notice Has a result the referee can no longer replace landed for `matchId`? False while the id only holds
-    ///         a casual result signed by its two players, which a referee-backed result may still replace.
-    function settledFinal(bytes32 matchId) external view returns (bool) {
-        return settled[matchId] && !_unbacked[matchId];
+    /// @notice Is `matchId` settled for these two players (in either order)? False while the id only holds a casual
+    ///         result between other players, which a referee-backed result for these players may still replace.
+    function settledFor(bytes32 matchId, address playerA, address playerB) external view returns (bool) {
+        bytes32 casual = _casualPair[matchId];
+        return settled[matchId] && (casual == bytes32(0) || casual == _pairOf(playerA, playerB));
+    }
+
+    function _pairOf(address a, address b) internal pure returns (bytes32) {
+        return a < b ? keccak256(abi.encode(a, b)) : keccak256(abi.encode(b, a));
     }
 
     function setLeague(ILeague league_) external onlyRole(DEFAULT_ADMIN_ROLE) {

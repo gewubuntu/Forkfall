@@ -548,7 +548,7 @@ export class Lobby {
       m.referee = { state: 'submitting', attempts: (r?.attempts ?? 0) + 1 };
       this.changed(m);
       try {
-        if (await settler.isSettled(m.id)) {
+        if (await settler.isSettled(m.id, m.result.playerA, m.result.playerB)) {
           m.referee = { ...m.referee, state: 'settled' };
         } else {
           const tx = 'winnerSig' in s
