@@ -24,7 +24,9 @@ import {TestnetOnly} from "./TestnetOnly.sol";
 ///        Required for mainnet.
 ///      - Otherwise a two-step commit/blockhash: buying commits to a future block, opening reads that block's
 ///        hash. Fine for testnets: a block producer could in principle withhold a block to re-roll, and contents
-///        depend on the opener's holdings when opening.
+///        depend on the opener's holdings when opening. A pack opened after its hash aged out (>256 blocks) rolls
+///        from its own id instead, with no Legendary upgrade, pity or foils, so waiting can't buy a Legendary or foil
+///        (the owner can still choose between that plain roll and the one their reveal block gave).
 contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     using SafeERC20 for IERC20;
 
@@ -347,15 +349,16 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     // ─── Open ───────────────────────────────────────────────────
     /// @notice Open a pack. VRF packs open oldest first and roll from their word; duplicate protection counts the
     ///         copies pulled from packs. Blockhash packs roll from their reveal block's hash and the opener's holdings;
-    ///         if the hash aged out (>256 blocks) the pack is re-sealed to a new future block instead. A VRF pack whose
-    ///         word never came after VRF was switched off is re-sealed the same way (once its request is
-    ///         `VRF_RETRY_BLOCKS` old, so an answer already on its way can't be dodged).
+    ///         if the hash aged out (>256 blocks) they roll from the pack's own id instead, with no Legendary upgrade,
+    ///         pity or foils. A VRF pack whose word never came after VRF was switched off is re-sealed to a new future
+    ///         block (once its request is `VRF_RETRY_BLOCKS` old, so an answer already on its way can't be dodged).
     function open(uint256 packId) external nonReentrant returns (uint256[5] memory ids) {
         Pack storage p = packs[packId];
         if (p.owner != msg.sender) revert NotOwner();
         if (p.opened) revert AlreadyOpened();
         bytes32 rand;
         bool fromPulls;
+        bool plain;
         if (vrfRequestOf[packId] != 0) {
             uint256 expected = nextVrfPack(msg.sender);
             if (expected != packId) revert OpenInOrder(expected);
@@ -376,18 +379,16 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
         } else {
             if (block.number <= p.revealBlock) revert TooEarly(p.revealBlock);
             bytes32 bh = blockhash(p.revealBlock);
-            if (bh == bytes32(0)) {
-                p.revealBlock = uint64(block.number + REVEAL_DELAY);
-                emit PackRecommitted(packId, p.revealBlock);
-                return ids;
-            }
-            rand = keccak256(abi.encode(bh, packId, p.owner, address(this)));
+            plain = bh == bytes32(0);
+            rand = plain
+                ? keccak256(abi.encode(packId, p.owner, p.revealBlock, address(this)))
+                : keccak256(abi.encode(bh, packId, p.owner, address(this)));
         }
         p.opened = true;
         // VRF and blockhash packs keep separate pity counters, and only VRF opens feed `pulled`.
         mapping(address => uint256) storage counter = fromPulls ? vrfPacksSinceLegendary : packsSinceLegendary;
-        bool pity = counter[msg.sender] + 1 >= PITY_PACKS;
-        ids = _roll(rand, msg.sender, pity, p.kind, fromPulls);
+        bool pity = !plain && counter[msg.sender] + 1 >= PITY_PACKS;
+        ids = _roll(rand, msg.sender, pity, p.kind, fromPulls, plain);
         bool gotLegendary;
         uint256 foil = cards.FOIL_OFFSET();
         for (uint256 i; i < CARDS_PER_PACK; ++i) {
@@ -413,7 +414,8 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
     /// @notice Packs left until the pity timer guarantees a Legendary for `who` (1 = the next pack), for the
     ///         randomness source packs are sold with now (VRF and blockhash packs count separately).
     function packsUntilPity(address who) external view returns (uint256) {
-        return PITY_PACKS - (vrf.coordinator != address(0) ? vrfPacksSinceLegendary[who] : packsSinceLegendary[who]);
+        uint256 since = vrf.coordinator != address(0) ? vrfPacksSinceLegendary[who] : packsSinceLegendary[who];
+        return since >= PITY_PACKS ? 1 : PITY_PACKS - since;
     }
 
     /// @notice Deterministic pack contents for a random word, opener and pity flag. Foils come back as
@@ -428,7 +430,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
         view
         returns (uint256[5] memory ids)
     {
-        return _roll(rand, opener, forceLegendary, kind, false);
+        return _roll(rand, opener, forceLegendary, kind, false, false);
     }
 
     /// @notice What `owner`'s next VRF pack will hold once its word is in (all zero if it isn't): anyone can check
@@ -442,12 +444,14 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
             owner,
             pity,
             packs[packId].kind,
-            true
+            true,
+            false
         );
     }
 
     /// @dev `fromPulls`: duplicate protection counts copies pulled from packs (VRF) instead of current holdings.
-    function _roll(bytes32 rand, address opener, bool forceLegendary, uint8 kind, bool fromPulls)
+    ///      `plain`: no Legendary upgrade and no foils (a blockhash pack opened after its hash aged out).
+    function _roll(bytes32 rand, address opener, bool forceLegendary, uint8 kind, bool fromPulls, bool plain)
         internal
         view
         returns (uint256[5] memory ids)
@@ -459,8 +463,8 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
             got[i] = _pick(commons, uint256(keccak256(abi.encode(rand, i))), opener, got, 2, fromPulls);
         }
         got[3] = _pick(kindCards(kind, 1), uint256(keccak256(abi.encode(rand, 3))), opener, got, 2, fromPulls);
-        bool upgrade =
-            forceLegendary || uint256(keccak256(abi.encode(rand, "legendary"))) % 10_000 < LEGENDARY_UPGRADE_BPS;
+        bool upgrade = !plain
+            && (forceLegendary || uint256(keccak256(abi.encode(rand, "legendary"))) % 10_000 < LEGENDARY_UPGRADE_BPS);
         bool legendary = upgrade && legendaries.length > 0;
         got[4] = _pick(
             legendary ? legendaries : kindCards(kind, 2),
@@ -471,7 +475,7 @@ contract PackSale is AccessControl, ReentrancyGuard, TestnetOnly, IVRFConsumer {
             fromPulls
         );
         for (uint256 i; i < CARDS_PER_PACK; ++i) {
-            bool foil = uint256(keccak256(abi.encode(rand, "foil", i))) % 10_000 < FOIL_BPS;
+            bool foil = !plain && uint256(keccak256(abi.encode(rand, "foil", i))) % 10_000 < FOIL_BPS;
             ids[i] = foil ? got[i] + cards.FOIL_OFFSET() : got[i];
         }
     }

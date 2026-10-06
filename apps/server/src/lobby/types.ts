@@ -64,6 +64,8 @@ export interface Match {
     retryAt?: number; notStarted?: number;
     /** After giving up: keep checking until then, in case a transaction still pending lands and needs refunding. */
     watchUntil?: number;
+    /** When the referee cancelled the charged match on-chain because its result could never land (fees refunded). */
+    refundedAt?: number;
   };
   /** Friend challenge this match came from (casual). */
   challenge?: string;
@@ -129,6 +131,8 @@ export interface LobbyOptions {
   league?: LeagueOps | null;
   /** League charges: wait between checks of a failed charge's outcome (default 20 s). */
   leagueRecheckMs?: number;
+  /** A charged league match still unsettled this long after it ended is cancelled and refunded (default 6 h). */
+  leagueSettleTimeoutMs?: number;
   /** Where running matches, the queue and challenges survive a restart (absent = memory only). */
   store?: StateStore | null;
   /**

@@ -190,7 +190,7 @@ function Verification({ log, checks }: { log: MatchLog; checks: ReturnType<typeo
     queryFn: () => verifyMoveSignatures(log, { client: contracts && client ? client : undefined }),
     staleTime: Infinity,
   });
-  const { settled } = useSettled([log.matchId]);
+  const { settled } = useSettled([log]);
   const onchain = settled.get(log.matchId);
   const s = sigs.data;
   const sigOk = s ? s.failed.length === 0 : undefined;

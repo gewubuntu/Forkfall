@@ -82,7 +82,7 @@ function History() {
     refetchInterval: 5000,
   });
   const all = q.data ?? [];
-  const ended = all.filter((m) => m.phase === 'ended').map((m) => m.matchId);
+  const ended = all.filter((m) => m.phase === 'ended');
   const { settled } = useSettled(ended);
 
   const seatOf = (m: MatchSummary) => (m.players[0].address.toLowerCase() === me?.address.toLowerCase() ? 0 : 1);

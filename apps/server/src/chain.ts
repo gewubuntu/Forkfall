@@ -161,7 +161,8 @@ export class Chain {
 
 /** Referee writes: settle a result with only the winner's signature when the loser never signs. */
 export interface RefereeSettler {
-  isSettled(matchId: Hex): Promise<boolean>;
+  /** Settled on-chain for these players (a casual result under the same id between other players doesn't count). */
+  isSettled(matchId: Hex, playerA: Address, playerB: Address): Promise<boolean>;
   /** Submits `settleByReferee` and resolves with the tx hash once it is mined successfully. */
   settleByReferee(result: MatchResult, winnerSig: Hex): Promise<Hex>;
   /** Submits a fully signed result (`settle`); used for league matches, where agents don't settle themselves. */
@@ -284,7 +285,8 @@ export function refereeSettler(chain: Chain, referee: LocalAccount): RefereeSett
   const address = chain.book.MatchSettlement;
   const send = writer(chain, referee);
   return {
-    isSettled: (matchId) => client.readContract({ address, abi: matchSettlementAbi, functionName: 'settled', args: [matchId] }),
+    isSettled: (matchId, playerA, playerB) =>
+      client.readContract({ address, abi: matchSettlementAbi, functionName: 'settledFor', args: [matchId, playerA, playerB] }),
     settleByReferee: (result, winnerSig) => send(address, matchSettlementAbi, 'settleByReferee', [forContract(result), winnerSig]),
     settle: (result, sigA, sigB, refereeSig) => send(address, matchSettlementAbi, 'settle', [forContract(result), sigA, sigB, refereeSig]),
   };
@@ -359,7 +361,7 @@ export function leagueOps(chain: Chain, referee: LocalAccount): LeagueOps | null
   };
 }
 
-function revertReason(e: unknown): string {
+export function revertReason(e: unknown): string {
   if (e instanceof BaseError) {
     const rev = e.walk((x) => x instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null;
     if (rev?.data?.errorName) return `${rev.data.errorName}(${(rev.data.args ?? []).join(', ')})`;

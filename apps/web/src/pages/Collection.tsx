@@ -228,7 +228,7 @@ function CollectionLive({ chainId }: { chainId: number }) {
       setReveal(null);
     }
     if (!opened && logs.some((l) => l.eventName === 'PackRecommitted')) {
-      setNotice(`Pack #${id} was re-sealed to a new block (it waited too long, or its randomness source changed). Open it again in a few seconds.`);
+      setNotice(`Pack #${id} was re-sealed to a new block (its randomness source changed). Open it again in a few seconds.`);
     }
     refresh();
   };

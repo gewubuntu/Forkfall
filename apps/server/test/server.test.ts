@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
-import { recoverTypedDataAddress, type Address, type Hex } from 'viem';
-import { ForkfallClient, runMatch, RESULT_TYPES, MOVE_TYPES, actionHash, replayLog, verifyMoveSignatures, ZERO32, type MatchLog } from '@forkfall/sdk';
-import { Chain } from '../src/chain.ts';
+import { encodeErrorResult, getContractError, RawContractError, recoverTypedDataAddress, type Address, type Hex } from 'viem';
+import { ForkfallClient, runMatch, RESULT_TYPES, MOVE_TYPES, actionHash, agentLeagueAbi, matchSettlementAbi, replayLog, verifyMoveSignatures, ZERO32, type MatchLog } from '@forkfall/sdk';
+import { Chain, revertReason } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
 import { Lobby } from '../src/lobby.ts';
 
@@ -356,12 +356,16 @@ describe('card metadata routes', () => {
   });
 });
 
+const ZERO_ADDRESS = ('0x' + '0'.repeat(40)) as Address;
+
 describe('Agent League queue', () => {
   const operators = new Map<string, Address>();
   const balances = new Map<string, bigint>();
   const started: string[] = [];
   let failStart = false;
+  let weekPublished = false;
   const settledFull: Hex[] = [];
+  const cancelled: Hex[] = [];
   const league = {
     entryFee: async () => 500_000n,
     currentWeek: async () => 3,
@@ -369,13 +373,22 @@ describe('Agent League queue', () => {
     operatorOf: async (a: Address) => operators.get(a.toLowerCase()) ?? ('0x' + '0'.repeat(40)) as Address,
     start: async (id: Hex) => { await new Promise((r) => setTimeout(r, 5)); if (failStart) throw new Error('InsufficientBalance'); started.push(id); return ('0x' + 'ee'.repeat(32)) as Hex; },
     started: async (id: Hex) => started.includes(id),
-    cancel: async () => ('0x' + '00'.repeat(32)) as Hex,
+    cancel: async (id: Hex) => { cancelled.push(id); return ('0x' + '00'.repeat(32)) as Hex; },
     info: async () => ({ enabled: true }) as never,
   };
   const settler = {
     isSettled: async () => false,
     settleByReferee: async () => ('0x' + 'ab'.repeat(32)) as Hex,
-    settle: async (r: { matchId: Hex }) => { settledFull.push(r.matchId); return ('0x' + 'cd'.repeat(32)) as Hex; },
+    settle: async (r: { matchId: Hex }) => {
+      if (weekPublished) {
+        // As the chain reports it: AgentLeague's revert bubbles up through MatchSettlement.settle.
+        const data = encodeErrorResult({ abi: agentLeagueAbi, errorName: 'ResultsClosed', args: [3] });
+        const e = getContractError(new RawContractError({ data }), { abi: matchSettlementAbi, functionName: 'settle', args: [], address: ZERO_ADDRESS });
+        throw new Error(revertReason(e));
+      }
+      settledFull.push(r.matchId);
+      return ('0x' + 'cd'.repeat(32)) as Hex;
+    },
   };
   const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), league, settler, leagueRecheckMs: 0 });
   const api = createApi(lob, { ratePerSec: 10_000 });
@@ -434,6 +447,26 @@ describe('Agent League queue', () => {
     await a2.leaveQueue(); // still waiting: no other operator was queued
   });
 
+  it('refunds a finished match whose week closed before its result landed, without retrying', async () => {
+    const x = await agent(opA);
+    const y = await agent(opB);
+    await x.queue({ mode: 'league', race: 'agents' });
+    const q = await y.queue({ mode: 'league', race: 'prophets' });
+    await x.reveal(q.matchId!); await y.reveal(q.matchId!);
+    const m = lob.get(q.matchId!);
+    for (let i = 0; i < 50 && m.phase === 'reveal'; i++) await new Promise((r) => setTimeout(r, 5));
+    await Promise.all([runMatch(x, q.matchId!, { pollMs: 5 }), runMatch(y, q.matchId!, { pollMs: 5 })]);
+    await lob.stepBots();
+    weekPublished = true;
+    const r = await lob.settleDue();
+    weekPublished = false;
+    expect(r.failed.map((f) => f.matchId)).toEqual([q.matchId]);
+    for (let i = 0; i < 50 && !cancelled.includes(q.matchId!); i++) await new Promise((r) => setTimeout(r, 5));
+    expect(cancelled).toContain(q.matchId);
+    expect(m.referee).toMatchObject({ state: 'failed', attempts: 3 });
+    expect((await lob.settleDue()).failed).toEqual([]); // no retry
+  });
+
   it('cancels the match if charging the entry fees fails', async () => {
     const x = await agent(opA);
     const y = await agent(opB);
@@ -447,6 +480,71 @@ describe('Agent League queue', () => {
     expect(m.phase).toBe('cancelled');
     expect(m.league).toMatchObject({ state: 'failed', error: 'InsufficientBalance' });
     failStart = false;
+  });
+});
+
+describe('Agent League: stuck matches', () => {
+  let t = Date.now();
+  const operators = new Map<string, Address>();
+  const started: Hex[] = [];
+  const cancelled: Hex[] = [];
+  const league = {
+    entryFee: async () => 500_000n,
+    currentWeek: async () => 3,
+    balanceOf: async () => 5_000_000n,
+    operatorOf: async (a: Address) => operators.get(a.toLowerCase()) ?? ZERO_ADDRESS,
+    start: async (id: Hex) => { started.push(id); return ('0x' + 'ee'.repeat(32)) as Hex; },
+    started: async (id: Hex) => started.includes(id),
+    cancel: async (id: Hex) => { cancelled.push(id); return ('0x' + '00'.repeat(32)) as Hex; },
+    info: async () => ({ enabled: true }) as never,
+  };
+  // Settling never goes through (say the RPC keeps failing), so the result never lands on-chain.
+  const settler = {
+    isSettled: async () => false,
+    settleByReferee: async (): Promise<Hex> => { throw new Error('boom'); },
+    settle: async (): Promise<Hex> => { throw new Error('boom'); },
+  };
+  const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), league, settler, leagueRecheckMs: 0, now: () => t });
+  const api = createApi(lob, { ratePerSec: 10_000 });
+  let base = '';
+  beforeAll(async () => {
+    await new Promise<void>((r) => api.server.listen(0, r));
+    base = `http://127.0.0.1:${(api.server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => api.server.close());
+
+  it('cancels and refunds a charged match whose result never lands, once, after the timeout', async () => {
+    const agents = await Promise.all([0, 1].map(async () => {
+      const c = new ForkfallClient(base, privateKeyToAccount(generatePrivateKey()));
+      await c.connect({ agent: true });
+      operators.set(c.address.toLowerCase(), privateKeyToAccount(generatePrivateKey()).address);
+      return c;
+    }));
+    await agents[0].queue({ mode: 'league', race: 'agents' });
+    const q = await agents[1].queue({ mode: 'league', race: 'prophets' });
+    await agents[0].reveal(q.matchId!); await agents[1].reveal(q.matchId!);
+    const m = lob.get(q.matchId!);
+    for (let i = 0; i < 50 && m.phase === 'reveal'; i++) await new Promise((r) => setTimeout(r, 5));
+    await Promise.all(agents.map((c) => runMatch(c, q.matchId!, { pollMs: 5 })));
+    await lob.stepBots();
+    expect(m.league).toMatchObject({ state: 'charged' });
+
+    await lob.settleDue(); // fails ('boom'), will retry
+    t += 6 * 60 * 60_000 - 1;
+    await lob.settleDue();
+    expect(cancelled).toEqual([]);
+
+    t += 1;
+    const r = await lob.settleDue();
+    expect(r.failed).toEqual([{ matchId: q.matchId, error: expect.stringMatching(/not settled in time/) }]);
+    for (let i = 0; i < 50 && cancelled.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(cancelled).toEqual([q.matchId]);
+    expect(m.league?.refundedAt).toBe(t);
+
+    t += 60 * 60_000;
+    await lob.settleDue();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cancelled).toEqual([q.matchId]); // only once
   });
 });
 

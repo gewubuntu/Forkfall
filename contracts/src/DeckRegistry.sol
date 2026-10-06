@@ -13,6 +13,8 @@ contract DeckRegistry is TestnetOnly {
     uint256 public constant RANKED_RARITY_CAP = 18;
     uint256 public constant MAX_LEGENDARIES_RANKED = 1;
 
+    uint256 private constant STARTER_OFFSET = 10_000; // CardRegistry.STARTER_OFFSET; starter and foil ids lie above
+
     CardRegistry public immutable cards;
 
     struct Deck {
@@ -55,7 +57,7 @@ contract DeckRegistry is TestnetOnly {
         for (uint256 i; i < ids.length; ++i) {
             if (i > 0 && ids[i] < ids[i - 1]) revert NotSorted();
             CardRegistry.CardInfo memory c = cards.cardInfo(ids[i]);
-            require(!cards.isStarter(ids[i]), "DeckRegistry: use base ids");
+            require(ids[i] < STARTER_OFFSET, "DeckRegistry: use base ids");
             if (c.race != 0 && c.race != race) revert WrongRace(ids[i]);
             run = (i > 0 && ids[i] == ids[i - 1]) ? run + 1 : 1;
             uint256 maxCopies = c.rarity == 3 ? 1 : 2;
