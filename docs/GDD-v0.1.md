@@ -217,7 +217,7 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 
 ### Sealed events (proposed, format decided)
 
-**Why.** The classic trading card game engine: packs become gameplay. You open fresh packs for an event, build a deck from what you opened and play a short run for more packs. You keep every card, so a Sealed entry is also a way to open packs with a skill reason to do it, and prizes put packs back into circulation.
+**Why.** The classic trading card game engine: packs become gameplay. You open fresh packs for an event, build a deck from what you opened and play a short run for more packs. In a paid run you keep every card, so the entry is also a way to open packs with a skill reason to do it; in every run, prizes put packs back into circulation.
 
 **Format (decided: a fun mode).** Sealed is casual and unrated: it's there to be fun, not to climb. Open 6 Set 1 boosters and build a 30-card deck from whatever you opened, topped up with free *basic* cards (the 8 core neutral starter cards, event-only copies) so every pool makes a deck. The one-race rule is lifted for Sealed only, so a pool can mix races: chaotic decks are the point. Copy limits still apply. Then play until 7 wins or 3 losses, matched by record against other Sealed players and agents.
 
@@ -225,13 +225,15 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 | --- | --- | --- | --- | --- | --- |
 | Prize (Set 1 packs) | 1 | 2 | 3 | 4 | 5 and a Sealed title step |
 
-**Entry:** on testnet, one free run a day. On mainnet, 6 packs' price (or 6 unopened packs from your inventory): the entry buys the 6 packs you open and keep, and prizes average about 2 packs, paid from entries. A paid entry with prizes is a contest in many jurisdictions, so paid Sealed waits for the same legal review as the Agent League.
+**Entry (decided).**
+- *Free run (testnet now, one a day):* the referee opens the 6 packs for the run only, from a seed it commits to before the run and reveals after it (as matches already do), with the same odds, pity timer and foils as real packs, so anyone can re-derive the pool. The pool lasts for the run and isn't minted; only the prize packs are real. Free runs are open to every wallet, since nothing is minted and they need no signature or gas; prize packs follow the reward rule (verified humans and registered agents, held otherwise). A free run can't inflate the card supply or spend the reward budget beyond its prizes (about 2 packs a run on average).
+- *Paid run (mainnet, after legal review):* 6 packs' price (or 6 unopened packs from your inventory). The entry buys 6 real packs that you open on-chain and keep, and prizes average about 2 packs, paid from entries. A paid entry with prizes is a contest in many jurisdictions, so paid Sealed waits for the same legal review as the Agent League.
 
-**Open questions:** best-of-one vs. best-of-three; whether the free daily run's 6 packs are granted fresh (`PackSale.grantPacks` via `QuestRewards`, then opened by the player) or opened by the referee off-chain for the run only.
+**Open questions:** best-of-one vs. best-of-three.
 
 **Building it (not started).**
 - *Engine:* a Sealed deck check next to `validateDeck` in `packages/engine/src/cards.ts`: 30 cards, any races, normal copy limits, every card either in the player's pool or one of the basic cards.
-- *Pool:* the cards from the run's 6 packs, read from `PackSale`'s open events (or recorded by the referee if it opens them). The deck may only use that pool plus basics.
+- *Pool:* free runs roll the 6 packs in the engine from the committed run seed (a function next to the pack odds, so the referee and the browser derive the same pool and the pool can be verified after the reveal); paid runs read the run's pack ids from `PackSale`'s `PackOpened` events. The deck may only use that pool plus basics.
 - *Referee:* an event queue mode (casual, matched by win–loss record, agents allowed), a per-player run state (pool, deck, wins, losses, one free run per UTC day), and prizes paid as packs through `QuestRewards` with a unique claim id per (chain, player, run), as for quests and the pass.
 - *Web:* an event page (start a run, open the packs, build from the pool with the existing deck builder, play, see the record and prizes).
 
