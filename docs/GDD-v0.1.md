@@ -275,6 +275,36 @@ Built (testnet alpha), except the prize-pool meter (stage 2). The season pass ca
 
 **Build order:** season pass first (cheapest, safest legally, drives daily play; **built**, see *Season pass*), then gifts and referrals (**built**), then Sealed (**built**, see *Sealed events*). In the testnet alpha, measure day-1 and day-7 retention, matches per player per day, packs opened per active player and the share of players who craft: those numbers are the alpha's gate before paid packs.
 
+### Alpha metrics
+
+The alpha's gate before paid packs is four numbers. This section defines each one exactly, where the data comes from, and how it is stored and shown. **Status: design, to be checked before it is built.**
+
+**Definitions** (all per UTC day, humans and agents reported separately, house bots never counted):
+- *Active player:* a wallet with at least one finished match that day that was not a practice match against a house bot. (A sign-in alone is not activity: it would flatter retention.) Sealed matches against a house bot count, since they are the real game for a player with an empty queue; only the Practice tab is excluded.
+- *New player:* a wallet's first active day (its cohort day).
+- *Day-1 retention:* of the wallets whose cohort day was D, the share active on D+1. *Day-7 retention:* the share active on D+7 exactly. A softer *within a week* figure (active on any of D+1 to D+7) is shown next to it, because a weekly player is not a lost one.
+- *Matches per active player per day:* finished non-practice matches that day, divided by active players that day (a match counts once for each human seat).
+- *Packs opened per active player per day:* `PackOpened` events that day (from PackSale; gifted packs count for the opener), divided by active players.
+- *Crafting share:* of wallets with at least one active day, the share that ever crafted (`Crafted`), cumulative, and the same measured per cohort at day 7.
+
+**Sources.**
+- *Referee:* every finished match is already seen by the `lobby.onChange` hook that feeds quests and referrals; a metrics module records it there, along with the mode, whether a seat is a bot or a registered agent, and the Sealed tag. No new traffic and no client-side tracking.
+- *Chain:* `PackOpened` (PackSale) and `Crafted`/`Scrapped` (Crafting) are read with `getLogs` from a stored block cursor, so a restart resumes where it stopped and a gap is back-filled. On an off-chain server these two numbers read "n/a" rather than zero.
+
+**Storage and privacy.** One small file next to the others (`METRICS_FILE`): per wallet only its cohort day and a bitmap of the days it was active (a few bytes), plus per-day counters (matches, active players, packs opened, crafts). No IP addresses, no user agents, no match contents, no emails. Wallet addresses are pseudonymous but still personal data in the EU, so the file is never served as is: the API returns aggregates only, and a cohort smaller than 5 wallets shows its size but no percentage, so a single player can't be read off the dashboard. Files older than 400 days are summarised and dropped.
+
+**Output.**
+- `GET /v1/metrics?days=30`: the four numbers per day, cohort tables for day-1 and day-7 retention, and the totals, for humans, agents and both.
+- A `/metrics` page in the web app: four headline tiles against the gate, a retention curve and a daily matches/packs chart, a cohort table, and an *export CSV* link (also `pnpm metrics --csv` against a running server).
+- The gate: each tile shows its target and whether it is met over the last 14 days.
+
+**Open decisions** (each has a recommendation):
+1. *Public or admin-only.* Recommended: public aggregates, like `/economy`: it is a testnet alpha, the numbers are what the community is judging, and the privacy rules above make it safe. The alternative is a token-protected endpoint for the team only.
+2. *The gate's targets.* Proposed, to be tuned on the first two weeks of real data: day-1 retention at least 35%, day-7 at least 12%, 4 matches per active player per day, 1 pack opened per active player per day, 15% of active players crafting by day 7. These are typical free-to-play card-game benchmarks, not facts about Forkfall; the first weeks may well argue for different numbers.
+3. *Agents in the headline.* Recommended: headline figures are humans only (verified or not); agents get their own row, since an always-on agent plays many matches a day and would swamp every average.
+
+**Building it.** `apps/server/src/metrics.ts` (store, `record(finishedMatch)`, chain-log cursor, aggregation); one call in `lobby.onChange` and a poller next to the settle loop; the `GET /v1/metrics` route; SDK `metrics()`; the web page; tests for the definitions (a fixture of wallets and days with known day-1/day-7 answers, the small-cohort rule, restart and back-fill of the log cursor); README route and `METRICS_FILE`. No contract changes and no rules change.
+
 ### Onboarding and cosmetics
 
 **Guided first match (`/learn`).** A new player's first game is a tutorial against a gentle scripted Degens bot, played entirely in the browser with the real rules engine and match effects; no wallet, server or chain is needed. Decks are stacked (`createScriptedMatch`: no shuffle, fixed first player) and the bot's Treasury starts at 12, so a full lesson takes about five turns. The player's Agents deck opens with Compute Node, Launch Bot and Bridge Runner; the bot plays its hand in order, so Cold Wallet (Guard) lands on its second turn. A coach in the sidebar (pinned to the bottom on phones) walks through 11 lessons, glowing on the thing to click; each lesson completes when the player actually does it, in any order:
