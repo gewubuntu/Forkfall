@@ -64,7 +64,9 @@ describe('referrals', () => {
     const { clock, invites, quests, sent, verified } = setup();
     invites.invite(BOB, ALICE, 'link');
     invites.record(match(BOB, CAROL, clock.t, { turns: 3 })); // too short to count
-    for (let i = 0; i < REFERRAL_MATCHES - 1; i++) invites.record(match(BOB, CAROL, clock.t, { bot: i === 0 }));
+    invites.record(match(BOB, CAROL, clock.t, { bot: true })); // practice against a house bot doesn't count either
+    expect(invites.status(BOB).invitedBy?.matches).toBe(0);
+    for (let i = 0; i < REFERRAL_MATCHES - 1; i++) invites.record(match(BOB, CAROL, clock.t));
     expect(invites.status(BOB).invitedBy).toMatchObject({ matches: REFERRAL_MATCHES - 1, state: 'playing' });
     invites.record(match(CAROL, BOB, clock.t)); // either seat
     expect(invites.status(BOB).invitedBy?.state).toBe('verifying');
@@ -134,6 +136,18 @@ describe('referrals', () => {
     expect(s.invited.filter((i) => i.capped)).toHaveLength(2);
   });
 
+  it('forgets settled invites after 80 days', async () => {
+    const { clock, invites } = setup();
+    invites.invite(BOB, ALICE, 'link');
+    clock.t += 15 * DAY_MS;
+    await invites.tick();
+    expect(invites.status(BOB).invitedBy?.state).toBe('expired');
+    clock.t += 80 * DAY_MS;
+    invites.invite(CAROL, ALICE, 'link'); // any write prunes
+    expect(invites.status(BOB).invitedBy).toBeNull();
+    expect(invites.status(ALICE).invited.map((i) => i.invited)).toEqual([CAROL]);
+  });
+
   it('keeps referrals across a restart (file)', async () => {
     const { mkdtempSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -191,16 +205,25 @@ describe('challenge gifts', () => {
     expect(f.delivered).toHaveLength(1);
   });
 
-  it('ignores a gift someone else held under the id, and settles one paid only after the match', async () => {
+  it('a front-run gift id is ignored and replaced: the challenger starts over under a fresh id', async () => {
     const f = fakeGifts();
     const { clock, invites } = setup({ gifts: f.g });
     const a = await invites.attachGift('c-a', ALICE);
-    f.hold(a.giftId!, CAROL); // someone with the link front-ran the id
+    f.hold(a.giftId!, CAROL); // someone with the link front-ran the id (their money, refundable to them)
     expect((await invites.attachGift('c-a', ALICE)).state).toBe('none');
+    const fresh = await invites.attachGift('c-a', ALICE); // the dead id blocks nothing
+    expect(fresh.state).toBe('unpaid');
+    expect(fresh.giftId).not.toBe(a.giftId);
+    f.hold(fresh.giftId!, ALICE);
+    expect((await invites.attachGift('c-a', ALICE)).state).toBe('held');
     invites.record(match(ALICE, BOB, clock.t, { challenge: 'c-a' }));
     await invites.tick();
-    expect(f.delivered).toHaveLength(0);
+    expect(f.delivered).toEqual([{ id: fresh.giftId, to: BOB }]); // Carol's hold was never delivered
+  });
 
+  it('settles a gift paid only after the match, and waits out a grace window before "never paid"', async () => {
+    const f = fakeGifts();
+    const { clock, invites } = setup({ gifts: f.g });
     const b = await invites.attachGift('c-b', ALICE);
     invites.record(match(ALICE, BOB, clock.t, { challenge: 'c-b' })); // played before the payment was confirmed
     f.hold(b.giftId!, ALICE);
@@ -210,8 +233,34 @@ describe('challenge gifts', () => {
     const c = await invites.attachGift('c-c', ALICE); // never paid at all
     invites.record(match(ALICE, BOB, clock.t, { challenge: 'c-c' }));
     await invites.tick();
+    expect(invites.giftView('c-c', ALICE)?.state).toBe('unpaid'); // a slow hold may still land
+    clock.t += 11 * 60_000;
+    await invites.tick();
     expect(invites.giftView('c-c', ALICE)?.state).toBe('none');
+    expect((await invites.attachGift('c-c', ALICE)).state).toBe('none'); // played: no fresh id after the fact
     expect(c.state).toBe('unpaid');
+  });
+
+  it('adopts an on-chain refund after the hold, and keeps held gifts listed for a month', async () => {
+    const f = fakeGifts();
+    const { clock, invites } = setup({ gifts: f.g });
+    const g = await invites.attachGift('c1', ALICE);
+    f.hold(g.giftId!, ALICE);
+    await invites.attachGift('c1', ALICE);
+    clock.t += 3 * DAY_MS + 60_000; // the hold is over, nobody played, the buyer refunded on-chain
+    f.held.get(g.giftId!)!.state = 'refunded';
+    await invites.tick();
+    expect(invites.giftView('c1', ALICE)?.state).toBe('refunded');
+
+    const h = await invites.attachGift('c2', ALICE);
+    f.hold(h.giftId!, ALICE);
+    await invites.attachGift('c2', ALICE);
+    clock.t += 8 * DAY_MS;
+    await invites.tick();
+    expect(invites.giftView('c2', ALICE)?.state).toBe('held'); // a week in, Take back still shows
+    clock.t += 25 * DAY_MS;
+    await invites.tick();
+    expect(invites.giftView('c2', ALICE)).toBeUndefined(); // a month in, PackGifts alone keeps the record
   });
 
   it('retries a failed delivery, and adopts a refund that beat it', async () => {
@@ -274,6 +323,14 @@ describe('invites over HTTP', () => {
       expect((await dave.invites()).invited).toHaveLength(0);
       // A known player who was never invited stays uninvited.
       expect(invites.invite(alice.address, dave.address, 'link')).toBe(false); // Alice has played (the challenge)
+
+      // An accept that fails records no invite; nothing is attributed for accepts that never happened.
+      const c2 = await dave.createChallenge({ race: 'agents' });
+      const erin = await player();
+      await expect(erin.acceptChallenge(c2.code, { race: 'nope' as never })).rejects.toThrow(/→ 400/);
+      expect((await erin.invites()).invitedBy).toBeNull();
+      await erin.acceptChallenge(c2.code, { race: 'degens' });
+      expect((await erin.invites()).invitedBy).toMatchObject({ inviter: dave.address.toLowerCase(), via: 'challenge' });
     } finally { server.close(); }
   });
 });

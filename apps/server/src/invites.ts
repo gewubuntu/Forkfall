@@ -19,6 +19,12 @@ const MAX_ATTEMPTS = 20;
 const SEEN_LIMIT = 5000;
 /** Gifts nobody can still act on are forgotten after this (the chain keeps the record). */
 const GIFT_KEEP_MS = 7 * DAY_MS;
+/** Held gifts stay listed this long, so the Take back button outlives the hold by a wide margin. */
+const HELD_KEEP_MS = 30 * DAY_MS;
+/** A gift whose challenge was played while its payment was still in flight waits this long before counting as unpaid. */
+const UNPAID_GRACE_MS = 10 * 60_000;
+/** Settled invites (paid or expired) are forgotten after this: past verification (40 d) plus the payout view (40 d). */
+const INVITE_KEEP_MS = 80 * DAY_MS;
 
 interface Invite {
   inviter: string;
@@ -47,8 +53,9 @@ interface Gift {
   count?: number;
   kind?: number;
   refundableAt?: number;
-  /** The friend who played the challenge, once its match ended. */
+  /** The friend who played the challenge, once its match ended (and when, for the unpaid grace window). */
   to?: string;
+  dueAt?: number;
   tx?: Hex;
   error?: string;
   attempts: number;
@@ -97,13 +104,14 @@ export class Invites {
   // ─── Referrals ───────────────────────────────────────────────
   /**
    * Record that `inviter` invited `invited`. Only a wallet that has never played and was never invited counts, and
-   * nobody invites themselves. Returns whether the invite was recorded.
+   * nobody invites themselves. Returns whether the invite was recorded. `wasNew`: the caller already checked
+   * `hasPlayed` before an action that itself created a match (accepting a challenge), so it isn't re-checked here.
    */
-  invite(invited: string, inviter: string, via: Invite['via']): boolean {
+  invite(invited: string, inviter: string, via: Invite['via'], wasNew = false): boolean {
     if (!/^0x[0-9a-fA-F]{40}$/.test(invited) || !/^0x[0-9a-fA-F]{40}$/.test(inviter)) return false;
     const a = invited.toLowerCase();
     const by = inviter.toLowerCase();
-    if (a === by || this.data.invites[a] || this.opts.hasPlayed(a as Address)) return false;
+    if (a === by || this.data.invites[a] || (!wasNew && this.opts.hasPlayed(a as Address))) return false;
     this.data.invites[a] = { inviter: by, invited: a, at: this.now(), via, matches: 0, state: 'playing' };
     this.save();
     return true;
@@ -114,17 +122,18 @@ export class Invites {
     if (this.data.seen.includes(m.id)) return;
     this.data.seen.push(m.id);
     if (this.data.seen.length > SEEN_LIMIT) this.data.seen.splice(0, this.data.seen.length - SEEN_LIMIT);
-    for (const pl of m.players) {
-      if (pl.bot) continue;
+    m.players.forEach((pl, seat) => {
+      // Only matches against people or agents move a referral: practice against a house bot can't farm it.
+      if (pl.bot || m.players[1 - seat]?.bot) return;
       const inv = this.data.invites[pl.address.toLowerCase()];
-      if (!inv || inv.state !== 'playing' || !matchCounts(m) || m.endedAt < inv.at || m.endedAt > inv.at + REFERRAL_DAYS * DAY_MS) continue;
+      if (!inv || inv.state !== 'playing' || !matchCounts(m) || m.endedAt < inv.at || m.endedAt > inv.at + REFERRAL_DAYS * DAY_MS) return;
       inv.matches++;
       if (inv.matches >= REFERRAL_MATCHES) { inv.state = 'verifying'; inv.checkAt = 0; }
-    }
+    });
     const g = m.challenge ? this.giftFor(m.challenge) : undefined;
     if (g && (g.state === 'held' || g.state === 'unpaid') && !g.to) {
       const friend = m.players.find((p) => !same(p.address, g.from) && !p.bot);
-      if (friend) { g.to = friend.address.toLowerCase(); g.nextAt = 0; if (g.state === 'held') g.state = 'due'; }
+      if (friend) { g.to = friend.address.toLowerCase(); g.dueAt = this.now(); g.nextAt = 0; if (g.state === 'held') g.state = 'due'; }
     }
     this.save();
   }
@@ -159,6 +168,9 @@ export class Invites {
     if (!this.opts.gifts) throw new Error('pack gifts are not enabled on this server');
     let g = this.giftFor(code);
     if (g && !same(g.from, challenger)) throw new Error('only the challenger can attach a gift');
+    // A dead record the challenger never paid (someone front-ran the id, or it settled unpaid) blocks nothing:
+    // while the challenge hasn't been played, start over under a fresh id.
+    if (g && g.state === 'none' && !g.to) { delete this.data.gifts[g.giftId]; g = undefined; }
     if (!g) {
       const giftId = keccak256(toHex(`forkfall-gift:${this.opts.chainId}:${code}:${crypto.randomUUID()}`));
       g = { code, giftId, from: challenger.toLowerCase(), createdAt: this.now(), state: 'unpaid', attempts: 0, nextAt: 0 };
@@ -223,10 +235,20 @@ export class Invites {
       for (const g of Object.values(this.data.gifts)) {
         if (!this.opts.gifts || g.nextAt > now || reads >= READS_PER_TICK) continue;
         if (g.state === 'unpaid' && g.to) {
-          // Played before the payment was confirmed: one read settles whether a gift is held.
+          // Played before the payment was confirmed: keep reading through a grace window, in case the hold is
+          // still in flight, before settling on "never paid".
           reads++;
-          if (!(await this.confirm(g))) { g.nextAt = now + 30_000; continue; }
-          if (g.state === 'unpaid') { g.state = 'none'; changed = true; }
+          if (!(await this.confirm(g)) || g.state === 'unpaid') {
+            if (g.state === 'unpaid' && now > (g.dueAt ?? 0) + UNPAID_GRACE_MS) { g.state = 'none'; changed = true; }
+            else { g.nextAt = now + 30_000; continue; }
+          }
+        }
+        if (g.state === 'held' && now >= (g.refundableAt ?? Infinity)) {
+          // Past the hold with nobody playing: adopt a refund the buyer may have taken on-chain.
+          reads++;
+          await this.confirm(g);
+          g.nextAt = now + DAY_MS;
+          changed = true;
         }
         if (g.state !== 'due' || !g.to) continue;
         reads++;
@@ -268,12 +290,20 @@ export class Invites {
   }
 
   /**
-   * Forget gifts a week after they were made, unless one is still due: by then its challenge link expired long ago,
-   * so it was delivered, never paid, or is refundable by its buyer on-chain (PackGifts keeps that record).
+   * Forget settled gifts a week after they were made (by then their challenge link expired long ago). A gift still
+   * due is kept, and a held one stays a month, so the Take back button long outlives the three-day hold; after
+   * that, PackGifts itself still refunds the buyer. Settled invites (paid or expired) go after 80 days; the chain
+   * and the payout records keep what matters.
    */
   private prune() {
-    const cutoff = this.now() - GIFT_KEEP_MS;
-    for (const [id, g] of Object.entries(this.data.gifts)) if (g.createdAt < cutoff && g.state !== 'due') delete this.data.gifts[id];
+    const now = this.now();
+    for (const [id, g] of Object.entries(this.data.gifts)) {
+      if (g.state === 'due') continue;
+      if (g.createdAt < now - (g.state === 'held' ? HELD_KEEP_MS : GIFT_KEEP_MS)) delete this.data.gifts[id];
+    }
+    for (const [a, inv] of Object.entries(this.data.invites)) {
+      if ((inv.state === 'paid' || inv.state === 'expired') && inv.at < now - INVITE_KEEP_MS) delete this.data.invites[a];
+    }
   }
 }
 

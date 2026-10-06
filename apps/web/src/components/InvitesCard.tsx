@@ -32,8 +32,9 @@ export function InvitesCard() {
       </div>
       <p className="muted small">
         When a friend signs in through your link (or accepts one of your challenges) for the first time, verifies as
-        human or registers an agent, and finishes {s?.matchesGoal ?? 5} matches within {s?.days ?? 14} days, you both
-        get a free Set 1 pack. Up to {s?.cap ?? 10} paid referrals per season.
+        human or registers an agent, and finishes {s?.matchesGoal ?? 5} matches against people or agents (bot practice
+        doesn’t count) within {s?.days ?? 14} days, you both get a free Set 1 pack. Up to {s?.cap ?? 10} paid referrals
+        per season.
       </p>
       <div className="cw-link">
         <input readOnly value={link} aria-label="Your invite link" onFocus={(e) => e.currentTarget.select()} />

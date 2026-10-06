@@ -32,4 +32,4 @@ export function pendingRef(): Address | undefined {
 export function clearRef() { try { localStorage.removeItem(KEY); } catch { /* ignore */ } }
 
 /** What an invited player gets, in one line. */
-export const inviteTerms = `Verify and finish ${REFERRAL_MATCHES} matches within ${REFERRAL_DAYS} days: you both get a free Set 1 pack.`;
+export const inviteTerms = `Verify and finish ${REFERRAL_MATCHES} matches against other players within ${REFERRAL_DAYS} days: you both get a free Set 1 pack.`;

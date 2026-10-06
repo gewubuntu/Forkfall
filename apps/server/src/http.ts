@@ -266,11 +266,14 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       case 'GET /challenges/:code': return withGift(lobby.challengeView(lobby.challenge(p[1]), session?.address ?? null), session?.address ?? null);
       case 'POST /challenges/:code/accept': {
         const who = need(session);
-        // A wallet that has never played, accepting a challenge, was invited by the challenger (checked before the
-        // match exists, since the match itself would make it a known player).
+        // A wallet that has never played, accepting a challenge, was invited by the challenger. Newness is checked
+        // before the accept (the match it creates would make them a known player), recorded only once it succeeds.
         const c = lobby.challenge(p[1]);
-        if (c.state === 'open' && (!c.to || c.to.toLowerCase() === who.address.toLowerCase())) opts.invites?.invite(who.address, c.from.address, 'challenge');
-        return lobby.acceptChallenge(who.address, p[1], body, who.agent);
+        const wasNew = !!opts.invites && c.state === 'open' && (!c.to || c.to.toLowerCase() === who.address.toLowerCase())
+          && !lobby.hasPlayed(who.address);
+        const out = await lobby.acceptChallenge(who.address, p[1], body, who.agent);
+        if (wasNew) opts.invites!.invite(who.address, c.from.address, 'challenge', true);
+        return out;
       }
       case 'POST /challenges/:code/gift': {
         if (!opts.invites?.offersGifts) throw new ApiError(503, 'pack gifts are not enabled on this server');
