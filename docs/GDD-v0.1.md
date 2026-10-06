@@ -191,11 +191,11 @@ Payouts are automatic and on-chain: the referee calls `QuestRewards.reward` (it 
 
 Free packs are not sold and not paid for, so they don't change the paid-pack legal question; pack sales feeding the season pot is still waiting on the legal review.
 
-### Season pass (proposed)
+### Season pass
 
 **Why.** Packs can't sell power (the ranked rarity cap is the guardrail), so the pull to play and to buy has to come from progress, events and status. A season pass gives every match a visible step forward, and its premium track is a fixed price for known rewards: no randomness in the purchase itself, which is far easier legally than paid random packs.
 
-**Shape.** One XP bar per ranked season (`MatchSettlement.currentSeason`, about four weeks) with 30 tiers of 300 XP, and two reward tracks on the same bar: a free track for everyone and a premium track unlocked by buying the season's pass. A pass bought mid-season pays every premium tier already reached.
+**Shape.** One XP bar per four-week season (seasons start on a Monday at 00:00 UTC; ranked seasons are advanced to match) with 30 tiers of 300 XP, and two reward tracks on the same bar: a free track for everyone and a premium track unlocked by buying the season's pass. A pass bought mid-season pays every premium tier already reached.
 
 | XP source | XP | Rule |
 | --- | --- | --- |
@@ -218,7 +218,7 @@ A moderate day (three matches, three quests, a first win) is about 370 XP, so th
 
 **Why.** The classic trading card game engine: packs become gameplay. You open fresh packs for an event, build a deck from what you opened and play a short run for more packs. You keep every card, so a Sealed entry is also a way to open packs with a skill reason to do it, and prizes put packs back into circulation.
 
-**Format (recommended, to decide):** pick a race, open 6 race boosters (a new pack kind per race: that race's cards plus Neutral, same rarity slots, pity, duplicate protection and foils), and build a 30-card deck from the pool, topped up with free *basic* cards (the 8 core neutral starter cards, event-only copies) so every pool makes a legal deck. Normal deck rules otherwise. Then play until 7 wins or 3 losses, matched by record against other Sealed players and agents.
+**Format (decided: a fun mode).** Sealed is casual and unrated: it's there to be fun, not to climb. Open 6 Set 1 boosters and build a 30-card deck from whatever you opened, topped up with free *basic* cards (the 8 core neutral starter cards, event-only copies) so every pool makes a deck. The one-race rule is lifted for Sealed only, so a pool can mix races: chaotic decks are the point. Copy limits still apply. Then play until 7 wins or 3 losses, matched by record against other Sealed players and agents.
 
 | Wins | 0–1 | 2–3 | 4–5 | 6 | 7 |
 | --- | --- | --- | --- | --- | --- |
@@ -226,7 +226,7 @@ A moderate day (three matches, three quests, a first win) is about 370 XP, so th
 
 **Entry:** on testnet, one free run a day. On mainnet, 6 packs' price (or 6 unopened packs from your inventory): the entry buys the 6 packs you open and keep, and prizes average about 2 packs, paid from entries. A paid entry with prizes is a contest in many jurisdictions, so paid Sealed waits for the same legal review as the Agent League.
 
-**Open questions:** race boosters vs. mixed-race pools with a relaxed deck rule for Sealed only; best-of-one vs. best-of-three; a Sealed rating.
+**Open questions:** best-of-one vs. best-of-three. The engine needs a Sealed deck check (mixed races allowed) next to the normal one.
 
 ### Gifts and referrals (proposed)
 
