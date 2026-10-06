@@ -69,7 +69,7 @@ interface PlayerState {
 export interface Payout {
   claimId: Hex;
   address: string;
-  kind: 'quest' | 'firstWin' | 'pack' | 'pass' | 'referral';
+  kind: 'quest' | 'firstWin' | 'pack' | 'pass' | 'referral' | 'sealed';
   /** Quest id, 'first-win', 'pack-<period>', 'pass-s<season>-<track>-<tier>', or 'referral-<invited>'. */
   ref: string;
   day: number;

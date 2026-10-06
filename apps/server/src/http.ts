@@ -12,6 +12,7 @@ import type { Rewards } from './rewards.ts';
 import type { Profiles } from './profiles.ts';
 import type { Quests } from './quests.ts';
 import type { Invites } from './invites.ts';
+import type { Sealed } from './sealed.ts';
 import { Live } from './live.ts';
 import { serveMetadata } from './metadata.ts';
 import type { StateStore } from './state.ts';
@@ -45,7 +46,7 @@ interface SavedSessions {
 const RATE_PER_SEC = 10;
 const BURST = 30;
 
-export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests; invites?: Invites; store?: StateStore | null } = {}) {
+export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?: number; humans?: HumanVerification; rewards?: Rewards; publicUrl?: string; payouts?: LeaguePayouts; profiles?: Profiles; quests?: Quests; invites?: Invites; sealed?: Sealed; store?: StateStore | null } = {}) {
   const ratePerSec = opts.ratePerSec ?? RATE_PER_SEC;
   const burst = Math.max(BURST, ratePerSec * 3);
   /** token hash → session. Persisted (when a store is given) so a restart doesn't sign everyone out. */
@@ -131,6 +132,11 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
   function need(s: Session | null): Session {
     if (!s) throw new ApiError(401, 'authenticate first (GET /v1/auth/nonce, POST /v1/auth)');
     return s;
+  }
+
+  function needSealed(): Sealed {
+    if (!opts.sealed) throw new ApiError(503, 'Sealed is not enabled on this server');
+    return opts.sealed;
   }
 
   function rateLimit(s: Session, now: number) {
@@ -287,6 +293,12 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         if (!opts.invites) throw new ApiError(503, 'referrals are not enabled on this server');
         return opts.invites.status(need(session).address);
       }
+      case 'GET /sealed': return needSealed().status(need(session).address);
+      case 'POST /sealed/start': return needSealed().start(need(session).address, body?.share);
+      case 'POST /sealed/deck': return needSealed().setDeck(need(session).address, body?.deck);
+      case 'POST /sealed/queue': { const s = need(session); return needSealed().enqueue(s.address, body?.seedCommit, s.agent); }
+      case 'DELETE /sealed/queue': return needSealed().leave(need(session).address);
+      case 'POST /sealed/abandon': return needSealed().abandon(need(session).address);
       case 'DELETE /challenges/:code': return lobby.closeChallenge(need(session).address, p[1]);
       case 'GET /quests': {
         if (!opts.quests) throw new ApiError(503, 'quests are not enabled on this server');

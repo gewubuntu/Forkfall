@@ -22,6 +22,8 @@ export interface MatchLog {
    * replayLog then finds the version that reproduces the signed result.
    */
   rules?: number;
+  /** `sealed`: decks come from Sealed pools, so the one-race rule was lifted for this match. */
+  format?: 'sealed';
   domain: TypedDataDomain;
   players: {
     address: Address; race: Race; deck: number[]; deckId: Hex; agent: boolean;
@@ -90,6 +92,7 @@ function replayUnder(log: MatchLog, rules: number, rulesDetected: boolean): Repl
       { address: b.address, race: b.race, deck: b.deck, deckSalt: b.deckSalt },
     ],
     rules,
+    ...(log.format ? { format: log.format } : {}),
   });
   const frames: ReplayFrame[] = [{ move: null, state: r0.state, events: r0.events }];
   let state = r0.state;

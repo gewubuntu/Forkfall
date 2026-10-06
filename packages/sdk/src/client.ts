@@ -174,6 +174,50 @@ export interface InvitesStatus {
   packs: number;
 }
 
+/** One Sealed card: foils are cosmetic. */
+export interface SealedPackCard { id: number; foil: boolean }
+
+/** A Sealed run: 6 packs, a deck, a record. The server seed (and so the proof of the pool) is revealed when it ends. */
+export interface SealedRunView {
+  id: string;
+  state: 'open' | 'finished';
+  startedAt: number;
+  wins: number;
+  losses: number;
+  /** The 6 packs of the pool, 5 cards each. */
+  packs: SealedPackCard[][];
+  /** The deck you built (30 cards), or null before you do. */
+  deck: number[] | null;
+  /** Card rules version the pool was rolled under. */
+  rules: number;
+  /** keccak of the server seed, shown before the run so the pool can't be picked afterwards. */
+  commit: Hex;
+  /** Your random share of the pool seed. */
+  share: Hex;
+  /** Only once finished: pool seed = keccak(serverSeed, share, id). */
+  serverSeed?: Hex;
+  endedBy?: 'wins' | 'losses' | 'abandoned' | 'expired';
+  matches: { id: Hex; won: boolean; bot: boolean }[];
+  /** The match in progress (or waiting for both players to join). */
+  activeMatch: { id: Hex; phase: 'reveal' | 'active' | 'ended' | 'cancelled' } | null;
+  /** In the queue since `since`; a house bot plays you if nobody does by `botAt`. */
+  queued: { since: number; botAt: number } | null;
+  prize: { scrap: number; packs: number; titleStep: boolean; payout?: QuestPayoutStatus } | null;
+}
+
+/** `GET /v1/sealed`: your open run, finished runs, the next run's commitment and the rules. */
+export interface SealedStatus {
+  /** The commitment to the server seed of your next run (the pool is rolled from it and your share). */
+  pending: { commit: Hex };
+  run: SealedRunView | null;
+  history: SealedRunView[];
+  canStart: boolean;
+  /** When the next free run unlocks (ms), if one was started today. */
+  nextStartAt: number | null;
+  titles: string[];
+  rules: { wins: number; losses: number; packs: number; botAfterMs: number; widenMs: number };
+}
+
 /** held: earned but waiting until the player is a verified human or registered agent. */
 export interface QuestPayoutStatus { state: 'pending' | 'paid' | 'offchain' | 'failed' | 'held'; tx?: Hex; error?: string }
 
@@ -468,6 +512,34 @@ export class ForkfallClient {
    * and once paid, call again to confirm. The packs go to whoever plays the challenge, after the match.
    */
   attachGift(code: string) { return this.req<ChallengeGiftView>('POST', `/v1/challenges/${code}/gift`, {}); }
+
+  // ─── Sealed (a casual fun mode: 6 packs, a deck, 7 wins or 3 losses) ───
+  sealed() { return this.req<SealedStatus>('GET', '/v1/sealed'); }
+  /** Start today's free run: `share` is your random contribution to the pool seed. */
+  async sealedStart() {
+    const share = randomHex32() as Hex;
+    return this.req<SealedStatus>('POST', '/v1/sealed/start', { share });
+  }
+  /** Set the deck for the rest of the run (30 cards from your pool, any races, plus the free basics). */
+  sealedDeck(deck: number[]) { return this.req<SealedStatus>('POST', '/v1/sealed/deck', { deck }); }
+  /** Join the Sealed queue; a house bot plays you after `rules.botAfterMs` if nobody does. */
+  async sealedQueue(runId: string) {
+    const s = this.newSecrets();
+    const r = await this.req<SealedStatus>('POST', '/v1/sealed/queue', { seedCommit: s.seedCommit });
+    this.secrets.set(`sealed:${runId}`, s);
+    return r;
+  }
+  /** Status, adopting the secrets of a match the queue just created (so it can be revealed). */
+  async sealedStatus() {
+    const r = await this.sealed();
+    const m = r.run?.activeMatch;
+    const t = r.run ? this.secrets.get(`sealed:${r.run.id}`) : undefined;
+    if (m && t && !this.secrets.get(m.id)) this.secrets.set(m.id, t);
+    return r;
+  }
+  sealedLeave() { return this.req<SealedStatus>('DELETE', '/v1/sealed/queue'); }
+  /** End the run with its current record. */
+  sealedAbandon() { return this.req<SealedStatus>('POST', '/v1/sealed/abandon', {}); }
 
   /** Your referrals and invite progress. */
   invites() { return this.req<InvitesStatus>('GET', '/v1/invites'); }

@@ -42,6 +42,10 @@ export interface Match {
   players: [Seatholder, Seatholder];
   /** Card rules version, set when the match starts (absent: saved before versions were recorded, or not started). */
   rules?: number;
+  /** Sealed: played with Sealed decks, so the one-race rule is lifted (see ./sealed.ts). */
+  format?: 'sealed';
+  /** Sealed: the run each seat plays for (null: the house bot). */
+  sealed?: [string | null, string | null];
   state?: GameState;
   events: GameEvent[];
   moves: LoggedMove[];
