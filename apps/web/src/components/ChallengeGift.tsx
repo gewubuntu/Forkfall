@@ -1,5 +1,6 @@
 import { faucetTokenAbi, packGiftsAbi, type ChallengeGiftView, type ChallengeView } from '@forkfall/sdk';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { formatEther, formatUnits, maxUint256, type Hex } from 'viem';
 import { useReadContracts } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
@@ -65,7 +66,7 @@ export function AttachGift({ c, onChange }: { c: ChallengeView; onChange: () => 
   return (
     <div className="gift-attach">
       <b>🎁 A gift for whoever plays this</b>
-      <p className="muted small">Set 1 packs, delivered to them when the match ends. If nobody plays, you can take it back after three days (Profile → Invites).</p>
+      <p className="muted small">Set 1 packs, delivered to them when the match ends. If nobody plays, you can take it back after three days (Profile → Invite friends).</p>
       <div className="ga-row">
         <div className="qty" role="group" aria-label="Packs to attach">
           <button className="btn" onClick={() => setCount((n) => Math.max(1, n - 1))} disabled={count <= 1} aria-label="Fewer">−</button>
@@ -77,6 +78,7 @@ export function AttachGift({ c, onChange }: { c: ChallengeView; onChange: () => 
         </button>
         <button className="btn" disabled={tx.busy || !eth} onClick={() => pay(false)}>or {eth ? formatEther(eth) : '…'} ETH</button>
       </div>
+      {usdc !== undefined && bal < usdc && <p className="small muted">Not enough test USDC: get some free in your <Link to="/collection">Collection</Link>, or pay in ETH.</p>}
       {err && <div className="alert err">{err}</div>}
     </div>
   );
@@ -88,7 +90,7 @@ export function GiftNote({ g, mine = false }: { g: ChallengeGiftView; mine?: boo
   const text = g.state === 'delivered' ? (mine ? `🎁 ${what} delivered to ${shortAddr(g.to ?? '')}.` : `🎁 ${what} delivered: open ${g.count === 1 ? 'it' : 'them'} in your Collection.`)
     : g.state === 'due' ? `🎁 Delivering ${what}${mine && g.to ? ` to ${shortAddr(g.to)}` : ''}…`
     : g.state === 'refunded' ? `🎁 The ${what} went back to ${mine ? 'you' : 'the challenger'}.`
-    : g.state === 'failed' ? `🎁 Delivering the ${what} failed; ${mine ? 'you can take it back from Profile → Invites after three days' : 'the challenger can take it back'}.`
+    : g.state === 'failed' ? `🎁 Delivering the ${what} failed; ${mine ? 'you can take it back from Profile → Invite friends after three days' : 'the challenger can take it back'}.`
     : mine ? `🎁 ${what} attached: delivered to whoever plays this, when the match ends.`
     : `🎁 ${shortAddr(String(g.from))} attached ${what} for you: yours when the match ends.`;
   return <div className={`gift-note ${g.state}`} role="status">{text}</div>;

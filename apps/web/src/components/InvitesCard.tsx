@@ -7,8 +7,11 @@ import { useAuth } from '../auth/AuthProvider.tsx';
 import { useTx } from '../chain/Tx.tsx';
 import { useHub } from '../chain/useHub.ts';
 import { avatarSvg } from '../lib/art.ts';
-import { shortAddr, timeLeft } from '../lib/format.ts';
+import { daysLeft, shortAddr } from '../lib/format.ts';
 import { inviteLink } from '../lib/invite.ts';
+
+/** Referrals listed (newest first); older ones are summed up. */
+const SHOWN = 10;
 
 /** Invite friends: your link, who you brought in and how far each is, and pack gifts nobody played for. */
 export function InvitesCard() {
@@ -47,7 +50,8 @@ export function InvitesCard() {
 
       {s && s.invited.length > 0 && (
         <ul className="inv-list" aria-label="Friends you invited">
-          {s.invited.map((r) => <li key={r.invited}><Referral r={r} who={r.invited} side="inviter" /></li>)}
+          {s.invited.slice(0, SHOWN).map((r) => <li key={r.invited}><Referral r={r} who={r.invited} side="inviter" /></li>)}
+          {s.invited.length > SHOWN && <li className="small muted">and {s.invited.length - SHOWN} earlier</li>}
         </ul>
       )}
       {s && s.invited.length === 0 && <p className="muted small">Nobody joined through your link yet.</p>}
@@ -59,7 +63,7 @@ export function InvitesCard() {
 
 function Referral({ r, who, side }: { r: ReferralView; who: string; side: 'inviter' | 'invited' }) {
   const left = r.deadline - Date.now();
-  const status = r.state === 'playing' ? `${r.matches}/${r.goal} matches · ${left > 0 ? `${timeLeft(left)} left` : 'time is up'}`
+  const status = r.state === 'playing' ? `${r.matches}/${r.goal} matches · ${left > 0 ? `${daysLeft(left)} left` : 'time is up'}`
     : r.state === 'verifying' ? (side === 'invited' ? 'Matches done: verify on this page to unlock the packs' : 'Matches done: waiting for them to verify')
     : r.state === 'expired' ? 'Expired'
     : side === 'inviter' && r.capped ? 'Joined (over this season’s cap: their pack only)' : 'Joined';
@@ -105,7 +109,7 @@ function HeldGifts({ gifts, onDone }: { gifts: InvitesStatus['gifts']; onDone: (
               <span>🎁 {g.count ?? 1} pack{g.count === 1 ? '' : 's'} on <Link to={`/challenge/${g.code}`} className="mono">{g.code}</Link></span>
               {Date.now() >= at
                 ? <button className="btn btn-sm" disabled={tx.busy || !g.giftId} onClick={() => refund(g.giftId as Hex)}>Take back</button>
-                : <span className="small muted">Refundable in {timeLeft(at - Date.now())}</span>}
+                : <span className="small muted">Refundable in {daysLeft(at - Date.now())}</span>}
             </li>
           );
         })}
