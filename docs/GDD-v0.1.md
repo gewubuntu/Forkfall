@@ -215,7 +215,7 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 
 **How it runs.** The referee counts XP from the matches it refereed (it replays every signed move, as for quests) and pays tier rewards through `QuestRewards.reward` with a unique claim id per (chain, player, season, track, tier), so a retried payout never pays twice and the existing per-claim and daily caps still bound it. A new `SeasonPass` contract sells the premium pass for ETH or USDC for the running season only (`buyWithEth(player)`, `buyWithToken(token, player)`; any address can be the player, which is how gifts work; `hasPass(season, player)`). One pass per player per season, the exact price, no refunds; revenue goes to the same treasury as pack revenue and is split the same way. A pass bought in a season's last minutes still pays: after a season ends the referee reads it once more for everyone who reached a tier. Season cosmetics are unlocked by the referee when the tier is reached and equipped like milestone cosmetics. Rewards go to verified humans and registered agents only, held otherwise, exactly like quests. Agents can earn the pass too.
 
-### Sealed events (proposed)
+### Sealed events (proposed, format decided)
 
 **Why.** The classic trading card game engine: packs become gameplay. You open fresh packs for an event, build a deck from what you opened and play a short run for more packs. You keep every card, so a Sealed entry is also a way to open packs with a skill reason to do it, and prizes put packs back into circulation.
 
@@ -227,15 +227,23 @@ A moderate day (three matches, three quests, a first win) is about 360 XP, so th
 
 **Entry:** on testnet, one free run a day. On mainnet, 6 packs' price (or 6 unopened packs from your inventory): the entry buys the 6 packs you open and keep, and prizes average about 2 packs, paid from entries. A paid entry with prizes is a contest in many jurisdictions, so paid Sealed waits for the same legal review as the Agent League.
 
-**Open questions:** best-of-one vs. best-of-three. The engine needs a Sealed deck check (mixed races allowed) next to the normal one.
+**Open questions:** best-of-one vs. best-of-three; whether the free daily run's 6 packs are granted fresh (`PackSale.grantPacks` via `QuestRewards`, then opened by the player) or opened by the referee off-chain for the run only.
+
+**Building it (not started).**
+- *Engine:* a Sealed deck check next to `validateDeck` in `packages/engine/src/cards.ts`: 30 cards, any races, normal copy limits, every card either in the player's pool or one of the basic cards.
+- *Pool:* the cards from the run's 6 packs, read from `PackSale`'s open events (or recorded by the referee if it opens them). The deck may only use that pool plus basics.
+- *Referee:* an event queue mode (casual, matched by win–loss record, agents allowed), a per-player run state (pool, deck, wins, losses, one free run per UTC day), and prizes paid as packs through `QuestRewards` with a unique claim id per (chain, player, run), as for quests and the pass.
+- *Web:* an event page (start a run, open the packs, build from the pool with the existing deck builder, play, see the record and prizes).
 
 ### Gifts and referrals (proposed)
 
-- **Gift a pack:** buy a pack for any address (`PackSale` gets `buyFor`), or attach it to a challenge link so a friend opens it after their first match.
-- **Referral:** an invite link (challenge links count). When the invited player verifies as human (or registers as an agent) and finishes 5 matches of at least four turns each within 14 days, both get a Set 1 pack through `QuestRewards`. At most 10 paid referrals per player per season; the verification gate is what stops self-referral farming.
+Not started. The season pass can already be gifted (`SeasonPass.buyWithEth(player)` / `buyWithToken(token, player)` take any address).
+
+- **Gift a pack:** buy a pack for any address (`PackSale` gets `buyFor`; today `buyWithEthOf`/`buyWithTokenOf` mint to the buyer, so this is a contract change plus a redeploy or an add-on script like `AddSeasonPass`), or attach it to a challenge link so a friend opens it after their first match.
+- **Referral:** an invite link (challenge links count). When the invited player verifies as human (or registers as an agent) and finishes 5 matches of at least four turns each within 14 days, both get a Set 1 pack through `QuestRewards`. At most 10 paid referrals per player per season; the verification gate is what stops self-referral farming. *Building it:* the referee records who invited whom when the invited wallet first signs in through an invite or challenge link, counts the invited player's qualifying matches from the matches it referees (as quests do), and pays both packs through `QuestRewards` with a unique claim id per (chain, inviter, invited). Show invites and their progress on the Profile page.
 - **Prize-pool meter:** from stage 2 the shop shows the season prize pool and the share of every pack that goes into it (30%), so buying a pack visibly grows the prize.
 
-**Build order:** season pass first (cheapest, safest legally, drives daily play), then gifts and referrals, then Sealed (needs race boosters and an event queue). In the testnet alpha, measure day-1 and day-7 retention, matches per player per day, packs opened per active player and the share of players who craft: those numbers are the alpha's gate before paid packs.
+**Build order:** season pass first (cheapest, safest legally, drives daily play; **built**, see *Season pass*), then gifts and referrals, then Sealed (needs a Sealed deck check, pool tracking and an event queue). In the testnet alpha, measure day-1 and day-7 retention, matches per player per day, packs opened per active player and the share of players who craft: those numbers are the alpha's gate before paid packs.
 
 ### Onboarding and cosmetics
 
@@ -443,7 +451,7 @@ The game token launches through Bankr, and its 95% share of the 0.7% swap fee fu
 
 | Stage | What runs | Money in | Money out | Gate to the next stage |
 | --- | --- | --- | --- | --- |
-| 1. Testnet alpha (now) | Free play, quests, free packs, Scrap and crafting, cosmetics, shareable pulls, Agent League with test USDC; next: season pass (premium with test USDC), gifts and referrals, free daily Sealed runs | Nothing real | Nothing real | Fun without money (retention in the alpha), balance gate, audit, legal review of paid packs, prize pools and entry fees |
+| 1. Testnet alpha (now) | Free play, quests, free packs, Scrap and crafting, cosmetics, shareable pulls, Agent League with test USDC; the season pass (premium with test USDC); next: gifts and referrals, free daily Sealed runs | Nothing real | Nothing real | Fun without money (retention in the alpha), balance gate, audit, legal review of paid packs, prize pools and entry fees |
 | 2. Mainnet beta | Packs and the season pass for ETH and USDC, ranked season pools, Agent League fees via x402, paid Sealed entry (after legal review), marketplace royalty | Pack sales, league fees, royalties | Season pools, league pots, ops | Steady pack revenue, a liquidity plan, legal review of the token (MiCA in the EU) |
 | 3. Token on Bankr | Token launch via Bankr on Base (WETH pair), token pack discount, burns on Legendary crafting, pack-revenue buybacks for prizes, swap fees to prize pools, the Forkfall Bankr skill | Plus swap fees and token spend | Plus buyback and burn | Robinhood Chain security review; collab partner agreements |
 | 4. Cross-chain and collabs | Token and cards bridged to Robinhood Chain (LayerZero OFT and ONFT), collab sets with buyback shares, Legendary vaults, tournaments | Plus collab boosters and cross-chain volume | Plus collab buybacks | Each new chain or partner gets its own review |
