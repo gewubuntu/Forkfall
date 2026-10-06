@@ -148,6 +148,17 @@ describe('referrals', () => {
     expect(invites.status(ALICE).invited.map((i) => i.invited)).toEqual([CAROL]);
   });
 
+  it('bounds the invite store under a sign-up flood, making room from overdue invites first', async () => {
+    const clock = { t: NOON };
+    const quests = new Quests({ chainId: 1, now: () => clock.t });
+    const invites = new Invites({ chainId: 1, quests, now: () => clock.t, hasPlayed: () => false, maxInvites: 5 });
+    for (let i = 0; i < 5; i++) expect(invites.invite(`0x${(0xe000 + i).toString(16).padStart(40, '0')}`, ALICE, 'link')).toBe(true);
+    expect(invites.invite(BOB, ALICE, 'link')).toBe(false); // full, nothing overdue yet: refused, no growth
+    clock.t += (REFERRAL_DAYS * DAY_MS) + 1;
+    expect(invites.invite(BOB, ALICE, 'link')).toBe(true); // the overdue ones make room
+    expect(invites.status(BOB).invitedBy?.state).toBe('playing');
+  });
+
   it('keeps referrals across a restart (file)', async () => {
     const { mkdtempSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -191,6 +202,7 @@ describe('challenge gifts', () => {
     await expect(invites.attachGift('code1', BOB)).rejects.toThrow(/only the challenger/);
 
     f.hold(v.giftId!, ALICE);
+    clock.t += 10_000; // a challenger's own confirms are paced
     expect(await invites.attachGift('code1', ALICE)).toMatchObject({ state: 'held', count: 2 });
     expect(invites.giftView('code1', BOB)).toMatchObject({ state: 'held', count: 2, from: ALICE });
     expect(invites.giftView('code1', BOB)?.giftId).toBeUndefined();
@@ -210,11 +222,13 @@ describe('challenge gifts', () => {
     const { clock, invites } = setup({ gifts: f.g });
     const a = await invites.attachGift('c-a', ALICE);
     f.hold(a.giftId!, CAROL); // someone with the link front-ran the id (their money, refundable to them)
+    clock.t += 10_000;
     expect((await invites.attachGift('c-a', ALICE)).state).toBe('none');
     const fresh = await invites.attachGift('c-a', ALICE); // the dead id blocks nothing
     expect(fresh.state).toBe('unpaid');
     expect(fresh.giftId).not.toBe(a.giftId);
     f.hold(fresh.giftId!, ALICE);
+    clock.t += 10_000;
     expect((await invites.attachGift('c-a', ALICE)).state).toBe('held');
     invites.record(match(ALICE, BOB, clock.t, { challenge: 'c-a' }));
     await invites.tick();
@@ -246,6 +260,7 @@ describe('challenge gifts', () => {
     const { clock, invites } = setup({ gifts: f.g });
     const g = await invites.attachGift('c1', ALICE);
     f.hold(g.giftId!, ALICE);
+    clock.t += 10_000;
     await invites.attachGift('c1', ALICE);
     clock.t += 3 * DAY_MS + 60_000; // the hold is over, nobody played, the buyer refunded on-chain
     f.held.get(g.giftId!)!.state = 'refunded';
@@ -254,6 +269,7 @@ describe('challenge gifts', () => {
 
     const h = await invites.attachGift('c2', ALICE);
     f.hold(h.giftId!, ALICE);
+    clock.t += 10_000;
     await invites.attachGift('c2', ALICE);
     clock.t += 8 * DAY_MS;
     await invites.tick();
@@ -263,11 +279,69 @@ describe('challenge gifts', () => {
     expect(invites.giftView('c2', ALICE)).toBeUndefined(); // a month in, PackGifts alone keeps the record
   });
 
+  it('paces the challenger\'s own chain reads, and shows no gift to the friend when none was ever paid', async () => {
+    const f = fakeGifts();
+    let reads = 0;
+    const counting: GiftDeliverer = { read: (id) => { reads++; return f.g.read(id); }, deliver: f.g.deliver };
+    const { clock, invites } = setup({ gifts: counting });
+    const v = await invites.attachGift('p1', ALICE);
+    await invites.attachGift('p1', ALICE);
+    await invites.attachGift('p1', ALICE);
+    expect(reads).toBe(1); // back-to-back requests cost one read
+    clock.t += 10_000;
+    f.hold(v.giftId!, CAROL); // front-run: settles as 'none'
+    await invites.attachGift('p1', ALICE);
+    expect(reads).toBe(2);
+    const fresh = await invites.attachGift('p1', ALICE); // fresh id, but the pacing carries over
+    expect(fresh.giftId).not.toBe(v.giftId);
+    expect(reads).toBe(2);
+    // The friend sees nothing for a gift that was never the challenger's: no false "packs are coming".
+    expect(invites.giftView('p1', BOB)).toBeUndefined();
+    expect(invites.giftView('p1', ALICE)?.state).toBe('unpaid');
+  });
+
+  it('never writes a paid gift off while the chain cannot be read', async () => {
+    const f = fakeGifts();
+    let down = true;
+    const flaky: GiftDeliverer = { read: (id) => { if (down) throw new Error('rpc down'); return f.g.read(id); }, deliver: f.g.deliver };
+    const { clock, invites } = setup({ gifts: flaky });
+    down = false;
+    const v = await invites.attachGift('c1', ALICE);
+    down = true;
+    invites.record(match(ALICE, BOB, clock.t, { challenge: 'c1' })); // played while the RPC is down
+    f.hold(v.giftId!, ALICE); // the hold landed, but the referee can't see it yet
+    clock.t += 11 * 60_000; // the grace window passes with every read failing
+    for (let i = 0; i < 3; i++) { await invites.tick(); clock.t += 31_000; }
+    expect(invites.giftView('c1', ALICE)?.state).toBe('unpaid'); // not written off on failed reads
+    down = false;
+    await invites.tick();
+    await invites.tick();
+    expect(invites.giftView('c1', BOB)?.state).toBe('delivered'); // the first successful read finds and delivers it
+  });
+
+  it('keeps a failed delivery visible for the buyer to take back', async () => {
+    const f = fakeGifts();
+    const g: GiftDeliverer = { read: f.g.read, deliver: async () => { throw new Error('NotHeld'); } };
+    const { clock, invites } = setup({ gifts: g });
+    const v = await invites.attachGift('c1', ALICE);
+    f.hold(v.giftId!, ALICE);
+    clock.t += 10_000;
+    await invites.attachGift('c1', ALICE);
+    invites.record(match(ALICE, BOB, clock.t, { challenge: 'c1' }));
+    await invites.tick(); // delivery says NotHeld while the chain still shows it held: give up
+    expect(invites.giftView('c1', ALICE)?.state).toBe('failed');
+    expect(invites.status(ALICE).gifts.map((x) => [x.code, x.state])).toEqual([['c1', 'failed']]); // Take back shows
+    clock.t += 8 * DAY_MS;
+    invites.invite(BOB, CAROL, 'link'); // any write prunes
+    expect(invites.status(ALICE).gifts).toHaveLength(1); // still listed a week in, like a held gift
+  });
+
   it('retries a failed delivery, and adopts a refund that beat it', async () => {
     const f = fakeGifts();
     const { clock, invites } = setup({ gifts: f.g });
     const v = await invites.attachGift('c1', ALICE);
     f.hold(v.giftId!, ALICE);
+    clock.t += 10_000;
     await invites.attachGift('c1', ALICE);
     invites.record(match(BOB, ALICE, clock.t, { challenge: 'c1' }));
     f.fail('nonce too low');
@@ -289,9 +363,10 @@ describe('invites over HTTP', () => {
       async read(id) { return f.held.get(id) ?? { from: ALICE as Address, kind: 0, count: 0, state: 'none', refundableAt: 0 }; },
       async deliver() { return '0x' as Hex; },
     };
+    const clk = { t: Date.now() };
     const lobby = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()) });
     const quests = new Quests({ chainId: 31337 });
-    const invites = new Invites({ chainId: 31337, quests, gifts, hasPlayed: (a) => lobby.hasPlayed(a) });
+    const invites = new Invites({ chainId: 31337, quests, gifts, hasPlayed: (a) => lobby.hasPlayed(a), now: () => clk.t });
     const { server } = createApi(lobby, { ratePerSec: 10_000, quests, invites });
     await new Promise<void>((r) => server.listen(0, r));
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -309,6 +384,7 @@ describe('invites over HTTP', () => {
       const carol = await player();
       await expect(carol.attachGift(c.code)).rejects.toThrow(/→ 403/);
       f.held.set(g.giftId!, { from: alice.address, kind: 0, count: 1, state: 'held', refundableAt: 0 });
+      clk.t += 10_000; // the challenger's own confirms are paced
       await alice.attachGift(c.code); // confirm the payment
       expect((await carol.challenge(c.code)).gift).toMatchObject({ state: 'held', count: 1 });
       expect((await carol.challenge(c.code)).gift?.giftId).toBeUndefined();

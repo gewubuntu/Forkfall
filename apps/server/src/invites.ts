@@ -25,6 +25,10 @@ const HELD_KEEP_MS = 30 * DAY_MS;
 const UNPAID_GRACE_MS = 10 * 60_000;
 /** Settled invites (paid or expired) are forgotten after this: past verification (40 d) plus the payout view (40 d). */
 const INVITE_KEEP_MS = 80 * DAY_MS;
+/** A challenger's own request re-reads an unpaid gift on-chain at most this often (the loop paces itself). */
+const CONFIRM_MIN_MS = 10_000;
+/** The invite store's bound: sign-ins are free, so a sign-up flood must not grow the file without limit. */
+const MAX_INVITES = 10_000;
 
 interface Invite {
   inviter: string;
@@ -56,6 +60,8 @@ interface Gift {
   /** The friend who played the challenge, once its match ended (and when, for the unpaid grace window). */
   to?: string;
   dueAt?: number;
+  /** When the chain was last read for this gift on the challenger's own request (bounds those reads). */
+  checkedAt?: number;
   tx?: Hex;
   error?: string;
   attempts: number;
@@ -75,6 +81,8 @@ export interface InvitesOptions {
   eligible?: (address: Address) => Promise<boolean>;
   /** PackGifts on this deployment (absent: challenge gifts aren't offered). */
   gifts?: GiftDeliverer | null;
+  /** Bound on stored invites (tests only; the default suits a referee). */
+  maxInvites?: number;
   now?: () => number;
 }
 
@@ -112,6 +120,14 @@ export class Invites {
     const a = invited.toLowerCase();
     const by = inviter.toLowerCase();
     if (a === by || this.data.invites[a] || (!wasNew && this.opts.hasPlayed(a as Address))) return false;
+    if (Object.keys(this.data.invites).length >= (this.opts.maxInvites ?? MAX_INVITES)) {
+      // A sign-up flood filled the store: make room from invites past their deadline, else count no more.
+      const overdue = Object.values(this.data.invites)
+        .filter((i) => i.state === 'expired' || (i.state === 'playing' && this.now() > i.at + REFERRAL_DAYS * DAY_MS))
+        .sort((x, y) => x.at - y.at);
+      for (const i of overdue.slice(0, 1000)) delete this.data.invites[i.invited];
+      if (Object.keys(this.data.invites).length >= (this.opts.maxInvites ?? MAX_INVITES)) return false;
+    }
     this.data.invites[a] = { inviter: by, invited: a, at: this.now(), via, matches: 0, state: 'playing' };
     this.save();
     return true;
@@ -152,7 +168,7 @@ export class Invites {
     return {
       invited: mine.map((i) => view(i, 'inviter')),
       invitedBy: by ? view(by, 'invited') : null,
-      gifts: Object.values(this.data.gifts).filter((g) => g.from === a && g.state === 'held')
+      gifts: Object.values(this.data.gifts).filter((g) => g.from === a && (g.state === 'held' || g.state === 'failed'))
         .sort((x, y) => y.createdAt - x.createdAt).map((g) => ({ code: g.code, ...this.giftView(g.code, a)! })),
       paidThisSeason: mine.filter((i) => i.state === 'paid' && i.season === season && !i.capped).length,
       cap: REFERRAL_CAP, matchesGoal: REFERRAL_MATCHES, days: REFERRAL_DAYS, packs: REFERRAL_PACKS,
@@ -169,15 +185,17 @@ export class Invites {
     let g = this.giftFor(code);
     if (g && !same(g.from, challenger)) throw new Error('only the challenger can attach a gift');
     // A dead record the challenger never paid (someone front-ran the id, or it settled unpaid) blocks nothing:
-    // while the challenge hasn't been played, start over under a fresh id.
+    // while the challenge hasn't been played, start over under a fresh id (keeping the read pacing below).
+    let checkedAt = g?.checkedAt;
     if (g && g.state === 'none' && !g.to) { delete this.data.gifts[g.giftId]; g = undefined; }
     if (!g) {
       const giftId = keccak256(toHex(`forkfall-gift:${this.opts.chainId}:${code}:${crypto.randomUUID()}`));
-      g = { code, giftId, from: challenger.toLowerCase(), createdAt: this.now(), state: 'unpaid', attempts: 0, nextAt: 0 };
+      g = { code, giftId, from: challenger.toLowerCase(), createdAt: this.now(), state: 'unpaid', attempts: 0, nextAt: 0, ...(checkedAt ? { checkedAt } : {}) };
       this.data.gifts[giftId] = g;
       this.save();
     }
-    if (g.state === 'unpaid') await this.confirm(g);
+    // One chain read per request would let a challenger drive the RPC: pace their own confirms like the pass sync.
+    if (g.state === 'unpaid' && this.now() - (g.checkedAt ?? 0) >= CONFIRM_MIN_MS) await this.confirm(g);
     return this.giftView(code, challenger)!;
   }
 
@@ -186,7 +204,9 @@ export class Invites {
     const g = this.giftFor(code);
     if (!g) return undefined;
     const mine = same(g.from, viewer);
-    if (!mine && g.state === 'unpaid') return undefined;
+    // A gift that was never paid ('unpaid', or 'none' once settled) is no gift: showing it would promise the
+    // friend packs that are not coming. Only the challenger sees the record, to pay it or start over.
+    if (!mine && (g.state === 'unpaid' || g.state === 'none')) return undefined;
     return {
       state: g.state, from: g.from, count: g.count ?? null, kind: g.kind ?? null, to: g.to ?? null, tx: g.tx ?? null,
       refundableAt: g.refundableAt ?? null, ...(mine ? { giftId: g.giftId } : {}),
@@ -195,6 +215,7 @@ export class Invites {
 
   /** Read a gift's state on-chain and adopt it (only the challenger's own payment counts). */
   private async confirm(g: Gift): Promise<boolean> {
+    g.checkedAt = this.now();
     try {
       const h = await this.opts.gifts!.read(g.giftId);
       if (h.state === 'none') return true;
@@ -236,10 +257,12 @@ export class Invites {
         if (!this.opts.gifts || g.nextAt > now || reads >= READS_PER_TICK) continue;
         if (g.state === 'unpaid' && g.to) {
           // Played before the payment was confirmed: keep reading through a grace window, in case the hold is
-          // still in flight, before settling on "never paid".
+          // still in flight. Only a successful read that still shows nothing held settles it as never paid;
+          // a failed read (the RPC being down) never writes a paid gift off.
           reads++;
-          if (!(await this.confirm(g)) || g.state === 'unpaid') {
-            if (g.state === 'unpaid' && now > (g.dueAt ?? 0) + UNPAID_GRACE_MS) { g.state = 'none'; changed = true; }
+          const read = await this.confirm(g);
+          if (g.state === 'unpaid') {
+            if (read && now > (g.dueAt ?? 0) + UNPAID_GRACE_MS) { g.state = 'none'; changed = true; }
             else { g.nextAt = now + 30_000; continue; }
           }
         }
@@ -291,15 +314,15 @@ export class Invites {
 
   /**
    * Forget settled gifts a week after they were made (by then their challenge link expired long ago). A gift still
-   * due is kept, and a held one stays a month, so the Take back button long outlives the three-day hold; after
-   * that, PackGifts itself still refunds the buyer. Settled invites (paid or expired) go after 80 days; the chain
-   * and the payout records keep what matters.
+   * due is kept, and one still refundable by its buyer (held, or failed to deliver) stays a month, so the Take back
+   * button long outlives the three-day hold; after that, PackGifts itself still refunds the buyer. Settled invites
+   * (paid or expired) go after 80 days; the chain and the payout records keep what matters.
    */
   private prune() {
     const now = this.now();
     for (const [id, g] of Object.entries(this.data.gifts)) {
       if (g.state === 'due') continue;
-      if (g.createdAt < now - (g.state === 'held' ? HELD_KEEP_MS : GIFT_KEEP_MS)) delete this.data.gifts[id];
+      if (g.createdAt < now - (g.state === 'held' || g.state === 'failed' ? HELD_KEEP_MS : GIFT_KEEP_MS)) delete this.data.gifts[id];
     }
     for (const [a, inv] of Object.entries(this.data.invites)) {
       if ((inv.state === 'paid' || inv.state === 'expired') && inv.at < now - INVITE_KEEP_MS) delete this.data.invites[a];
