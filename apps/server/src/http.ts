@@ -263,8 +263,10 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         if (!opts.quests) throw new ApiError(503, 'the season pass is not enabled on this server');
         const a = url.searchParams.get('address') ?? session?.address;
         if (!a || !/^0x[0-9a-fA-F]{40}$/.test(a)) throw new ApiError(400, 'address required');
-        // Only the player may force a fresh premium read (it costs an RPC call); others see the cached state.
-        if (url.searchParams.get('sync') === '1' && session?.address.toLowerCase() === a.toLowerCase()) await opts.quests.syncPremium(a, true);
+        // Chain reads (premium pass, eligibility) only for the signed-in player's own pass, which the rate limit covers;
+        // anyone else sees the cached state.
+        if (session?.address.toLowerCase() !== a.toLowerCase()) return opts.quests.passStatus(a);
+        if (url.searchParams.get('sync') === '1') await opts.quests.syncPremium(a, true);
         const eligible = await opts.quests.eligibleFor(a);
         if (eligible) opts.quests.releaseHeld(a);
         return { ...opts.quests.passStatus(a), eligible };

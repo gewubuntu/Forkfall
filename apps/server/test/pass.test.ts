@@ -107,6 +107,8 @@ describe('season pass XP', () => {
     expect(reads).toEqual([1]);
 
     bought = true;
+    expect(await q.syncPremium(ALICE, true)).toBe(false); // a forced read still waits 10 s after the last one
+    clock.t += 10_000;
     expect(await q.syncPremium(ALICE, true)).toBe(true);
     const s = q.passStatus(ALICE);
     expect(s.premium).toBe(true);
@@ -121,6 +123,70 @@ describe('season pass XP', () => {
     expect(sent.filter((x) => x.player === ALICE).length).toBeGreaterThanOrEqual(passPaid.length);
     const premiumScrap = PASS_TIERS_TABLE.slice(1, tier).reduce((a, t) => a + (t.premium?.scrap ?? 0), 0);
     expect(passPaid.filter((p) => p.ref.includes('-premium-')).reduce((a, p) => a + p.scrap, 0)).toBe(premiumScrap);
+  });
+
+  it('pays a premium pass bought in the last minutes of a season, after the season has ended', async () => {
+    const clock = { t: NOON };
+    let bought = false;
+    let rpcDown = false;
+    const reads: number[] = [];
+    const { r, sent } = fakeRewarder();
+    const q = new Quests({
+      chainId: 31337, rewarder: r, now: () => clock.t,
+      passHolder: async (a, season) => {
+        if (rpcDown) throw new Error('rpc down');
+        reads.push(season); return bought && season === 1 && a.toLowerCase() === ALICE;
+      },
+    });
+    playDays(q, clock, 24);
+    expect(q.passStatus(ALICE).tier).toBe(PASS_TIERS);
+    clock.t = Date.UTC(2026, 10, 1, 23, 58); // the last minutes of season 1
+    await q.payDue(); // checked: no pass yet
+    bought = true; // bought at 23:59, inside the 5-minute recheck window
+    rpcDown = true; // and the RPC is down across midnight
+    clock.t = Date.UTC(2026, 10, 2, 0, 1);
+    await q.payDue();
+    expect(q.passCosmetics(ALICE)).not.toContain('back:season-1'); // not seen yet, but not given up on either
+    rpcDown = false;
+    clock.t += 5 * 60_000;
+    await q.payDue();
+    expect(reads.at(-1)).toBe(1); // read season 1, not the new season
+    expect(q.passCosmetics(ALICE)).toEqual(expect.arrayContaining(['back:season-1', 'badge:season-1']));
+    await q.payDue();
+    const premium = PASS_TIERS_TABLE.reduce((a, t) => ({ scrap: a.scrap + (t.premium?.scrap ?? 0), packs: a.packs + (t.premium?.packs ?? 0) }), { scrap: 0, packs: 0 });
+    const free = PASS_TIERS_TABLE.reduce((a, t) => ({ scrap: a.scrap + (t.free?.scrap ?? 0), packs: a.packs + (t.free?.packs ?? 0) }), { scrap: 0, packs: 0 });
+    const got = sent.filter((x) => x.player === ALICE && q['data'].payouts.some((p: { claimId: Hex; kind: string }) => p.claimId === x.claimId && p.kind === 'pass'));
+    expect(got.reduce((a, x) => a + x.packs, 0)).toBe(premium.packs + free.packs);
+    expect(got.reduce((a, x) => a + x.scrap, 0)).toBe(premium.scrap + free.scrap);
+    const n = reads.length;
+    clock.t += 60 * 60_000;
+    await q.payDue();
+    expect(reads.length).toBe(n); // the ended season is settled: no more reads for it
+  });
+
+  it('reads premium passes a bounded number of times: backs off when the RPC fails, at most 20 per tick', async () => {
+    const clock = { t: NOON };
+    let reads = 0;
+    const q = new Quests({
+      chainId: 31337, rewarder: fakeRewarder().r, now: () => clock.t,
+      passHolder: async () => { reads++; throw new Error('rpc down'); },
+    });
+    playDays(q, clock, 1); // Alice and Bob both pass tier 1
+    for (let i = 0; i < 10; i++) { await q.payDue(); clock.t += 5_000; }
+    expect(reads).toBe(2); // one read each, then they wait out the recheck window (not one per tick)
+
+    // 50 more players at tier 1 or above: a tick reads at most 20 of them, and the next tick moves on.
+    for (let n = 0; n < 50; n++) {
+      const a = `0x${(0xc000 + n).toString(16).padStart(40, '0')}`;
+      const m = match(`p${n}`, clock.t);
+      m.players = [{ address: a, race: 'agents', bot: null }, { address: BOB, race: 'degens', bot: null }];
+      for (let k = 0; k < 10; k++) q.record({ ...m, id: `p${n}-${k}` });
+    }
+    reads = 0;
+    await q.payDue();
+    expect(reads).toBe(20);
+    await q.payDue();
+    expect(reads).toBe(40);
   });
 
   it('starts every season from zero but keeps the cosmetics earned before', () => {
@@ -165,6 +231,28 @@ describe('season pass over HTTP', () => {
       const pass = await (await fetch(`${url}/v1/pass?address=${ALICE}`)).json();
       expect(pass).toMatchObject({ season: 1, xp: quests.passStatus(ALICE).xp, premium: null });
       expect((await fetch(`${url}/v1/pass`)).status).toBe(400); // no address, no session
+    } finally { server.close(); }
+  });
+
+  it('makes no chain reads for a pass that is not your own, even with sync=1', async () => {
+    const lobby = new Lobby({ chain: new Chain({ chainId: 31337 } as never), house: privateKeyToAccount(generatePrivateKey()) });
+    let reads = 0;
+    const quests = new Quests({
+      chainId: 31337, now: () => NOON,
+      passHolder: async () => { reads++; return false; },
+      eligible: async () => { reads++; return true; },
+    });
+    quests.record(match('h1'));
+    const { server } = createApi(lobby, { ratePerSec: 10_000, quests });
+    await new Promise<void>((r) => server.listen(0, r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      for (let i = 0; i < 5; i++) {
+        const pass = await (await fetch(`${url}/v1/pass?address=${ALICE}&sync=1`)).json();
+        expect(pass).toMatchObject({ season: 1, premium: false });
+        expect(pass.eligible).toBeUndefined();
+      }
+      expect(reads).toBe(0);
     } finally { server.close(); }
   });
 });

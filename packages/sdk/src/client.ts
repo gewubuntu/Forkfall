@@ -163,7 +163,7 @@ export interface PassStatus {
   /** Whether you hold this season's premium pass (null: this server has no premium track). */
   premium: boolean | null;
   paysOnChain: boolean;
-  /** Whether you can be paid (see QuestStatus.eligible). */
+  /** Whether you can be paid (see QuestStatus.eligible). Only on your own pass. */
   eligible?: boolean | null;
   tiers: { tier: number; free?: PassRewardInfo; premium?: PassRewardInfo; freePayout?: QuestPayoutStatus; premiumPayout?: QuestPayoutStatus }[];
 }

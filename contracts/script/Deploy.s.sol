@@ -83,7 +83,10 @@ contract Deploy is ForkfallScript {
         uint256 startBlock = block.number;
         vm.startBroadcast();
         d = deployAll(deployer, referee, uri, packPrice);
-        if (treasury != deployer) d.packs.setTreasury(treasury);
+        if (treasury != deployer) {
+            d.packs.setTreasury(treasury);
+            d.pass.setTreasury(treasury); // pass revenue goes where pack revenue goes
+        }
         if (bytes(contractUri).length > 0) d.cards.setContractURI(contractUri);
         configureRandomness(d);
         vm.stopBroadcast();

@@ -48,11 +48,15 @@ interface PassState {
   premium?: boolean;
   premiumCheckedAt?: number;
 }
+/** A past season whose premium pass is still to be read once (bought near the end, before the last check saw it). */
+type ClosingPass = PassState & { nextAt?: number };
 interface PlayerState {
   today: DayState;
   /** Daily quests completed per pack period index. */
   periods: Record<string, number>;
   pass?: PassState;
+  /** Past seasons with tiers reached but no premium seen yet: read once more after the season ends. */
+  closing?: ClosingPass[];
   /** Season cosmetics earned, kept across seasons. */
   unlocked?: string[];
 }
@@ -109,8 +113,12 @@ const PERMANENT = /OverClaimCap|NothingToPay|UnknownKind|BadCount|AccessControlU
 const KEEP_DAYS = 40;
 /** How often held rewards re-check whether the player has verified. */
 const HOLD_RECHECK_MS = 5 * 60_000;
-/** How often the premium pass is re-read for a player who doesn't have it yet. */
+/** How often the premium pass is re-read for a player who doesn't have it yet (and after a failed read). */
 const PREMIUM_RECHECK_MS = 5 * 60_000;
+/** A player's own sync (after buying, or opening the pass page) re-reads at most this often. */
+const PREMIUM_SYNC_MIN_MS = 10_000;
+/** Premium reads per payout tick, so the loop's RPC load and the wait for payouts stay bounded. */
+const PREMIUM_READS_PER_TICK = 20;
 
 /**
  * Daily quests, the first-win bonus and the free pack, tracked by the referee from finished matches (it replays
@@ -285,6 +293,7 @@ export class Quests {
   /**
    * Re-reads whether the player holds this season's premium pass (after a purchase, or on the payout loop) and, once
    * they do, queues the premium rewards for every tier already reached. Returns whether they hold it (null: unknown).
+   * `force` (the player's own request) still re-reads at most every `PREMIUM_SYNC_MIN_MS`.
    */
   async syncPremium(address: string, force = false): Promise<boolean | null> {
     const check = this.opts.passHolder;
@@ -294,16 +303,33 @@ export class Quests {
     const p = this.player(a, day);
     const pass = this.passOf(p, day);
     if (pass.premium) return true;
-    if (!force && pass.premiumCheckedAt && this.now() - pass.premiumCheckedAt < PREMIUM_RECHECK_MS) return false;
+    const since = pass.premiumCheckedAt ? this.now() - pass.premiumCheckedAt : Infinity;
+    if (since < (force ? PREMIUM_SYNC_MIN_MS : PREMIUM_RECHECK_MS)) return false;
+    pass.premiumCheckedAt = this.now(); // a failed read waits like a negative one, so a down RPC isn't hammered
     let has: boolean;
     try { has = await check(a as Address, pass.season); } catch { return null; }
-    pass.premiumCheckedAt = this.now();
-    if (has) {
+    if (has && !pass.premium) {
       pass.premium = true;
-      this.queuePassTiers(a, p, day);
+      this.queuePassTiers(a, p, day, pass);
+      this.save();
     }
-    this.save();
     return has;
+  }
+
+  /**
+   * One last premium read for a season that has ended: the contract sells a season until its final second, so a pass
+   * bought after the last check is only seen here. A failed read retries later; any answer settles the season.
+   */
+  private async closeSeason(a: string, p: PlayerState, c: ClosingPass): Promise<boolean> {
+    let has: boolean;
+    try { has = await this.opts.passHolder!(a as Address, c.season); } catch { c.nextAt = this.now() + PREMIUM_RECHECK_MS; return false; }
+    p.closing = p.closing?.filter((x) => x !== c);
+    if (!p.closing?.length) delete p.closing;
+    if (has) {
+      c.premium = true;
+      this.queuePassTiers(a, p, questDay(this.now()), c);
+    }
+    return true;
   }
 
   /** Sends due payouts, one at a time. Failed ones retry with backoff; "already claimed" means it landed before. */
@@ -313,11 +339,7 @@ export class Quests {
     if (!r || this.busy) return { paid, failed };
     this.busy = true;
     try {
-      // Premium passes bought since the last check: pay the premium tiers already reached.
-      const season = passSeason(questDay(this.now())).season;
-      for (const [a, p] of Object.entries(this.data.players)) {
-        if (p.pass?.season === season && !p.pass.premium && p.pass.xp >= PASS_XP_PER_TIER) await this.syncPremium(a);
-      }
+      if (this.opts.passHolder) await this.syncPremiums();
       const eligible = new Map<string, boolean | null>();
       for (const p of this.data.payouts.filter((x) => (x.state === 'pending' || x.state === 'held') && x.nextAt <= this.now())) {
         if (this.opts.eligible) {
@@ -350,6 +372,33 @@ export class Quests {
     return { paid, failed };
   }
 
+  /**
+   * Premium passes bought since the last check: pay the premium tiers already reached, for the running season and for
+   * seasons that ended before their last purchase was seen. At most `PREMIUM_READS_PER_TICK` reads; saves once.
+   */
+  private async syncPremiums() {
+    const day = questDay(this.now());
+    const season = passSeason(day).season;
+    let reads = 0; let changed = false;
+    for (const [a, p] of Object.entries(this.data.players)) {
+      if (reads >= PREMIUM_READS_PER_TICK) break;
+      // A player who hasn't played since their season ended: move it to closing without waiting for their next match.
+      if (p.pass && p.pass.season !== season) { this.passOf(p, day); changed = true; }
+      for (const c of p.closing ?? []) { // closeSeason replaces p.closing, so this keeps iterating the old array
+        if (reads >= PREMIUM_READS_PER_TICK) break;
+        if ((c.nextAt ?? 0) > this.now()) continue;
+        reads++;
+        if (await this.closeSeason(a, p, c)) changed = true;
+      }
+      const pass = p.pass;
+      if (reads >= PREMIUM_READS_PER_TICK || !pass || pass.premium || pass.xp < PASS_XP_PER_TIER) continue;
+      if (pass.premiumCheckedAt && this.now() - pass.premiumCheckedAt < PREMIUM_RECHECK_MS) continue;
+      reads++;
+      if (await this.syncPremium(a)) changed = true;
+    }
+    if (changed) this.save();
+  }
+
   private player(address: string, day: number): PlayerState {
     const p = (this.data.players[address] ??= { today: fresh(day), periods: {} });
     if (p.today.day < day) p.today = fresh(day);
@@ -359,13 +408,19 @@ export class Quests {
   /** This season's pass state (a new season starts from zero; cosmetics earned before stay). */
   private passOf(p: PlayerState, day: number): PassState {
     const season = passSeason(day).season;
-    if (p.pass?.season !== season) p.pass = { season, xp: 0, matchDay: day, matchXp: 0, freeTier: 0, premiumTier: 0 };
+    if (p.pass?.season !== season) {
+      const old = p.pass;
+      // Tiers reached without premium seen: read that season's pass once more (it may have been bought at the end).
+      if (old && !old.premium && tierFor(old.xp) > 0 && this.opts.passHolder) {
+        p.closing = [...(p.closing ?? []), { ...old }].slice(-2);
+      }
+      p.pass = { season, xp: 0, matchDay: day, matchXp: 0, freeTier: 0, premiumTier: 0 };
+    }
     return p.pass;
   }
 
   /** Queues the rewards (and unlocks the cosmetics) of every tier reached since the last call, per track. */
-  private queuePassTiers(address: string, p: PlayerState, day: number): Payout[] {
-    const pass = this.passOf(p, day);
+  private queuePassTiers(address: string, p: PlayerState, day: number, pass: PassState = this.passOf(p, day)): Payout[] {
     const reached = tierFor(pass.xp);
     const out: Payout[] = [];
     const tracks: PassTrack[] = pass.premium ? ['free', 'premium'] : ['free'];

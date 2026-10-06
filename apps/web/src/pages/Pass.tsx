@@ -1,7 +1,7 @@
 import { trackTotals, XP_FIRST_WIN, XP_MATCH_PLAYED, XP_MATCH_WON, XP_QUEST } from '@forkfall/engine';
 import { faucetTokenAbi, seasonPassAbi, type PassStatus, type QuestPayoutStatus } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { formatEther, formatUnits, isAddress, maxUint256, type Address } from 'viem';
 import { useReadContracts } from 'wagmi';
@@ -25,6 +25,14 @@ function Paid({ p, reached }: { p?: QuestPayoutStatus; reached: boolean }) {
 /** The season pass: XP bar, how XP is earned, the premium track for sale, and every tier on both tracks. */
 export function Pass() {
   const q = usePass();
+  const { client, me } = useAuth();
+  const qc = useQueryClient();
+  // Opening the pass re-reads your premium pass once, so one a friend gifted you shows up without waiting for the loop.
+  useEffect(() => {
+    const address = me?.address;
+    if (!client || !address) return;
+    client.pass(undefined, { sync: true }).then((d) => qc.setQueryData(['pass', address], d)).catch(() => {});
+  }, [client, me?.address, qc]);
   if (q.isLoading) return <div className="page"><span className="spinner" aria-label="Loading" /></div>;
   if (q.isError || !q.data) {
     return <div className="page"><div className="panel empty"><h2>No season pass here</h2><p>This server doesn’t run the season pass.</p></div></div>;
