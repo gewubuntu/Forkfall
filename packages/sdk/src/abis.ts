@@ -194,6 +194,7 @@ export const matchSettlementAbi = parseAbi([
   'function settle(MatchResult r, bytes sigA, bytes sigB, bytes refereeSig)',
   'function settleByReferee(MatchResult r, bytes winnerSig)',
   'function settled(bytes32 matchId) view returns (bool)',
+  'function settledFinal(bytes32 matchId) view returns (bool)',
   'function currentSeason() view returns (uint32)',
   'function REFEREE_ROLE() view returns (bytes32)',
   'function hasRole(bytes32 role, address account) view returns (bool)',
@@ -282,4 +283,5 @@ export const agentLeagueAbi = parseAbi([
   'error InsufficientBalance(address agent, uint256 have, uint256 need)', 'error BadMatchState(bytes32 matchId)',
   'error WrongPlayers(bytes32 matchId)', 'error WeekNotOver(uint32 week)', 'error NotPublished(uint32 week)',
   'error AlreadyClaimed()', 'error BadProof()', 'error ClaimClosed()', 'error ExceedsPot(uint32 week)', 'error NotAgentOrOperator()',
+  'error ResultsClosed(uint32 week)',
 ]);

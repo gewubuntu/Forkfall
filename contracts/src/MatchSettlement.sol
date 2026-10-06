@@ -23,6 +23,13 @@ interface ILeague {
     function recordResult(bytes32 matchId, address winner) external;
 }
 
+/// @notice Runs ERC-6492 factory calls for MatchSettlement, so the call never comes from MatchSettlement itself.
+contract Erc6492Deployer {
+    function deploy(address factory, bytes calldata data) external returns (bool ok) {
+        (ok,) = factory.call(data);
+    }
+}
+
 contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardTransient {
     bytes32 public constant REFEREE_ROLE = keccak256("REFEREE_ROLE");
     bytes32 public constant SEASON_ADMIN_ROLE = keccak256("SEASON_ADMIN_ROLE");
@@ -64,12 +71,15 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     }
 
     AgentRegistry public immutable agentRegistry;
+    Erc6492Deployer public immutable erc6492Deployer;
     DeckRegistry public immutable deckRegistry;
 
     uint32 public currentSeason = 1;
     /// @notice AgentLeague receiving league results (zero = league disabled).
     ILeague public league;
     mapping(bytes32 => bool) public settled;
+    /// @dev Settled only by the two players' signatures (casual), so a referee-backed result may still replace it.
+    mapping(bytes32 => bool) private _unbacked;
     mapping(uint32 => mapping(address => Stats)) private _stats;
 
     // Elo expected score (x1000) for rating gaps 0, 25, 50, ... 800.
@@ -135,6 +145,7 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
 
     constructor(address admin, AgentRegistry agents_, DeckRegistry decks_) EIP712("Forkfall", "1") {
         agentRegistry = agents_;
+        erc6492Deployer = new Erc6492Deployer();
         deckRegistry = decks_;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(SEASON_ADMIN_ROLE, admin);
@@ -168,14 +179,14 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
         external
         nonReentrant
     {
-        bytes32 digest = _precheck(r);
+        bytes32 digest = _precheck(r, r.mode != MODE_CASUAL);
         if (!_isValidSignature(r.playerA, digest, sigA)) revert BadSignature(r.playerA);
         if (!_isValidSignature(r.playerB, digest, sigB)) revert BadSignature(r.playerB);
         if (r.mode != MODE_CASUAL) {
             (address referee, ECDSA.RecoverError err,) = ECDSA.tryRecover(digest, refereeSig);
             if (err != ECDSA.RecoverError.NoError || !hasRole(REFEREE_ROLE, referee)) revert MissingRefereeSignature();
         }
-        _record(r, false);
+        _record(r, false, r.mode != MODE_CASUAL);
     }
 
     /// @notice Dispute / timeout path: the referee replayed the move log and co-signs with the winner.
@@ -184,14 +195,16 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
         onlyRole(REFEREE_ROLE)
         nonReentrant
     {
-        bytes32 digest = _precheck(r);
+        bytes32 digest = _precheck(r, true);
         if (r.winner == address(0)) revert BadWinner();
         if (!_isValidSignature(r.winner, digest, winnerSig)) revert BadSignature(r.winner);
-        _record(r, true);
+        _record(r, true, true);
     }
 
-    function _precheck(MatchResult calldata r) internal view returns (bytes32) {
-        if (settled[r.matchId]) revert AlreadySettled(r.matchId);
+    /// @param refereeBacked The referee signs this result, so it outranks an earlier casual result with the same id
+    ///        (anyone can make one of those with two of their own wallets).
+    function _precheck(MatchResult calldata r, bool refereeBacked) internal view returns (bytes32) {
+        if (settled[r.matchId] && !(refereeBacked && _unbacked[r.matchId])) revert AlreadySettled(r.matchId);
         if (r.playerA == address(0) || r.playerB == address(0) || r.playerA == r.playerB) revert BadPlayers();
         if (r.winner != address(0) && r.winner != r.playerA && r.winner != r.playerB) revert BadWinner();
         if (r.mode > MODE_LEAGUE) revert UnknownMode(r.mode);
@@ -211,8 +224,9 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
 
     /// @dev EOA (ECDSA), deployed smart wallet (ERC-1271), or not-yet-deployed smart wallet (ERC-6492).
     ///      For 6492, the factory call is the wallet's own deterministic deployment, so anyone may run it; it
-    ///      only runs if the wallet is missing or rejects the inner signature (6492 "prepare" case). Settlement
-    ///      is nonReentrant, so the factory cannot re-enter to settle twice.
+    ///      only runs if the wallet is missing or rejects the inner signature (6492 "prepare" case). It runs from
+    ///      `erc6492Deployer`, never from this contract, so it can't act as MatchSettlement (e.g. on the league).
+    ///      Settlement is nonReentrant, so the factory cannot re-enter to settle twice.
     function _isValidSignature(address signer, bytes32 digest, bytes calldata sig) internal returns (bool) {
         if (sig.length < 32 || bytes32(sig[sig.length - 32:]) != ERC6492_MAGIC) {
             return SignatureChecker.isValidSignatureNow(signer, digest, sig);
@@ -220,7 +234,7 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
         (address factory, bytes memory factoryCalldata, bytes memory inner) =
             abi.decode(sig[:sig.length - 32], (address, bytes, bytes));
         if (signer.code.length > 0 && SignatureChecker.isValidERC1271SignatureNow(signer, digest, inner)) return true;
-        (bool ok,) = factory.call(factoryCalldata);
+        bool ok = erc6492Deployer.deploy(factory, factoryCalldata);
         if (!ok || signer.code.length == 0) return false;
         return SignatureChecker.isValidERC1271SignatureNow(signer, digest, inner);
     }
@@ -232,8 +246,9 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
         if (mode == MODE_HUMAN && agentRegistry.isAgent(p)) revert NotHuman(p);
     }
 
-    function _record(MatchResult calldata r, bool byReferee) internal {
+    function _record(MatchResult calldata r, bool byReferee, bool refereeBacked) internal {
         settled[r.matchId] = true;
+        _unbacked[r.matchId] = !refereeBacked;
         address loser = r.winner == address(0) ? address(0) : (r.winner == r.playerA ? r.playerB : r.playerA);
         if (r.mode == MODE_LEAGUE) {
             league.recordResult(r.matchId, r.winner);
@@ -287,6 +302,12 @@ contract MatchSettlement is AccessControl, EIP712, TestnetOnly, ReentrancyGuardT
     function stats(uint32 season, address player) external view returns (Stats memory s) {
         s = _stats[season][player];
         if (s.rating == 0) s.rating = uint32(START_RATING);
+    }
+
+    /// @notice Has a result the referee can no longer replace landed for `matchId`? False while the id only holds
+    ///         a casual result signed by its two players, which a referee-backed result may still replace.
+    function settledFinal(bytes32 matchId) external view returns (bool) {
+        return settled[matchId] && !_unbacked[matchId];
     }
 
     function setLeague(ILeague league_) external onlyRole(DEFAULT_ADMIN_ROLE) {

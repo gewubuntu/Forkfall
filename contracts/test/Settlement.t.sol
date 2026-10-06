@@ -140,6 +140,33 @@ contract SettlementTest is Fixture {
         d.settlement.settle(r, sa, sb, refSig(r));
     }
 
+    function test_casualResultCannotHoldARankedMatchId() public {
+        MatchSettlement.MatchResult memory ranked = result(1, alice);
+        // bob, about to lose, settles a casual "match" under the same id with two wallets he controls.
+        uint256 xPk = 0xB0B1;
+        uint256 yPk = 0xB0B2;
+        MatchSettlement.MatchResult memory squat = result(0, address(0));
+        squat.matchId = ranked.matchId;
+        squat.playerA = vm.addr(xPk);
+        squat.playerB = vm.addr(yPk);
+        d.settlement.settle(squat, sign(xPk, squat), sign(yPk, squat), "");
+        assertTrue(d.settlement.settled(ranked.matchId));
+        assertFalse(d.settlement.settledFinal(ranked.matchId));
+
+        (bytes memory sa, bytes memory sb, bytes memory sr) =
+            (sign(alicePk, ranked), sign(bobPk, ranked), refSig(ranked));
+        d.settlement.settle(ranked, sa, sb, sr);
+        assertTrue(d.settlement.settledFinal(ranked.matchId));
+        assertEq(d.settlement.stats(1, alice).wins, 1);
+        assertEq(d.settlement.stats(1, bob).losses, 1);
+
+        vm.expectRevert(abi.encodeWithSelector(MatchSettlement.AlreadySettled.selector, ranked.matchId));
+        d.settlement.settle(ranked, sa, sb, sr);
+        (bytes memory sx, bytes memory sy) = (sign(xPk, squat), sign(yPk, squat));
+        vm.expectRevert(abi.encodeWithSelector(MatchSettlement.AlreadySettled.selector, ranked.matchId));
+        d.settlement.settle(squat, sx, sy, "");
+    }
+
     function test_casualSkipsDeckChecksAndElo() public {
         MatchSettlement.MatchResult memory r = result(0, address(0));
         bytes memory rs;

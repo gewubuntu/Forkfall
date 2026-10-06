@@ -161,6 +161,7 @@ export class Chain {
 
 /** Referee writes: settle a result with only the winner's signature when the loser never signs. */
 export interface RefereeSettler {
+  /** A result the referee can't replace is on-chain (a casual result signed only by two players doesn't count). */
   isSettled(matchId: Hex): Promise<boolean>;
   /** Submits `settleByReferee` and resolves with the tx hash once it is mined successfully. */
   settleByReferee(result: MatchResult, winnerSig: Hex): Promise<Hex>;
@@ -250,7 +251,7 @@ export function refereeSettler(chain: Chain, referee: LocalAccount): RefereeSett
   const address = chain.book.MatchSettlement;
   const send = writer(chain, referee);
   return {
-    isSettled: (matchId) => client.readContract({ address, abi: matchSettlementAbi, functionName: 'settled', args: [matchId] }),
+    isSettled: (matchId) => client.readContract({ address, abi: matchSettlementAbi, functionName: 'settledFinal', args: [matchId] }),
     settleByReferee: (result, winnerSig) => send(address, matchSettlementAbi, 'settleByReferee', [forContract(result), winnerSig]),
     settle: (result, sigA, sigB, refereeSig) => send(address, matchSettlementAbi, 'settle', [forContract(result), sigA, sigB, refereeSig]),
   };

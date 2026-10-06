@@ -5,6 +5,28 @@ import {Fixture} from "./Fixture.sol";
 import {AgentLeague} from "../src/AgentLeague.sol";
 import {MatchSettlement} from "../src/MatchSettlement.sol";
 
+/// @notice A wallet that accepts signatures only once `target` is settled in the league.
+contract SettledOnlyWallet {
+    AgentLeague immutable league;
+    bytes32 immutable target;
+
+    constructor(AgentLeague l, bytes32 t) {
+        league = l;
+        target = t;
+    }
+
+    function isValidSignature(bytes32, bytes calldata) external view returns (bytes4) {
+        (,,, AgentLeague.State state,) = league.matches(target);
+        return state == AgentLeague.State.Settled ? bytes4(0x1626ba7e) : bytes4(0xffffffff);
+    }
+}
+
+contract AnySigWallet {
+    function isValidSignature(bytes32, bytes calldata) external pure returns (bytes4) {
+        return 0x1626ba7e;
+    }
+}
+
 contract LeagueTest is Fixture {
     AgentLeague league;
     bytes32 deckA;
@@ -69,10 +91,13 @@ contract LeagueTest is Fixture {
         d.settlement.settle(r, sa, sb, sr);
     }
 
-    function test_startChargesBothAndSplitsTheFee() public {
-        start();
+    function test_startChargesBothAndTheResultSplitsTheFee() public {
+        bytes32 id = start();
         assertEq(league.balanceOf(alice), 9.5e6);
         assertEq(league.balanceOf(bob), 9.5e6);
+        assertEq(league.pot(1), 0);
+        assertEq(league.buybackAccrued() + league.opsAccrued(), 0);
+        settle(id, alice);
         assertEq(league.pot(1), 0.8e6); // 80% of 1.00
         assertEq(league.buybackAccrued(), 0.1e6);
         assertEq(league.opsAccrued(), 0.1e6);
@@ -152,6 +177,58 @@ contract LeagueTest is Fixture {
         assertEq(league.pot(1), 0);
         assertEq(league.buybackAccrued() + league.opsAccrued(), 0);
         settleExpect(id, alice, abi.encodeWithSelector(AgentLeague.BadMatchState.selector, id));
+    }
+
+    function test_sweepCannotBlockACancelRefund() public {
+        settle(start(), alice);
+        bytes32 id = start();
+        league.sweep();
+        vm.prank(referee);
+        league.cancelMatch(id);
+        assertEq(league.balanceOf(alice), 9.5e6);
+        assertEq(league.balanceOf(bob), 9.5e6);
+        assertEq(league.pot(1), 0.8e6);
+    }
+
+    function test_resultsCloseOnceTheWeekIsPublished() public {
+        bytes32 id = start();
+        vm.warp(block.timestamp + 7 days);
+        vm.prank(admin);
+        league.publishWeek(1, keccak256("root"), uint64(block.timestamp + 7 days));
+        settleExpect(id, alice, abi.encodeWithSelector(AgentLeague.ResultsClosed.selector, uint32(1)));
+        vm.prank(referee);
+        league.cancelMatch(id);
+        assertEq(league.balanceOf(alice), 10e6);
+    }
+
+    function test_erc6492FactoryCallCannotActAsTheSettlement() public {
+        bytes32 id = start();
+        // A throwaway casual result whose "factory call" tries to record the league match from MatchSettlement.
+        SettledOnlyWallet wa = new SettledOnlyWallet(league, id);
+        AnySigWallet wb = new AnySigWallet();
+        MatchSettlement.MatchResult memory r = MatchSettlement.MatchResult({
+            matchId: keccak256("throwaway"),
+            playerA: address(wa),
+            playerB: address(wb),
+            winner: address(0),
+            deckA: bytes32(0),
+            deckB: bytes32(0),
+            mode: 0,
+            season: 0,
+            turns: 1,
+            logHash: bytes32(0)
+        });
+        bytes memory sigA = abi.encodePacked(
+            abi.encode(address(league), abi.encodeCall(AgentLeague.recordResult, (id, bob)), bytes("")),
+            bytes32(0x6492649264926492649264926492649264926492649264926492649264926492)
+        );
+        vm.prank(carl);
+        vm.expectRevert(abi.encodeWithSelector(MatchSettlement.BadSignature.selector, address(wa)));
+        d.settlement.settle(r, sigA, hex"00", "");
+        (,,, AgentLeague.State state,) = league.matches(id);
+        assertEq(uint8(state), uint8(AgentLeague.State.Started));
+        settle(id, alice);
+        assertEq(league.standing(1, alice).wins, 1);
     }
 
     function test_weeklyPayoutGoesToOperatorsAndNeverExceedsThePot() public {

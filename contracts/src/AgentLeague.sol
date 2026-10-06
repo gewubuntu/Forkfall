@@ -93,6 +93,7 @@ contract AgentLeague is AccessControl, TestnetOnly, ReentrancyGuardTransient {
     error BadMatchState(bytes32 matchId);
     error WrongPlayers(bytes32 matchId);
     error OnlySettlement();
+    error ResultsClosed(uint32 week);
     error WeekNotOver(uint32 week);
     error NotPublished(uint32 week);
     error AlreadyClaimed();
@@ -183,7 +184,8 @@ contract AgentLeague is AccessControl, TestnetOnly, ReentrancyGuardTransient {
     }
 
     // ─── Match lifecycle (referee) ──────────────────────────────
-    /// @notice Charges both entry fees when a league match actually starts (after both seeds are revealed).
+    /// @notice Charges both entry fees when a league match actually starts (after both seeds are revealed). They are
+    ///         split into the pot, buyback and operations when the result lands, so a cancel simply refunds them.
     function startMatch(bytes32 matchId, address a, address b) external onlyRole(REFEREE_ROLE) {
         if (matches[matchId].state != State.None) revert BadMatchState(matchId);
         address oa = operatorOf(a);
@@ -199,7 +201,6 @@ contract AgentLeague is AccessControl, TestnetOnly, ReentrancyGuardTransient {
         balanceOf[a] -= fee;
         balanceOf[b] -= fee;
         uint32 week = currentWeek();
-        _split(week, 2 * fee, true);
         matches[matchId] = LeagueMatch(a, b, week, State.Started, fee);
         emit MatchStarted(matchId, week, a, b, fee);
     }
@@ -209,25 +210,17 @@ contract AgentLeague is AccessControl, TestnetOnly, ReentrancyGuardTransient {
         LeagueMatch storage m = matches[matchId];
         if (m.state != State.Started) revert BadMatchState(matchId);
         m.state = State.Cancelled;
-        _split(m.week, 2 * m.fee, false);
         balanceOf[m.a] += m.fee;
         balanceOf[m.b] += m.fee;
         emit MatchCancelled(matchId);
     }
 
-    function _split(uint32 week, uint256 total, bool add) internal {
+    function _split(uint32 week, uint256 total) internal {
         uint256 toPot = (total * potBps) / BPS;
         uint256 toBuyback = (total * buybackBps) / BPS;
-        uint256 toOps = total - toPot - toBuyback;
-        if (add) {
-            pot[week] += toPot;
-            buybackAccrued += toBuyback;
-            opsAccrued += toOps;
-        } else {
-            pot[week] -= toPot;
-            buybackAccrued -= toBuyback;
-            opsAccrued -= toOps;
-        }
+        pot[week] += toPot;
+        buybackAccrued += toBuyback;
+        opsAccrued += total - toPot - toBuyback;
     }
 
     // ─── Results (from MatchSettlement) ─────────────────────────
@@ -246,8 +239,10 @@ contract AgentLeague is AccessControl, TestnetOnly, ReentrancyGuardTransient {
         if (msg.sender != settlement) revert OnlySettlement();
         LeagueMatch storage m = matches[matchId];
         if (m.state != State.Started) revert BadMatchState(matchId);
-        m.state = State.Settled;
         uint32 w = m.week;
+        if (payoutRoot[w] != bytes32(0)) revert ResultsClosed(w);
+        m.state = State.Settled;
+        _split(w, 2 * m.fee);
         Standing storage sa = _standing(w, m.a);
         Standing storage sb = _standing(w, m.b);
         sa.games++;

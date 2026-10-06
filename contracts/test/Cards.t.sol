@@ -86,6 +86,16 @@ contract CardsTest is Fixture {
         assertTrue(d.decks.isValidFor(deckId, alice, true));
     }
 
+    function test_deckRejectsFoilIds() public {
+        vm.prank(alice);
+        d.starters.claim(1);
+        uint16[] memory ids = starterIds(1);
+        ids[29] = uint16(d.cards.FOIL_OFFSET() + ids[29]);
+        vm.prank(alice);
+        vm.expectRevert(bytes("DeckRegistry: use base ids"));
+        d.decks.register(1, ids);
+    }
+
     function test_deckRejectsUnownedAndOffRace() public {
         uint16[] memory starter = starterIds(1);
         vm.prank(alice);
@@ -133,18 +143,27 @@ contract CardsTest is Fixture {
         d.packs.open(1);
     }
 
-    function test_packRecommitsWhenBlockhashExpires() public {
+    function test_expiredBlockhashPackRollsPlainInsteadOfReSealing() public {
+        // Waiting out the 256-block window must never be a re-roll: the pack opens at once, with no Legendary
+        // upgrade, pity or foil (25 packs would otherwise all but surely bring one, and pity guarantees it).
         vm.deal(alice, 1 ether);
-        vm.prank(alice);
-        d.packs.buyWithEth{value: 0.0001 ether}(1);
-        vm.roll(block.number + 400);
-        vm.prank(alice);
-        uint256[5] memory ids = d.packs.open(0);
-        assertEq(ids[0], 0); // re-committed, nothing minted
-        vm.roll(block.number + 3);
-        vm.prank(alice);
-        ids = d.packs.open(0);
-        assertGt(ids[0], 0);
+        for (uint256 b; b < 3; ++b) {
+            uint256 n = b < 2 ? 10 : 5;
+            uint256 cost = d.packs.quoteEth(n);
+            vm.prank(alice);
+            uint256 first = d.packs.buyWithEth{value: cost}(n);
+            vm.roll(block.number + 400);
+            for (uint256 i; i < n; ++i) {
+                vm.prank(alice);
+                uint256[5] memory ids = d.packs.open(first + i);
+                for (uint256 j; j < 5; ++j) {
+                    assertLt(ids[j], d.cards.FOIL_OFFSET());
+                    assertEq(d.cards.balanceOf(alice, ids[j]) > 0, true);
+                }
+                assertEq(d.cards.cardInfo(ids[4]).rarity, 2);
+            }
+        }
+        assertEq(d.packs.packsSinceLegendary(alice), 25);
     }
 
     function test_packIdsOfTracksOwners() public {

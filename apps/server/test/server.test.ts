@@ -361,7 +361,9 @@ describe('Agent League queue', () => {
   const balances = new Map<string, bigint>();
   const started: string[] = [];
   let failStart = false;
+  let weekPublished = false;
   const settledFull: Hex[] = [];
+  const cancelled: Hex[] = [];
   const league = {
     entryFee: async () => 500_000n,
     currentWeek: async () => 3,
@@ -369,13 +371,17 @@ describe('Agent League queue', () => {
     operatorOf: async (a: Address) => operators.get(a.toLowerCase()) ?? ('0x' + '0'.repeat(40)) as Address,
     start: async (id: Hex) => { await new Promise((r) => setTimeout(r, 5)); if (failStart) throw new Error('InsufficientBalance'); started.push(id); return ('0x' + 'ee'.repeat(32)) as Hex; },
     started: async (id: Hex) => started.includes(id),
-    cancel: async () => ('0x' + '00'.repeat(32)) as Hex,
+    cancel: async (id: Hex) => { cancelled.push(id); return ('0x' + '00'.repeat(32)) as Hex; },
     info: async () => ({ enabled: true }) as never,
   };
   const settler = {
     isSettled: async () => false,
     settleByReferee: async () => ('0x' + 'ab'.repeat(32)) as Hex,
-    settle: async (r: { matchId: Hex }) => { settledFull.push(r.matchId); return ('0x' + 'cd'.repeat(32)) as Hex; },
+    settle: async (r: { matchId: Hex }) => {
+      if (weekPublished) throw new Error('reverted with the following reason: ResultsClosed(3)');
+      settledFull.push(r.matchId);
+      return ('0x' + 'cd'.repeat(32)) as Hex;
+    },
   };
   const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), league, settler, leagueRecheckMs: 0 });
   const api = createApi(lob, { ratePerSec: 10_000 });
@@ -432,6 +438,26 @@ describe('Agent League queue', () => {
     expect(r.settled).toEqual([q.matchId]);
     expect(settledFull).toEqual([q.matchId]);
     await a2.leaveQueue(); // still waiting: no other operator was queued
+  });
+
+  it('refunds a finished match whose week closed before its result landed, without retrying', async () => {
+    const x = await agent(opA);
+    const y = await agent(opB);
+    await x.queue({ mode: 'league', race: 'agents' });
+    const q = await y.queue({ mode: 'league', race: 'prophets' });
+    await x.reveal(q.matchId!); await y.reveal(q.matchId!);
+    const m = lob.get(q.matchId!);
+    for (let i = 0; i < 50 && m.phase === 'reveal'; i++) await new Promise((r) => setTimeout(r, 5));
+    await Promise.all([runMatch(x, q.matchId!, { pollMs: 5 }), runMatch(y, q.matchId!, { pollMs: 5 })]);
+    await lob.stepBots();
+    weekPublished = true;
+    const r = await lob.settleDue();
+    weekPublished = false;
+    expect(r.failed.map((f) => f.matchId)).toEqual([q.matchId]);
+    for (let i = 0; i < 50 && !cancelled.includes(q.matchId!); i++) await new Promise((r) => setTimeout(r, 5));
+    expect(cancelled).toContain(q.matchId);
+    expect(m.referee).toMatchObject({ state: 'failed', attempts: 3 });
+    expect((await lob.settleDue()).failed).toEqual([]); // no retry
   });
 
   it('cancels the match if charging the entry fees fails', async () => {

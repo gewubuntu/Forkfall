@@ -560,7 +560,13 @@ export class Lobby {
       } catch (e) {
         const error = (e as Error).message;
         const attempts = m.referee.attempts;
-        m.referee = { state: 'failed', attempts, error, retryAt: attempts < maxAttempts ? this.now() + 60_000 * attempts : undefined };
+        if (m.mode === 'league' && /ResultsClosed/.test(error)) {
+          // Its week's payouts are already published: the result can never land, so refund both entry fees.
+          m.referee = { state: 'failed', attempts: maxAttempts, error };
+          this.league.refund(m);
+        } else {
+          m.referee = { state: 'failed', attempts, error, retryAt: attempts < maxAttempts ? this.now() + 60_000 * attempts : undefined };
+        }
         out.failed.push({ matchId: m.id, error });
       }
       this.changed(m);
