@@ -235,7 +235,7 @@ export function metricsChain(chain: Chain): import('./metrics.ts').MetricsChain 
     return t;
   };
   return {
-    startBlock: Number(book.deployedAtBlock ?? 0),
+    startBlock: book.deployedAtBlock !== undefined ? Number(book.deployedAtBlock) : undefined,
     head: async () => Number(await client.getBlockNumber()),
     async events(from, to) {
       const range = { fromBlock: BigInt(from), toBlock: BigInt(to) };

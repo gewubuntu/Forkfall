@@ -33,12 +33,19 @@ const zero = (): Counts => ({ matches: 0, packs: 0, crafts: 0 });
 /** What the referee knows about a wallet: its first active day and a bitmap of its active days (bit i = day first+i). */
 interface Wallet { first: number; bits: string; agent?: boolean }
 
+interface Row { a: string; first: number; days: number[]; active: Set<number> }
+
 interface Store {
   wallets: Record<string, Wallet>;
   /** First day each wallet crafted. */
   crafters: Record<string, number>;
   days: Record<string, { h: Counts; a: Counts }>;
   seen: string[];
+  /** endedAt of each id in `seen`, and the newest endedAt ever dropped from it: a late re-notification of an old match is ignored. */
+  seenAt?: number[];
+  floor?: number;
+  /** The first day this store counted: chain events from before it have no matches beside them, so they are skipped. */
+  startDay?: number;
   /** Last block whose pack and craft logs were counted. */
   cursor?: number;
 }
@@ -47,13 +54,21 @@ interface Store {
 export interface ChainEvent { kind: 'pack' | 'craft'; owner: string; /** ms */ at: number }
 /** The chain as the metrics poller reads it. */
 export interface MetricsChain {
-  /** Where to start the first time (the deployment block). */
-  startBlock: number;
+  /** Where to start the first time (the deployment block); absent: from the head, counting only what happens from now. */
+  startBlock?: number;
   head(): Promise<number>;
   events(from: number, to: number): Promise<ChainEvent[]>;
 }
 
-export interface MetricsOptions { file?: string; now?: () => number; chain?: MetricsChain | null }
+export interface MetricsOptions {
+  file?: string;
+  now?: () => number;
+  chain?: MetricsChain | null;
+  /** First day this store counts (default: today); tests set it earlier. */
+  since?: number;
+}
+/** Logs are read only this many blocks behind the head, so a shallow reorg can't leave a pack or craft counted twice. */
+const CONFIRMATIONS = 5;
 
 const lc = (a: string) => a.toLowerCase();
 
@@ -73,7 +88,9 @@ export class Metrics {
     const valid = (x: Record<string, unknown>) => typeof x.wallets === 'object' && x.wallets !== null && typeof x.days === 'object' && x.days !== null && Array.isArray(x.seen);
     ({ data: this.data, setAside: this.setAside } = opts.file ? readJsonOrSetAside(opts.file, empty, { valid }) : { data: empty(), setAside: null });
     this.data.crafters ??= {};
+    if (this.data.seenAt?.length !== this.data.seen.length) this.data.seenAt = this.data.seen.map(() => 0);
     this.now = opts.now ?? Date.now;
+    this.data.startDay ??= opts.since ?? questDay(this.now());
   }
 
   get onchain() { return !!this.opts.chain; }
@@ -84,12 +101,17 @@ export class Metrics {
    * against a house bot counts: for a player with an empty queue it is the real game. Counted once per match id.
    */
   record(m: FinishedMatch) {
-    if (this.data.seen.includes(m.id)) return;
+    if (this.data.seen.includes(m.id) || m.endedAt <= (this.data.floor ?? 0)) return;
     const bots = m.players.filter((p) => p.bot);
     if (bots.length > 0 && m.format !== 'sealed') return;
     if (bots.length === m.players.length) return;
     this.data.seen.push(m.id);
-    if (this.data.seen.length > SEEN_LIMIT) this.data.seen.splice(0, this.data.seen.length - SEEN_LIMIT);
+    this.data.seenAt!.push(m.endedAt);
+    if (this.data.seen.length > SEEN_LIMIT) {
+      const n = this.data.seen.length - SEEN_LIMIT;
+      this.data.seen.splice(0, n);
+      this.data.floor = Math.max(this.data.floor ?? 0, ...this.data.seenAt!.splice(0, n));
+    }
     const day = questDay(m.endedAt);
     m.players.forEach((p, i) => {
       if (p.bot) return;
@@ -121,6 +143,7 @@ export class Metrics {
   private applyEvents(events: ChainEvent[]) {
     for (const e of events) {
       const day = questDay(e.at);
+      if (day < this.data.startDay!) continue;
       const w = this.data.wallets[lc(e.owner)];
       const c = this.counts(day, w?.agent);
       if (e.kind === 'pack') c.packs++;
@@ -139,10 +162,22 @@ export class Metrics {
     this.polling = true;
     try {
       const head = await chain.head();
+      const safe = Math.max(0, head - CONFIRMATIONS);
+      if (this.data.cursor !== undefined && this.data.cursor > head) {
+        // The chain was reset (a local anvil restart): the old cursor would skip everything until the head passes it.
+        console.warn(`metrics: the chain head (${head}) is behind the saved cursor (${this.data.cursor}); reading from the head`);
+        this.data.cursor = safe;
+        this.save();
+      }
+      if (this.data.cursor === undefined && chain.startBlock === undefined) {
+        console.warn('metrics: no deployedAtBlock in the address book; counting packs and crafts from now on');
+        this.data.cursor = safe;
+        this.save();
+      }
       for (let i = 0; i < CHUNKS_PER_POLL; i++) {
-        const from = (this.data.cursor ?? chain.startBlock - 1) + 1;
-        if (from > head) break;
-        const to = Math.min(head, from + CHUNK - 1);
+        const from = (this.data.cursor ?? chain.startBlock! - 1) + 1;
+        if (from > safe) break;
+        const to = Math.min(safe, from + CHUNK - 1);
         const events = await chain.events(from, to);
         this.applyEvents(events);
         this.data.cursor = to; // counted and advanced together, saved together
@@ -159,33 +194,47 @@ export class Metrics {
     return out;
   }
 
+  /** Every wallet of one group with its active days: built once per report, so the cost is wallets × active days. */
+  private rowsOf(agent: boolean) {
+    const rows: Row[] = [];
+    for (const [a, w] of Object.entries(this.data.wallets)) {
+      if (!!w.agent !== agent) continue;
+      const days = this.activeDays(w);
+      rows.push({ a, first: w.first, days, active: new Set(days) });
+    }
+    return rows;
+  }
+
   report(days = 30): MetricsReport {
     const span = Math.max(1, Math.min(MAX_DAYS, Math.floor(days) || 30));
     const today = questDay(this.now());
     const onchain = this.onchain;
-    const walletsBy = (agent: boolean) => Object.entries(this.data.wallets)
-      .filter(([, w]) => !!w.agent === agent)
-      .map(([a, w]) => ({ a, w, active: new Set(this.activeDays(w)) }));
-    const group = (agent: boolean): { g: MetricsGroup; rows: ReturnType<typeof walletsBy> } => {
-      const rows = walletsBy(agent);
+    const lo = today - span + 1;
+    const group = (agent: boolean) => {
+      const rows = this.rowsOf(agent);
+      const active = Array.from({ length: span }, () => 0);
+      const fresh = Array.from({ length: span }, () => 0);
+      const cohortOf = new Map<number, Row[]>();
+      for (const r of rows) {
+        for (const d of r.days) if (d >= lo && d <= today) active[d - lo]++;
+        if (r.first >= lo && r.first <= today) { fresh[r.first - lo]++; (cohortOf.get(r.first) ?? cohortOf.set(r.first, []).get(r.first)!).push(r); }
+      }
       const daily: MetricsDay[] = [];
-      for (let d = today - span + 1; d <= today; d++) {
+      for (let d = lo; d <= today; d++) {
         const c = this.data.days[d]?.[agent ? 'a' : 'h'] ?? zero();
-        const active = rows.filter((r) => r.active.has(d)).length;
-        const newPlayers = rows.filter((r) => r.w.first === d).length;
+        const act = active[d - lo];
         daily.push({
-          day: d, at: dayStartMs(d), active, newPlayers, matches: c.matches,
-          matchesPerActive: active ? c.matches / active : null,
-          packs: onchain ? c.packs : null, packsPerActive: onchain && active ? c.packs / active : null, crafts: onchain ? c.crafts : null,
+          day: d, at: dayStartMs(d), active: act, newPlayers: fresh[d - lo], matches: c.matches,
+          matchesPerActive: act ? c.matches / act : null,
+          packs: onchain ? c.packs : null, packsPerActive: onchain && act ? c.packs / act : null, crafts: onchain ? c.crafts : null,
         });
       }
       const cohorts: MetricsCohort[] = [];
-      for (let d = today - span + 1; d <= today; d++) {
-        const members = rows.filter((r) => r.w.first === d);
+      for (let d = lo; d <= today; d++) {
+        const members = cohortOf.get(d) ?? [];
         const size = members.length;
         // A rate needs a big-enough cohort and a finished comparison day (today is still being played).
-        const rate = (pred: (r: (typeof members)[number]) => boolean, ready: boolean) =>
-          size >= MIN_COHORT && ready ? members.filter(pred).length / size : null;
+        const rate = (pred: (r: Row) => boolean, ready: boolean) => (size >= MIN_COHORT && ready ? members.filter(pred).length / size : null);
         cohorts.push({
           day: d, at: dayStartMs(d), size,
           d1: rate((r) => r.active.has(d + 1), d + 1 < today),
@@ -195,53 +244,53 @@ export class Metrics {
         });
       }
       const crafted = onchain ? rows.filter((r) => this.data.crafters[r.a] !== undefined).length : null;
-      const craftShare = { crafted: onchain && rows.length >= MIN_COHORT ? crafted : null, players: rows.length, rate: onchain && rows.length >= MIN_COHORT ? crafted! / rows.length : null };
-      return { g: { daily, cohorts, craftShare }, rows };
+      const known = onchain && rows.length >= MIN_COHORT;
+      const g: MetricsGroup = { daily, cohorts, craftShare: { crafted: known ? crafted : null, players: rows.length, rate: known ? crafted! / rows.length : null } };
+      return { g, rows };
     };
     const humans = group(false);
     const agents = group(true);
-    return {
-      generatedAt: this.now(), days: span, onchain, minCohort: MIN_COHORT,
-      gate: this.gate(humans.rows, today),
-      humans: humans.g, agents: agents.g,
-    };
+    return { generatedAt: this.now(), days: span, onchain, minCohort: MIN_COHORT, gate: this.gate(humans.rows, today), humans: humans.g, agents: agents.g };
   }
 
   /** The gate over the last GATE_DAYS complete days (humans only). Weighted across cohorts and days, not an average of rates. */
-  private gate(rows: { a: string; w: Wallet; active: Set<number> }[], today: number): MetricsReport['gate'] {
+  private gate(rows: Row[], today: number): MetricsReport['gate'] {
     const lo = today - GATE_DAYS;
     // Retention: cohorts first active in the window whose comparison day is complete.
-    const cohort = (k: number, pred: (r: (typeof rows)[number], d: number) => boolean) => {
-      const m = rows.filter((r) => r.w.first >= lo && r.w.first + k < today);
-      return m.length >= MIN_COHORT ? m.filter((r) => pred(r, r.w.first)).length / m.length : null;
+    const cohort = (k: number, pred: (r: Row) => boolean) => {
+      const m = rows.filter((r) => r.first >= lo && r.first + k < today);
+      return m.length >= MIN_COHORT ? m.filter(pred).length / m.length : null;
     };
-    const d1 = cohort(1, (r, d) => r.active.has(d + 1));
-    const d7 = cohort(7, (r, d) => r.active.has(d + 7));
-    const craft = this.onchain ? cohort(7, (r, d) => { const c = this.data.crafters[r.a]; return c !== undefined && c <= d + 7; }) : null;
+    const d1 = cohort(1, (r) => r.active.has(r.first + 1));
+    const d7 = cohort(7, (r) => r.active.has(r.first + 7));
+    const craft = this.onchain ? cohort(7, (r) => { const c = this.data.crafters[r.a]; return c !== undefined && c <= r.first + 7; }) : null;
     let matches = 0; let packs = 0; let active = 0;
     for (let d = lo; d < today; d++) {
       const c = this.data.days[d]?.h;
       if (c) { matches += c.matches; packs += c.packs; }
-      active += rows.filter((r) => r.active.has(d)).length;
     }
+    for (const r of rows) for (const d of r.days) if (d >= lo && d < today) active++;
     const mpa = active >= MIN_COHORT ? matches / active : null;
     const ppa = this.onchain && active >= MIN_COHORT ? packs / active : null;
     const row = (id: MetricsGateRow['id'], value: number | null): MetricsGateRow =>
       ({ id, label: GATE[id].label, target: GATE[id].target, value, met: value === null ? null : value >= GATE[id].target });
     const out = [row('d1', d1), row('d7', d7), row('matches', mpa), row('packs', ppa), row('craft', craft)];
-    const known = out.filter((r) => r.met !== null);
-    return { days: GATE_DAYS, rows: out, passed: known.length === out.length ? known.every((r) => r.met) : null };
+    // One measured number below its target is already "not yet"; "met" needs every number measured and met.
+    const passed = out.some((r) => r.met === false) ? false : out.every((r) => r.met === true) ? true : null;
+    return { days: GATE_DAYS, rows: out, passed };
   }
 
-  private memo = new Map<number, { at: number; report: MetricsReport }>();
-  /** `report` for the public route: unauthenticated callers can't make the referee recompute it more than every 30 s. */
+  private memo?: { at: number; report: MetricsReport };
+  /**
+   * `report` for the public route. One full report (the longest window) is computed at most every 30 s and every
+   * window is cut from it, so unauthenticated callers can't make the referee do more than one pass per 30 s.
+   */
   cachedReport(days = 30): MetricsReport {
     const span = Math.max(1, Math.min(MAX_DAYS, Math.floor(days) || 30));
-    const hit = this.memo.get(span);
-    if (hit && this.now() - hit.at < 30_000) return hit.report;
-    const report = this.report(span);
-    this.memo.set(span, { at: this.now(), report });
-    return report;
+    if (!this.memo || this.now() - this.memo.at >= 30_000) this.memo = { at: this.now(), report: this.report(MAX_DAYS) };
+    const full = this.memo.report;
+    const cut = (g: MetricsGroup): MetricsGroup => ({ ...g, daily: g.daily.slice(-span), cohorts: g.cohorts.slice(-span) });
+    return { ...full, days: span, humans: cut(full.humans), agents: cut(full.agents) };
   }
 
   /** The daily numbers of both groups as CSV (no wallets). */

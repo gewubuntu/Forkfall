@@ -299,65 +299,11 @@ The alpha's gate before paid packs is four numbers. This section defines each on
 - The gate: each tile shows its target and whether it is met over the last 14 days.
 
 **Decisions (made).**
-1. *Public aggregates* (like `/economy`), not admin-only: it is a testnet alpha and the numbers are what the community judges; the privacy rules above make it safe. Behind a 30 s cache so an unauthenticated caller can't make the referee recompute it.
-2. *The gate's targets* (proposed; tuned on the first weeks of real data): day-1 retention at least 35%, day-7 at least 12%, 4 matches and 1 pack opened per active player per day, 15% of players crafting by day 7. They are typical free-to-play card-game benchmarks, not facts about Forkfall. The gate is judged over the last 14 complete days; a number with fewer than 5 players behind it reads "not enough data", never "failed", and on a server without a chain the pack and craft numbers read "n/a", so the gate stays open until they can be measured.
+1. *Public aggregates* (like `/economy`), not admin-only: it is a testnet alpha and the numbers are what the community judges; the privacy rules above make it safe. Behind a cache so an unauthenticated caller can't make the referee recompute it.
+2. *The gate's targets* (proposed; tuned on the first weeks of real data): day-1 retention at least 35%, day-7 at least 12%, 4 matches and 1 pack opened per active player per day, 15% of players crafting by day 7. They are typical free-to-play card-game benchmarks, not facts about Forkfall. The gate is judged over the last 14 complete days; a number with fewer than 5 players behind it reads "not enough data", never "failed", and on a server without a chain the pack and craft numbers read "n/a", so the gate stays open until they can be measured (one measured number below its target already reads "not yet").
 3. *Humans in the headline*, agents on their own row.
 
-**Building it.**
-- *Engine:* `MatchConfig.format` (`'constructed'` by default, `'sealed'`): a Sealed match skips the one-race check and checks copy limits only, and the format is recorded so replays verify. `sealedPool(seed)` (the on-chain roll, duplicate protection counted within the pool), `validateSealedDeck(deck, pool)` and `autoBuildSealed(pool)`. No card rules change, so no rules version bump.
-- *Referee:* a Sealed module (run state, commit-reveal, record pairing, prizes, titles; its own state file), a `sealed` queue next to casual that creates casual matches tagged with the run, and routes: `GET /v1/sealed`, `POST /v1/sealed/start`, `POST /v1/sealed/deck`, `POST /v1/sealed/queue`, `DELETE /v1/sealed/queue`, `POST /v1/sealed/abandon`. The queue lives in memory (a restart empties it; players just queue again) and the run state in its own file.
-- *Web:* a Sealed entry on Play and an event page (`/sealed`): record dots, open packs, build, queue, prize and history, the proof of the pool.
-- *Paid runs:* later, reading the run's pack ids from `PackOpened` events.
-
-**Decisions (made).**
-1. *Best of one.* A run is about 6 five-minute matches.
-2. *An empty queue.* After 45 seconds with no opponent, a Sealed player is matched against a house bot playing its own Sealed deck (rolled from its own seed, shown in the replay). The queue says so from the start ("no opponent in 45 s: you'll play a house bot") with a countdown, and the match is badged as a bot match. Its matches count for the run, earn pass XP at the bot rate, and never count for referrals.
-3. *Free-run prizes (a gentler table; paid runs later keep the original one).* Paid through `QuestRewards` as one claim per run:
-
-| Wins | 0–1 | 2–3 | 4 | 5 | 6 | 7 |
-| --- | --- | --- | --- | --- | --- | --- |
-| Free-run prize | 50 Scrap | 100 Scrap | 1 pack | 1 pack + 50 Scrap | 1 pack + 100 Scrap | 2 packs + a title step |
-
-   About 0.4 packs and 60 Scrap a run at a 50% win rate (about 3 packs a week of daily play, 8 at a 70% win rate). Original table kept for paid runs: 1, 2, 3, 4 or 5 packs for 0–1, 2–3, 4–5, 6 or 7 wins.
-
-### Gifts and referrals
-
-Built (testnet alpha), except the prize-pool meter (stage 2). The season pass can be gifted too (`SeasonPass.buyWithEth(player)` / `buyWithToken(token, player)` take any address).
-
-- **Gift a pack:** in the shop, tick *Gift to a friend* and enter their wallet. An add-on contract, `PackGifts`, holds `PackSale`'s pack-granter role: it charges `PackSale`'s own prices and bundle discounts (ETH or test USDC), pays `PackSale`'s treasury, and grants the sealed packs to the friend, with the same odds, pity timer, duplicate protection and foils as packs bought for yourself. `PackSale` itself is unchanged; a live hub adds it with `script/AddPackGifts.s.sol`.
-- **Gift on a challenge:** on your open challenge, attach 1 to 3 Set 1 packs for whoever plays it. You pay now; the packs are held in `PackGifts` under a gift id the referee issues for that challenge (random, so it can't be traced back to the challenge code), and the referee delivers them to the friend the moment the match ends (any length). Only a gift paid by the challenger counts. If nobody plays, the buyer takes it back after three days (Profile → *Invite friends*; `PackGifts.refund`, open to anyone, always pays the buyer). The friend sees the gift on the challenge page before accepting.
-- **Referral:** your invite link (`/?ref=<your address>`, on Profile) or any of your challenge links. A wallet counts as invited only if it has never played on this referee, the first time it signs in through a link or accepts your challenge; nobody invites themselves, and nobody is invited twice. When the invited player finishes 5 matches of at least four turns against people or agents (practice against a house bot doesn't count) within 14 days of the invite and verifies as human or registers as an agent (within 40 days), both get a Set 1 pack through `QuestRewards`, with a unique claim id per (chain, inviter, invited, side), so a retry never pays twice. The inviter is paid for at most 10 referrals per season pass season; past that the invited player is still paid. The inviter's pack follows the reward rule like any other (held until the inviter verifies). Profile shows your link, each friend's progress and the packs. Farming is bounded by three gates together: the matches must be against real opponents, verification is required, and the inviter's cap holds whatever the invited side does. On testnet, where verification is one click and pairs of linked wallets can play each other, none of the three gates stops a determined farmer: the backstop is `QuestRewards` itself, whose per-claim caps and global daily budget bound what referrals can pay out in a day, and a real proof-of-personhood provider closes the gap before anything of value is at stake.
-- **Prize-pool meter:** from stage 2 the shop shows the season prize pool and the share of every pack that goes into it (30%), so buying a pack visibly grows the prize.
-
-**Build order:** season pass first (cheapest, safest legally, drives daily play; **built**, see *Season pass*), then gifts and referrals (**built**), then Sealed (**built**, see *Sealed events*). In the testnet alpha, measure day-1 and day-7 retention, matches per player per day, packs opened per active player and the share of players who craft: those numbers are the alpha's gate before paid packs.
-
-### Alpha metrics
-
-The alpha's gate before paid packs is four numbers. This section defines each one exactly, where the data comes from, and how it is stored and shown. **Status: built** (`/metrics`, `GET /v1/metrics`).
-
-**Definitions** (all per UTC day, humans and agents reported separately, house bots never counted):
-- *Active player:* a wallet with at least one finished match that day that was not a practice match against a house bot. (A sign-in alone is not activity: it would flatter retention.) Sealed matches against a house bot count, since they are the real game for a player with an empty queue; only the Practice tab is excluded.
-- *New player:* a wallet's first active day (its cohort day).
-- *Day-1 retention:* of the wallets whose cohort day was D, the share active on D+1. *Day-7 retention:* the share active on D+7 exactly. A softer *within a week* figure (active on any of D+1 to D+7) is shown next to it, because a weekly player is not a lost one.
-- *Matches per active player per day:* finished non-practice matches that day, divided by active players that day (a match counts once for each human seat).
-- *Packs opened per active player per day:* `PackOpened` events that day (from PackSale; gifted packs count for the opener), divided by active players.
-- *Crafting share:* of wallets with at least one active day, the share that ever crafted (`Crafted`), cumulative, and the same measured per cohort at day 7.
-
-**Sources.**
-- *Referee:* every finished match is already seen by the `lobby.onChange` hook that feeds quests and referrals; a metrics module records it there, along with the mode, whether a seat is a bot or a registered agent, and the Sealed tag. (The finished-match record quests use does not carry the Sealed tag or the agent flag yet, so it gains both: today a Sealed match against a house bot looks the same as Practice, and the two must be told apart.) No new traffic and no client-side tracking.
-- *Chain:* `PackOpened` (PackSale) and `Crafted`/`Scrapped` (Crafting) are read with `getLogs` from a stored block cursor (first run: the address book's `deployedAtBlock`), so a restart resumes where it stopped and a gap is back-filled. On an off-chain server these two numbers read "n/a" rather than zero.
-
-**Storage and privacy.** One small file next to the others (`METRICS_FILE`): per wallet only its cohort day and a bitmap of the days it was active (a few bytes), plus per-day counters (matches, active players, packs opened, crafts). No IP addresses, no user agents, no match contents, no emails. Wallet addresses are pseudonymous but still personal data in the EU, so the file is never served as is: the API returns aggregates only, and a cohort smaller than 5 wallets shows its size but no percentage, so a single player can't be read off the dashboard. Files older than 400 days are summarised and dropped.
-
-**Output.**
-- `GET /v1/metrics?days=30`: the four numbers per day, cohort tables for day-1 and day-7 retention, and the totals, for humans, agents and both.
-- A `/metrics` page in the web app: four headline tiles against the gate, a retention curve and a daily matches/packs chart, a cohort table, and an *export CSV* link (also `pnpm metrics --csv` against a running server).
-- The gate: each tile shows its target and whether it is met over the last 14 days.
-
-**Open decisions** (each has a recommendation):
-1. *Public or admin-only.* Recommended: public aggregates, like `/economy`: it is a testnet alpha, the numbers are what the community is judging, and the privacy rules above make it safe. The alternative is a token-protected endpoint for the team only.
-2. *The gate's targets.* Proposed, to be tuned on the first two weeks of real data: day-1 retention at least 35%, day-7 at least 12%, 4 matches per active player per day, 1 pack opened per active player per day, 15% of active players crafting by day 7. These are typical free-to-play card-game benchmarks, not facts about Forkfall; the first weeks may well argue for different numbers.
-3. *Agents in the headline.* Recommended: headline figures are humans only (verified or not); agents get their own row, since an always-on agent plays many matches a day and would swamp every average.
+**Known limits.** Matches are counted from the day the store starts (the archive of earlier matches is not backfilled), and chain events from before that day are skipped so packs per player aren't inflated by history; existing players therefore appear as "new" on their first counted day. Logs are read 5 blocks behind the head, so a shallow reorg can't count a pack twice; if the chain is reset (a local node restart) the cursor jumps to the new head, and without a `deployedAtBlock` in the address book packs and crafts are counted only from now. A wallet is an agent from the first match it plays as one (registered or self-declared), and its earlier counters stay where they were written. The public route computes one report (the longest window) at most every 30 s and cuts every window from it.
 
 **As built.** `apps/server/src/metrics.ts` (store, `record(finishedMatch)`, chain-log cursor, aggregation); one call in `lobby.onChange` and a poller next to the settle loop; the `GET /v1/metrics` route; SDK `metrics()`; the web page; tests for the definitions (a fixture of wallets and days with known day-1/day-7 answers, the small-cohort rule, restart and back-fill of the log cursor); README route and `METRICS_FILE`. No contract changes and no rules change.
 

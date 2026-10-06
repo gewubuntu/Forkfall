@@ -137,7 +137,7 @@ describe('chain logs', () => {
       { kind: 'craft' as const, owner: players[1], at: at(D + 9), block: 160 }, // after day 7
     ];
     const { chain, asked } = fakeChain(events, 3000);
-    const m = new Metrics({ now: () => NOON, chain });
+    const m = new Metrics({ now: () => NOON, chain, since: TODAY - 30 });
     for (const p of players) m.record(match(p, null, D, { botB: true, sealed: true }));
     await m.poll();
     expect(asked[0][0]).toBe(100); // the deployment block
@@ -152,10 +152,10 @@ describe('chain logs', () => {
     const file = join(mkdtempSync(join(tmpdir(), 'metrics-')), 'm.json');
     const events = [{ kind: 'pack' as const, owner: wallet(1), at: at(TODAY), block: 105 }];
     const a = fakeChain(events, 5000);
-    const one = new Metrics({ file, now: () => NOON, chain: a.chain });
+    const one = new Metrics({ file, now: () => NOON, chain: a.chain, since: TODAY - 30 });
     await one.poll(); // 5 chunks of 2000 blocks: 100 to 10099 clipped at the head
     const b = fakeChain(events, 5000);
-    const two = new Metrics({ file, now: () => NOON, chain: b.chain });
+    const two = new Metrics({ file, now: () => NOON, chain: b.chain, since: TODAY - 30 });
     await two.poll();
     expect(b.asked).toEqual([]); // nothing left to read
     expect(two.report(1).humans.daily[0].packs).toBe(1);
@@ -239,6 +239,7 @@ describe('metricsChain (the viem adapter)', () => {
     const chain = Object.assign(new Chain(null), { client, book: { chainId: 31337, PackSale: '0xpack', Crafting: '0xcraft', deployedAtBlock: 42 } });
     const mc = metricsChain(chain as unknown as Chain)!;
     expect(mc.startBlock).toBe(42);
+    expect(metricsChain(Object.assign(new Chain(null), { client, book: { chainId: 31337, PackSale: '0xpack', Crafting: '0xcraft' } }) as unknown as Chain)!.startBlock).toBeUndefined();
     expect(await mc.head()).toBe(500);
     const ev = await mc.events(1, 10);
     expect(ev).toEqual([
@@ -247,5 +248,71 @@ describe('metricsChain (the viem adapter)', () => {
     expect(blockReads).toBe(1);
     expect(calls.map((c) => c.address).sort()).toEqual(['0xcraft', '0xpack']);
     expect(metricsChain(new Chain(null))).toBeNull(); // off-chain
+  });
+});
+
+
+describe('review fixes', () => {
+  it('serves every window from one report computed at most every 30 s', () => {
+    const clock = { t: NOON };
+    const m = new Metrics({ now: () => clock.t });
+    m.record(match(wallet(1), wallet(2), TODAY));
+    const a = m.cachedReport(7);
+    const b = m.cachedReport(90);
+    expect(a.generatedAt).toBe(b.generatedAt); // the same computation
+    expect(a.humans.daily).toHaveLength(7);
+    expect(b.humans.daily).toHaveLength(90);
+    expect(a.humans.daily[6]).toEqual(b.humans.daily[89]);
+    clock.t += 31_000;
+    expect(m.cachedReport(7).generatedAt).toBe(clock.t);
+  });
+
+  it('is "not yet" as soon as one measured number is below its target', () => {
+    const m = new Metrics({ now: () => NOON });
+    const D = TODAY - 9;
+    for (let i = 1; i <= 10; i++) m.record(match(wallet(i), null, D, { botB: true, sealed: true })); // nobody returns
+    const g = m.report(30).gate;
+    expect(g.rows.find((r) => r.id === 'd1')).toMatchObject({ value: 0, met: false });
+    expect(g.rows.some((r) => r.met === null)).toBe(true); // packs and crafts can't be measured without a chain
+    expect(g.passed).toBe(false);
+  });
+
+  it('ignores a late re-notification of a match older than its dedupe window', () => {
+    const m = new Metrics({ now: () => NOON });
+    const first = match(wallet(1), wallet(2), TODAY - 1);
+    m.record(first);
+    for (let i = 0; i < 5001; i++) m.record(match(wallet(1), wallet(2), TODAY - 1));
+    const before = m.report(2).humans.daily[0].matches;
+    m.record(first); // fires again long after it fell out of the ring
+    expect(m.report(2).humans.daily[0].matches).toBe(before);
+  });
+
+  it('skips chain events from before the store started counting', async () => {
+    const events = [{ kind: 'pack' as const, owner: wallet(1), at: at(TODAY - 20), block: 105 }, { kind: 'pack' as const, owner: wallet(1), at: at(TODAY), block: 106 }];
+    const m = new Metrics({ now: () => NOON, chain: fakeChain(events, 5000).chain, since: TODAY - 3 });
+    await m.poll();
+    const days = m.report(30).humans.daily;
+    expect(days.reduce((s, d) => s + (d.packs ?? 0), 0)).toBe(1);
+  });
+
+  it('reads only confirmed blocks, and recovers when the chain was reset', async () => {
+    const f = fakeChain([], 1000);
+    const m = new Metrics({ now: () => NOON, chain: f.chain, since: TODAY - 3 });
+    await m.poll();
+    expect(f.asked.at(-1)![1]).toBe(995); // head 1000 minus 5 confirmations
+    // A local chain restarted: the head is far behind the saved cursor.
+    const g = fakeChain([{ kind: 'pack' as const, owner: wallet(1), at: at(TODAY), block: 12 }], 20);
+    (m as unknown as { opts: { chain: MetricsChain } }).opts.chain = g.chain;
+    await m.poll();
+    await m.poll();
+    expect(g.asked).toEqual([]); // reset to the new head, nothing behind it to read
+  });
+
+  it('counts from now when the address book has no deployment block', async () => {
+    const asked: [number, number][] = [];
+    const chain: MetricsChain = { head: async () => 9000, events: async (f, t) => { asked.push([f, t]); return []; } };
+    const m = new Metrics({ now: () => NOON, chain });
+    await m.poll();
+    expect(asked).toEqual([]); // not a scan from genesis
   });
 });
