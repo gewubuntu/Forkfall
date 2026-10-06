@@ -6,7 +6,7 @@ import {
 } from '@forkfall/sdk';
 import {
   BaseError, ContractFunctionRevertedError, createPublicClient, createWalletClient, http,
-  type Address, type Hex, type LocalAccount, type PublicClient,
+  parseAbiItem, type Address, type Hex, type LocalAccount, type PublicClient,
 } from 'viem';
 
 const TESTNETS = new Set([31337, 84532, 46630, 11155111]);
@@ -215,6 +215,40 @@ export interface HeldGift { from: Address; kind: number; count: number; state: '
 export interface GiftDeliverer {
   read(giftId: Hex): Promise<HeldGift>;
   deliver(giftId: Hex, to: Address): Promise<Hex>;
+}
+
+/** PackOpened (PackSale) and Crafted (Crafting) logs for the alpha metrics, or null off-chain. */
+export function metricsChain(chain: Chain): import('./metrics.ts').MetricsChain | null {
+  const client = chain.client;
+  const book = chain.book;
+  if (!client || !book?.PackSale || !book?.Crafting) return null;
+  const packOpened = parseAbiItem('event PackOpened(uint256 indexed packId, address indexed owner, uint256[5] cardIds)');
+  const crafted = parseAbiItem('event Crafted(address indexed player, uint256 indexed id, uint256 scrapSpent)');
+  const stamps = new Map<bigint, number>();
+  const stamp = async (block: bigint) => {
+    let t = stamps.get(block);
+    if (t === undefined) {
+      t = Number((await client.getBlock({ blockNumber: block })).timestamp) * 1000;
+      if (stamps.size > 5000) stamps.clear();
+      stamps.set(block, t);
+    }
+    return t;
+  };
+  return {
+    startBlock: book.deployedAtBlock !== undefined ? Number(book.deployedAtBlock) : undefined,
+    head: async () => Number(await client.getBlockNumber()),
+    async events(from, to) {
+      const range = { fromBlock: BigInt(from), toBlock: BigInt(to) };
+      const [packs, crafts] = await Promise.all([
+        client.getLogs({ address: book.PackSale as Address, event: packOpened, ...range }),
+        client.getLogs({ address: book.Crafting as Address, event: crafted, ...range }),
+      ]);
+      const out: import('./metrics.ts').ChainEvent[] = [];
+      for (const l of packs) out.push({ kind: 'pack', owner: l.args.owner!, at: await stamp(l.blockNumber!) });
+      for (const l of crafts) out.push({ kind: 'craft', owner: l.args.player!, at: await stamp(l.blockNumber!) });
+      return out;
+    },
+  };
 }
 
 export function giftDeliverer(chain: Chain, referee: LocalAccount): GiftDeliverer | null {
