@@ -205,9 +205,13 @@ contract AgentLeague is AccessControl, TestnetOnly, ReentrancyGuardTransient {
         emit MatchStarted(matchId, week, a, b, fee);
     }
 
-    /// @notice A started match that can never finish (e.g. aborted by the referee): full refund.
-    function cancelMatch(bytes32 matchId) external onlyRole(REFEREE_ROLE) {
+    /// @notice A started match that can never finish: full refund. The referee cancels any time (e.g. an aborted
+    ///         match); once the match's week is published its result can never land, so anyone may.
+    function cancelMatch(bytes32 matchId) external {
         LeagueMatch storage m = matches[matchId];
+        if (!hasRole(REFEREE_ROLE, msg.sender) && payoutRoot[m.week] == bytes32(0)) {
+            revert AccessControlUnauthorizedAccount(msg.sender, REFEREE_ROLE);
+        }
         if (m.state != State.Started) revert BadMatchState(matchId);
         m.state = State.Cancelled;
         balanceOf[m.a] += m.fee;

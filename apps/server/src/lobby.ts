@@ -16,12 +16,16 @@ import {
   type ArchivedMatch, type ArchiveSummary, type BotKind, type Challenge, type LobbyOptions, type Match, type SavedLobby,
   type SavedMatch, type Seatholder,
 } from './lobby/types.ts';
+import type { RefereeSettler } from './chain.ts';
 import type { LiveBus } from './live.ts';
 
 // The lobby's parts live in ./lobby/; everything is re-exported here, so importers keep using './lobby.ts'.
 export * from './lobby/types.ts';
 export { RATING_WINDOW, ratingWindow } from './lobby/matchmaking.ts';
 export { CHALLENGE_REVEAL_MS, CHALLENGE_TTL_MS, MAX_INCOMING_CHALLENGES, MAX_OPEN_CHALLENGES } from './lobby/challenges.ts';
+
+/** A charged league match still unsettled this long after it ended is cancelled and its fees refunded. */
+export const LEAGUE_SETTLE_TIMEOUT_MS = 6 * 60 * 60_000;
 
 /**
  * The referee. Runs the one rules engine, verifies each EIP-712-signed move against the
@@ -532,6 +536,11 @@ export class Lobby {
     const maxAttempts = this.opts.settleAttempts ?? 3;
     for (const m of this.matches.values()) {
       if (m.phase !== 'ended' || !m.result || !this.autoSettles(m)) continue;
+      if (await this.refundIfStuck(m, settler)) {
+        out.failed.push({ matchId: m.id, error: m.league!.error! });
+        this.changed(m);
+        continue;
+      }
       const r = m.referee;
       if (r && (r.state !== 'failed' || r.attempts >= maxAttempts || (r.retryAt ?? 0) > this.now())) continue;
       let s;
@@ -563,7 +572,7 @@ export class Lobby {
         if (m.mode === 'league' && /ResultsClosed/.test(error)) {
           // Its week's payouts are already published: the result can never land, so refund both entry fees.
           m.referee = { state: 'failed', attempts: maxAttempts, error };
-          this.league.refund(m);
+          this.refundLeague(m, error);
         } else {
           m.referee = { state: 'failed', attempts, error, retryAt: attempts < maxAttempts ? this.now() + 60_000 * attempts : undefined };
         }
@@ -572,6 +581,29 @@ export class Lobby {
       this.changed(m);
     }
     return out;
+  }
+
+  /**
+   * A charged league match whose result still isn't on-chain long after it ended (e.g. a draw one agent never
+   * signs, or settling kept failing) holds both entry fees in AgentLeague: cancel it so they're refunded.
+   */
+  private async refundIfStuck(m: Match, settler: RefereeSettler): Promise<boolean> {
+    if (m.mode !== 'league' || m.league?.state !== 'charged' || m.league.refundedAt !== undefined) return false;
+    if (m.referee?.state === 'submitting' || m.referee?.state === 'settled' || m.endedAt === undefined) return false;
+    if (this.now() < m.endedAt + (this.opts.leagueSettleTimeoutMs ?? LEAGUE_SETTLE_TIMEOUT_MS)) return false;
+    try {
+      if (await settler.isSettled(m.id, m.result!.playerA, m.result!.playerB)) {
+        m.referee = { state: 'settled', attempts: m.referee?.attempts ?? 0 };
+        return false;
+      }
+    } catch { return false; } // ask again next time
+    this.refundLeague(m, 'not settled in time: match cancelled, entry fees refunded');
+    return true;
+  }
+
+  private refundLeague(m: Match, error: string) {
+    m.league = { ...m.league!, refundedAt: this.now(), error };
+    this.league.refund(m);
   }
 
   /** Who can settle right now: nobody yet, anyone with the signatures, or only the referee. */

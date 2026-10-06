@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Fixture} from "./Fixture.sol";
 import {AgentLeague} from "../src/AgentLeague.sol";
 import {MatchSettlement} from "../src/MatchSettlement.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 /// @notice A wallet that accepts signatures only once `target` is settled in the league.
 contract SettledOnlyWallet {
@@ -199,6 +200,24 @@ contract LeagueTest is Fixture {
         vm.prank(referee);
         league.cancelMatch(id);
         assertEq(league.balanceOf(alice), 10e6);
+    }
+
+    function test_anyoneCanCancelOnceTheWeekIsPublished() public {
+        bytes32 id = start();
+        bytes32 role = league.REFEREE_ROLE();
+        vm.prank(carl);
+        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, carl, role));
+        league.cancelMatch(id);
+        vm.warp(block.timestamp + 7 days);
+        vm.prank(admin);
+        league.publishWeek(1, keccak256("root"), uint64(block.timestamp + 7 days));
+        vm.prank(carl);
+        league.cancelMatch(id);
+        assertEq(league.balanceOf(alice), 10e6);
+        assertEq(league.balanceOf(bob), 10e6);
+        vm.prank(carl);
+        vm.expectRevert(abi.encodeWithSelector(AgentLeague.BadMatchState.selector, id));
+        league.cancelMatch(id);
     }
 
     function test_erc6492FactoryCallCannotActAsTheSettlement() public {

@@ -483,6 +483,71 @@ describe('Agent League queue', () => {
   });
 });
 
+describe('Agent League: stuck matches', () => {
+  let t = Date.now();
+  const operators = new Map<string, Address>();
+  const started: Hex[] = [];
+  const cancelled: Hex[] = [];
+  const league = {
+    entryFee: async () => 500_000n,
+    currentWeek: async () => 3,
+    balanceOf: async () => 5_000_000n,
+    operatorOf: async (a: Address) => operators.get(a.toLowerCase()) ?? ZERO_ADDRESS,
+    start: async (id: Hex) => { started.push(id); return ('0x' + 'ee'.repeat(32)) as Hex; },
+    started: async (id: Hex) => started.includes(id),
+    cancel: async (id: Hex) => { cancelled.push(id); return ('0x' + '00'.repeat(32)) as Hex; },
+    info: async () => ({ enabled: true }) as never,
+  };
+  // Settling never goes through (say the RPC keeps failing), so the result never lands on-chain.
+  const settler = {
+    isSettled: async () => false,
+    settleByReferee: async (): Promise<Hex> => { throw new Error('boom'); },
+    settle: async (): Promise<Hex> => { throw new Error('boom'); },
+  };
+  const lob = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), league, settler, leagueRecheckMs: 0, now: () => t });
+  const api = createApi(lob, { ratePerSec: 10_000 });
+  let base = '';
+  beforeAll(async () => {
+    await new Promise<void>((r) => api.server.listen(0, r));
+    base = `http://127.0.0.1:${(api.server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => api.server.close());
+
+  it('cancels and refunds a charged match whose result never lands, once, after the timeout', async () => {
+    const agents = await Promise.all([0, 1].map(async () => {
+      const c = new ForkfallClient(base, privateKeyToAccount(generatePrivateKey()));
+      await c.connect({ agent: true });
+      operators.set(c.address.toLowerCase(), privateKeyToAccount(generatePrivateKey()).address);
+      return c;
+    }));
+    await agents[0].queue({ mode: 'league', race: 'agents' });
+    const q = await agents[1].queue({ mode: 'league', race: 'prophets' });
+    await agents[0].reveal(q.matchId!); await agents[1].reveal(q.matchId!);
+    const m = lob.get(q.matchId!);
+    for (let i = 0; i < 50 && m.phase === 'reveal'; i++) await new Promise((r) => setTimeout(r, 5));
+    await Promise.all(agents.map((c) => runMatch(c, q.matchId!, { pollMs: 5 })));
+    await lob.stepBots();
+    expect(m.league).toMatchObject({ state: 'charged' });
+
+    await lob.settleDue(); // fails ('boom'), will retry
+    t += 6 * 60 * 60_000 - 1;
+    await lob.settleDue();
+    expect(cancelled).toEqual([]);
+
+    t += 1;
+    const r = await lob.settleDue();
+    expect(r.failed).toEqual([{ matchId: q.matchId, error: expect.stringMatching(/not settled in time/) }]);
+    for (let i = 0; i < 50 && cancelled.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(cancelled).toEqual([q.matchId]);
+    expect(m.league?.refundedAt).toBe(t);
+
+    t += 60 * 60_000;
+    await lob.settleDue();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(cancelled).toEqual([q.matchId]); // only once
+  });
+});
+
 describe('moves racing the house bot', () => {
   it('refuses a move whose position the board moved past while its signature was being checked', async () => {
     const a = newClient(); const b = newClient();
