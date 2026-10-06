@@ -294,7 +294,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
         return opts.invites.status(need(session).address);
       }
       case 'GET /sealed': return needSealed().status(need(session).address);
-      case 'POST /sealed/start': return needSealed().start(need(session).address, body?.share);
+      case 'POST /sealed/start': return needSealed().start(need(session).address, body?.share, body?.commit);
       case 'POST /sealed/deck': return needSealed().setDeck(need(session).address, body?.deck);
       case 'POST /sealed/queue': { const s = need(session); return needSealed().enqueue(s.address, body?.seedCommit, s.agent); }
       case 'DELETE /sealed/queue': return needSealed().leave(need(session).address);

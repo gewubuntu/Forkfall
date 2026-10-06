@@ -516,9 +516,11 @@ export class ForkfallClient {
   // ─── Sealed (a casual fun mode: 6 packs, a deck, 7 wins or 3 losses) ───
   sealed() { return this.req<SealedStatus>('GET', '/v1/sealed'); }
   /** Start today's free run: `share` is your random contribution to the pool seed. */
-  async sealedStart() {
+  async sealedStart(commit?: Hex) {
     const share = randomHex32() as Hex;
-    return this.req<SealedStatus>('POST', '/v1/sealed/start', { share });
+    // Bound to the commitment you were shown: the referee refuses if it no longer holds that seed.
+    commit ??= (await this.sealed()).pending.commit;
+    return this.req<SealedStatus>('POST', '/v1/sealed/start', { share, commit });
   }
   /** Set the deck for the rest of the run (30 cards from your pool, any races, plus the free basics). */
   sealedDeck(deck: number[]) { return this.req<SealedStatus>('POST', '/v1/sealed/deck', { deck }); }
@@ -563,6 +565,7 @@ export class ForkfallClient {
   async reveal(matchId: Hex) {
     if (!this.secrets.get(matchId)) await this.queueStatus();
     if (!this.secrets.get(matchId)) await this.challenges().catch(() => {});
+    if (!this.secrets.get(matchId)) await this.sealedStatus().catch(() => {});
     const s = this.secrets.get(matchId);
     if (!s) throw new Error('no secrets for this match (queued from another client?)');
     return this.req('POST', `/v1/matches/${matchId}/reveal`, { seedShare: s.seedShare, deckSalt: s.deckSalt });

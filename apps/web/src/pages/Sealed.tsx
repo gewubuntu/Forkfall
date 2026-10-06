@@ -91,7 +91,7 @@ export function Sealed() {
         {s.titles.length > 0 && <Link className="btn btn-ghost" to="/collection">Your Sealed titles</Link>}
       </header>
       {error && <p className="err" role="alert">{error}</p>}
-      {!run && <Start s={s} busy={busy} onStart={() => act(() => client!.sealedStart())} />}
+      {!run && <Start s={s} busy={busy} onStart={() => act(() => client!.sealedStart(s.pending.commit))} />}
       {run && <RunView run={run} busy={busy} act={act} botAfterMs={s.rules.botAfterMs} />}
       {s.history.length > 0 && (
         <section className="panel" aria-labelledby="sl-hist">

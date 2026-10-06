@@ -50,7 +50,7 @@ interface Store {
   runs: Record<string, Run>;
   titles: Record<string, string[]>;
   /** Finished runs and runs with 5+ wins, per wallet (for the titles; kept after the runs are forgotten). */
-  counts: Record<string, { finished: number; strong: number }>;
+  counts: Record<string, { finished: number; strong: number; lastDay?: number }>;
 }
 
 interface QueueEntry { address: string; runId: string; seedCommit: Hex; agent: boolean; at: number }
@@ -110,7 +110,7 @@ export class Sealed {
     const mine = Object.values(this.data.runs).filter((r) => r.address === a).sort((x, y) => y.startedAt - x.startedAt);
     const today = questDay(this.now());
     const last = mine[0];
-    const startedToday = !!last && last.day === today;
+    const startedToday = (!!last && last.day === today) || this.data.counts[a]?.lastDay === today;
     const current = mine.find((r) => r.state === 'open');
     return {
       pending: { commit: this.pendingFor(a).commit },
@@ -159,17 +159,20 @@ export class Sealed {
 
   // ─── Runs ────────────────────────────────────────────────────
   /** Start today's free run: the pool is rolled from the committed server seed, your share and the run id. */
-  start(address: string, share: string): SealedStatus {
+  start(address: string, share: string, commit: string): SealedStatus {
     const a = lc(address);
     if (!HEX32.test(share ?? '')) throw new ApiError(400, 'share (bytes32) required');
+    if (!HEX32.test(commit ?? '')) throw new ApiError(400, 'commit (the bytes32 commitment you were shown) required');
     const open = this.openRun(a);
     if (open) throw new ApiError(409, 'finish or abandon your open run first');
     const today = questDay(this.now());
-    if (Object.values(this.data.runs).some((r) => r.address === a && r.day === today)) {
+    if (this.data.counts[a]?.lastDay === today || Object.values(this.data.runs).some((r) => r.address === a && r.day === today)) {
       throw new ApiError(409, `one free run a day: the next one starts ${new Date(dayStartMs(today + 1)).toISOString()}`);
     }
     const p = this.pendingFor(a);
+    if (p.commit.toLowerCase() !== commit.toLowerCase()) throw new ApiError(409, 'the commitment changed (the referee restarted?): reload and start again');
     this.pending.delete(a);
+    (this.data.counts[a] ??= { finished: 0, strong: 0 }).lastDay = today; // survives pruning of old runs
     const id = keccakHex('forkfall-run', a, p.commit).slice(2, 18);
     this.data.runs[id] = {
       id, address: a, day: today, startedAt: this.now(), lastAt: this.now(), rules: RULES_VERSION, serverSeed: p.serverSeed, commit: p.commit,
@@ -219,6 +222,8 @@ export class Sealed {
     const a = lc(address);
     const run = this.requireOpen(a);
     this.reconcile(run);
+    const m = run.active ? this.opts.host.matches.get(run.active) : undefined;
+    if (m && (m.phase === 'reveal' || m.phase === 'active')) throw new ApiError(409, 'finish your match first (conceding counts as a loss)');
     if (run.state === 'open') this.finish(run, 'abandoned');
     return this.status(a);
   }
@@ -299,7 +304,7 @@ export class Sealed {
       }
       const entries = [...this.queue.values()].filter((e) => {
         const run = this.data.runs[e.runId];
-        const ok = !!run && run.state === 'open' && !run.active && !!run.deck;
+        const ok = !!run && run.state === 'open' && !run.active && !!run.deck && validateSealedDeck(run.deck).ok;
         if (!ok) this.queue.delete(e.address);
         return ok;
       }).sort((x, y) => x.at - y.at);

@@ -5,7 +5,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { Chain } from '../src/chain.ts';
 import { createApi } from '../src/http.ts';
 import { Lobby } from '../src/lobby.ts';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Address, Hex } from 'viem';
@@ -44,7 +44,7 @@ function setup() {
   });
   /** Start a run and set the best deck for whoever it is. */
   const begin = (who: Address) => {
-    sealed.start(who, share);
+    sealed.start(who, share, sealed.status(who).pending.commit);
     const run = sealed.status(who).run!;
     const deck = autoBuildSealed(sealedPool(run.packs));
     return { run: sealed.setDeck(who, deck).run!, deck };
@@ -79,13 +79,13 @@ describe('Sealed runs', () => {
   it('allows one free run a day and one open run at a time', () => {
     const { sealed, begin, after } = setup();
     begin(A);
-    expect(() => sealed.start(A, share)).toThrow(/open run/);
+    expect(() => sealed.start(A, share, sealed.status(A).pending.commit)).toThrow(/open run/);
     sealed.abandon(A);
-    expect(() => sealed.start(A, share)).toThrow(/one free run a day/);
+    expect(() => sealed.start(A, share, sealed.status(A).pending.commit)).toThrow(/one free run a day/);
     expect(sealed.status(A).canStart).toBe(false);
     after(DAY);
     expect(sealed.status(A).canStart).toBe(true);
-    expect(() => sealed.start(A, share)).not.toThrow();
+    expect(() => sealed.start(A, share, sealed.status(A).pending.commit)).not.toThrow();
   });
 
   it('refuses decks outside the pool, and deck changes while queued', async () => {
@@ -105,8 +105,47 @@ describe('Sealed runs', () => {
 
   it('needs a deck to queue', async () => {
     const { sealed } = setup();
-    sealed.start(A, share);
+    sealed.start(A, share, sealed.status(A).pending.commit);
     await expect(sealed.enqueue(A, commit, false)).rejects.toThrow(/build your deck/);
+  });
+});
+
+describe('Sealed review fixes', () => {
+  it('starts only under the commitment the player was shown', () => {
+    const { sealed } = setup();
+    const shown = sealed.status(A).pending.commit;
+    expect(() => sealed.start(A, share, ('0x' + '55'.repeat(32)) as Hex)).toThrow(/commitment changed/);
+    expect(() => sealed.start(A, share, undefined as unknown as string)).toThrow(/commit/);
+    expect(sealed.start(A, share, shown).run!.commit).toBe(shown);
+  });
+
+  it('refuses a stale commitment after a restart (pending seeds are memory only)', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'sealed-')), 'sealed.json');
+    const mk = () => new Sealed({ file, chainId: 31337, quests: new Quests({ chainId: 31337, rewarder: null }), host: { matches: new Map(), houseAddress: HOUSE, eligibleFor: async () => false, sealedMatch: () => { throw new Error('no'); } } });
+    const shown = mk().status(A).pending.commit;
+    expect(() => mk().start(A, share, shown)).toThrow(/commitment changed/);
+  });
+
+  it('keeps the one-run-a-day limit even after the finished run was forgotten', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'sealed-')), 'sealed.json');
+    const mk = () => new Sealed({ file, chainId: 31337, now: () => NOON, quests: new Quests({ chainId: 31337, rewarder: null }), host: { matches: new Map(), houseAddress: HOUSE, eligibleFor: async () => false, sealedMatch: () => { throw new Error('no'); } } });
+    const one = mk();
+    one.start(A, share, one.status(A).pending.commit);
+    one.abandon(A);
+    const data = JSON.parse(readFileSync(file, 'utf8'));
+    data.runs = {}; // pruned
+    writeFileSync(file, JSON.stringify(data));
+    const two = mk();
+    expect(two.status(A).canStart).toBe(false);
+    expect(() => two.start(A, share, two.status(A).pending.commit)).toThrow(/one free run a day/);
+  });
+
+  it('refuses to abandon while a match is in progress', async () => {
+    const { sealed, begin, after } = setup();
+    begin(A);
+    await sealed.enqueue(A, commit, false);
+    after(SEALED_BOT_AFTER_MS); sealed.tick();
+    expect(() => sealed.abandon(A)).toThrow(/finish your match/);
   });
 });
 
@@ -241,7 +280,7 @@ describe('Sealed persistence', () => {
       host: { matches: new Map(), houseAddress: HOUSE, eligibleFor: async () => false, sealedMatch: () => { throw new Error('no'); } },
     });
     const one = mk();
-    one.start(A, share);
+    one.start(A, share, one.status(A).pending.commit);
     const id = one.status(A).run!.id;
     const packs = one.status(A).run!.packs;
     const two = mk();
@@ -276,7 +315,8 @@ describe('Sealed over HTTP', () => {
       expect(queued.run!.queued).not.toBeNull();
       clock.t += SEALED_BOT_AFTER_MS;
       sealed.tick();
-      const st = await me.sealedStatus();
+      // The page was left during the wait: nothing adopted the queue's secrets, so reveal() has to find them itself.
+      const st = await me.sealed();
       const id = st.run!.activeMatch!.id as Hex;
       await me.reveal(id);
       for (let i = 0; i < 5; i++) await lobby.stepBots();
