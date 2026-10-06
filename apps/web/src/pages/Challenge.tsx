@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { friendlyError } from '../chain/errors.ts';
+import { GiftNote } from '../components/ChallengeGift.tsx';
 import { ChallengeWaiting, Challenger } from '../components/Challenges.tsx';
 import { WalletButton } from '../components/WalletButton.tsx';
 import { RACE_INFO } from '../game/meta.ts';
@@ -66,6 +67,7 @@ export function Challenge() {
         <span className="ch-kicker">⚔ Forkfall challenge</span>
         <h1><Challenger c={c} /></h1>
         <p className="lead">{c.rematchOf ? 'wants a rematch.' : 'challenges you to a casual match.'} Five-minute duel, four crypto-native races, no rating at stake.</p>
+        {c.gift && <GiftNote g={c.gift} />}
         <p className="muted small">
           {c.to ? <>For {shortAddr(c.to)} only. </> : null}
           {closed ? `This challenge was ${c.state}.` : `Expires in ${timeLeft(c.expiresAt - Date.now())}.`}

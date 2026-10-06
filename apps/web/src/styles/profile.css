@@ -67,3 +67,18 @@ textarea.proof { font-family: var(--font-mono); font-size: 12.5px; color: var(--
 .cos-prev .gcard-back { width: 26px; height: 36px; }
 .cos-prev .cos-title { margin: 0; font-size: 16px; padding: 2px 6px; }
 .cos-prev .cos-badge { margin: 0; width: 28px; height: 28px; font-size: 15px; }
+
+/* Invite friends (referrals) */
+.invites-card { display: grid; gap: 12px; }
+.invites-card .inv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.invites-card h2 { margin: 0; }
+.invites-card p { margin: 0; }
+.inv-by { display: grid; gap: 6px; }
+.inv-list, .inv-gifts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.inv-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--bg-2); border: 1px solid var(--line); }
+.inv-row .avatar.sm { width: 28px; height: 28px; flex: none; }
+.inv-main { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.inv-bar { display: block; height: 5px; border-radius: 3px; background: var(--bg); overflow: hidden; }
+.inv-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--base-2), var(--rh-2)); }
+.inv-gifts h3 { margin: 4px 0 6px; }
+.inv-gifts .inv-row { justify-content: space-between; }

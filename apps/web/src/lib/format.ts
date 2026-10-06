@@ -8,6 +8,9 @@ export function timeLeft(ms: number): string {
   return `${h} h ${m % 60} min`;
 }
 
+/** Like timeLeft, but in days past two days ("13 days"), for waits measured in days. */
+export const daysLeft = (ms: number) => (ms > 2 * 86_400_000 ? `${Math.floor(ms / 86_400_000)} days` : timeLeft(ms));
+
 export function chainDotClass(chainId?: number): string {
   return chainId === 84532 ? 'base' : chainId === 46630 ? 'rh' : 'local';
 }

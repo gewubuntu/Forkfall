@@ -9,6 +9,7 @@ import {PackSale} from "../src/PackSale.sol";
 import {Crafting} from "../src/Crafting.sol";
 import {QuestRewards} from "../src/QuestRewards.sol";
 import {SeasonPass} from "../src/SeasonPass.sol";
+import {PackGifts} from "../src/PackGifts.sol";
 import {VRFCoordinatorMock} from "../src/vrf/VRFCoordinatorMock.sol";
 import {AgentRegistry} from "../src/AgentRegistry.sol";
 import {HumanRegistry} from "../src/HumanRegistry.sol";
@@ -46,6 +47,7 @@ contract Deploy is ForkfallScript {
         Crafting crafting;
         QuestRewards quests;
         SeasonPass pass;
+        PackGifts gifts;
         AgentRegistry agents;
         HumanRegistry humans;
         DeckRegistry decks;
@@ -168,6 +170,9 @@ contract Deploy is ForkfallScript {
         // Season pass premium track: about four packs' price. Seasons start Monday 5 Oct 2026, 00:00 UTC.
         d.pass = new SeasonPass(admin, payable(admin), SEASON_PASS_EPOCH, packPrice * 4);
         d.pass.setTokenPrice(address(d.usdc), 8e6);
+        // Pack gifts: buy packs for a friend (or hold them for a friend challenge) at PackSale's prices.
+        d.gifts = new PackGifts(d.packs, admin, referee);
+        d.packs.grantRole(d.packs.PACK_GRANTER_ROLE(), address(d.gifts));
     }
 
     /// @notice Start of season pass season 1 (Monday 5 Oct 2026, 00:00 UTC): matches PASS_EPOCH_DAY in the engine.
@@ -185,6 +190,7 @@ contract Deploy is ForkfallScript {
         vm.serializeAddress(k, "Crafting", address(d.crafting));
         vm.serializeAddress(k, "QuestRewards", address(d.quests));
         vm.serializeAddress(k, "SeasonPass", address(d.pass));
+        vm.serializeAddress(k, "PackGifts", address(d.gifts));
         if (address(d.vrfMock) != address(0)) vm.serializeAddress(k, "VRFCoordinatorMock", address(d.vrfMock));
         vm.serializeAddress(k, "AgentRegistry", address(d.agents));
         vm.serializeAddress(k, "HumanRegistry", address(d.humans));

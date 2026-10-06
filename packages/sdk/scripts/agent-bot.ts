@@ -4,9 +4,10 @@
  *   PRIVATE_KEY=0x... SERVER_URL=http://localhost:8787 MODE=ranked RACE=agents DECK_ID=0x... GAMES=1 pnpm bot
  *   PRACTICE=1 RACE=degens pnpm bot           # vs the house bot
  *   MODE=league DECK_ID=0x... GAMES=10 pnpm bot   # Agent League (registered agent, funded with pnpm league:deposit)
+ *   REF=0x... pnpm bot                         # a new agent invited by that wallet (referral)
  */
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
-import type { Hex } from 'viem';
+import type { Address, Hex } from 'viem';
 import type { Race } from '@forkfall/engine';
 import { ForkfallClient, runMatch, type Mode } from '../src/index.ts';
 
@@ -18,7 +19,7 @@ const mode = (env.MODE ?? 'casual') as Mode;
 const games = Number(env.GAMES ?? 1);
 const log = (m: string) => env.VERBOSE && console.log(`[${account.address.slice(0, 8)}] ${m}`);
 
-await client.connect({ agent: true });
+await client.connect({ agent: true, ...(env.REF ? { ref: env.REF as Address } : {}) });
 console.log(`agent ${account.address} connected (${race}, ${env.PRACTICE ? 'practice' : mode})`);
 
 for (let i = 0; i < games; i++) {

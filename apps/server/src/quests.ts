@@ -22,6 +22,8 @@ export interface FinishedMatch {
   /** `bot`: the house bot's kind, if this seat is one. Wins against the easy `random` bot don't count. */
   players: { address: string; race: Race; bot: string | null }[];
   events: GameEvent[];
+  /** The friend challenge this match was played for, if any (its gift is delivered after it). */
+  challenge?: string;
 }
 
 /** A finished lobby match in the shape quests count (null while it isn't finished). */
@@ -30,6 +32,7 @@ export function finishedMatch(m: Match): FinishedMatch | null {
   return {
     id: m.id, endedAt: m.endedAt, turns: m.state.turn, winner: m.state.winner, events: m.events,
     players: m.players.map((p) => ({ address: p.address, race: p.race, bot: p.bot ?? null })),
+    ...(m.challenge ? { challenge: m.challenge } : {}),
   };
 }
 
@@ -66,8 +69,8 @@ interface PlayerState {
 export interface Payout {
   claimId: Hex;
   address: string;
-  kind: 'quest' | 'firstWin' | 'pack' | 'pass';
-  /** Quest id, 'first-win', 'pack-<period>', or 'pass-s<season>-<track>-<tier>'. */
+  kind: 'quest' | 'firstWin' | 'pack' | 'pass' | 'referral';
+  /** Quest id, 'first-win', 'pack-<period>', 'pass-s<season>-<track>-<tier>', or 'referral-<invited>'. */
   ref: string;
   day: number;
   scrap: number;
@@ -452,10 +455,29 @@ export class Quests {
     return out;
   }
 
-  private queue(address: string, kind: Payout['kind'], ref: string, day: number, scrap: number, packs: number, id?: Hex): Payout {
+  /**
+   * Queue a reward from another feature (referrals) on the same payout loop: same eligibility gate, retries and
+   * daily budget. `claimId` must be unique to the reward, so a retry or a second queue never pays twice.
+   */
+  queueReward(address: string, kind: Payout['kind'], ref: string, claimId: Hex, scrap: number, packs: number, packKind = 0): Payout {
+    const a = address.toLowerCase();
+    const existing = this.data.payouts.find((p) => p.claimId === claimId);
+    if (existing) return existing;
+    const p = this.queue(a, kind, ref, questDay(this.now()), scrap, packs, claimId, packKind);
+    this.save();
+    return p;
+  }
+
+  /** A queued reward's state by claim id (undefined once pruned or never queued). */
+  payoutState(claimId: Hex): { state: Payout['state']; tx?: Hex; error?: string } | undefined {
+    const p = this.data.payouts.find((x) => x.claimId === claimId);
+    return p ? { state: p.state, tx: p.tx, error: p.error } : undefined;
+  }
+
+  private queue(address: string, kind: Payout['kind'], ref: string, day: number, scrap: number, packs: number, id?: Hex, packKind = this.packKind): Payout {
     const claimId = id ?? keccak256(toHex(`forkfall-quest:${this.opts.chainId}:${address}:${day}:${ref}`));
     const p: Payout = {
-      claimId, address, kind, ref, day, scrap, packKind: packs ? this.packKind : 0, packs,
+      claimId, address, kind, ref, day, scrap, packKind: packs ? packKind : 0, packs,
       state: this.paysOnChain ? 'pending' : 'offchain', attempts: 0, nextAt: 0,
     };
     this.data.payouts.push(p);

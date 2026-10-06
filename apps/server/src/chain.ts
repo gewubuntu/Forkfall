@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { COLLECTIBLE } from '@forkfall/engine';
 import {
-  agentLeagueAbi, agentRegistryAbi, cardRegistryAbi, deckRegistryAbi, humanRegistryAbi, matchSettlementAbi, questRewardsAbi, seasonPassAbi, vrfCoordinatorMockAbi,
+  agentLeagueAbi, agentRegistryAbi, cardRegistryAbi, deckRegistryAbi, humanRegistryAbi, matchSettlementAbi, packGiftsAbi, questRewardsAbi, seasonPassAbi, vrfCoordinatorMockAbi,
   type MatchResult,
 } from '@forkfall/sdk';
 import {
@@ -206,6 +206,30 @@ export function devVrfFulfiller(chain: Chain, account: LocalAccount): (() => Pro
 export interface QuestRewarder {
   reward(player: Address, claimId: Hex, scrap: number, packKind: number, packCount: number): Promise<Hex>;
   claimed(claimId: Hex): Promise<boolean>;
+}
+
+/** A pack gift held for a friend challenge (PackGifts.gifts). */
+export interface HeldGift { from: Address; kind: number; count: number; state: 'none' | 'held' | 'delivered' | 'refunded'; refundableAt: number }
+
+/** The referee's side of PackGifts: read a held gift, and deliver it after the challenge match. */
+export interface GiftDeliverer {
+  read(giftId: Hex): Promise<HeldGift>;
+  deliver(giftId: Hex, to: Address): Promise<Hex>;
+}
+
+export function giftDeliverer(chain: Chain, referee: LocalAccount): GiftDeliverer | null {
+  if (!chain.client || !chain.book?.PackGifts || !chain.rpcUrl) return null;
+  const client = chain.client;
+  const address = chain.book.PackGifts as Address;
+  const send = writer(chain, referee);
+  const states = ['none', 'held', 'delivered', 'refunded'] as const;
+  return {
+    read: async (giftId) => {
+      const [from, kind, count, state, refundableAt] = await client.readContract({ address, abi: packGiftsAbi, functionName: 'gifts', args: [giftId] });
+      return { from, kind, count, state: states[state] ?? 'none', refundableAt: refundableAt * 1000 };
+    },
+    deliver: (giftId, to) => send(address, packGiftsAbi, 'deliver', [giftId, to]),
+  };
 }
 
 export function questRewarder(chain: Chain, referee: LocalAccount): QuestRewarder | null {

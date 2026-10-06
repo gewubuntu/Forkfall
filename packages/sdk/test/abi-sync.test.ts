@@ -20,6 +20,7 @@ const TARGETS: Record<string, [file: string, contract: string]> = {
   vrfCoordinatorMockAbi: ['VRFCoordinatorMock.sol', 'VRFCoordinatorMock'],
   questRewardsAbi: ['QuestRewards.sol', 'QuestRewards'],
   seasonPassAbi: ['SeasonPass.sol', 'SeasonPass'],
+  packGiftsAbi: ['PackGifts.sol', 'PackGifts'],
   faucetTokenAbi: ['TestTokens.sol', 'FaucetToken'],
   deckRegistryAbi: ['DeckRegistry.sol', 'DeckRegistry'],
   matchSettlementAbi: ['MatchSettlement.sol', 'MatchSettlement'],

@@ -279,3 +279,10 @@
 .pull-feed .avatar { width: 22px; height: 22px; border-radius: 6px; }
 .pull-feed li.leg .pf-card { color: #ff9ae4; font-weight: 700; }
 .pull-feed li.foil .pf-card { background: linear-gradient(90deg, #ff7ad9, #67e8f9, #b6f23c); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 800; }
+/* Gift packs to a friend (PackGifts) */
+.gift-to { display: grid; gap: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--r-sm); }
+.gift-to.on { border-style: solid; border-color: #5a4a1a; background: linear-gradient(160deg, #1d1a10, transparent 70%); }
+.gift-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+.gift-addr { display: grid; gap: 4px; }
+.gift-addr input { padding: 8px 10px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text); font-family: var(--font-mono); }
+.gift-addr .err { color: var(--danger); }
