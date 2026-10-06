@@ -25,6 +25,8 @@
 .xp-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
 .xp-list li { display: flex; justify-content: space-between; padding: 6px 10px; border-radius: var(--r-sm); background: var(--bg-2); border: 1px solid var(--line); }
 .xp-list b { color: var(--rh-2); font-variant-numeric: tabular-nums; }
+.xp-list li.bot { border-style: dashed; color: var(--muted); }
+.xp-list li.bot b { color: var(--muted); }
 .pass-buy { border-color: #5a4a1a; background: linear-gradient(160deg, #1d1a10, var(--panel) 60%); }
 .pass-buy h2 { color: var(--pass-gold); }
 .pass-buy p { margin: 0 0 12px; }

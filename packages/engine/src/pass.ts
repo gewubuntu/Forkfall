@@ -19,6 +19,15 @@ export const XP_QUEST = 80;
 export const XP_FIRST_WIN = 40;
 /** Match XP (played + won) per player per UTC day; quests and the first win come on top. */
 export const XP_MATCH_DAILY_CAP = 300;
+/**
+ * Matches against a house bot count, but for less, so the pass can't be farmed against bots: 10 XP (+5 for a win), at
+ * most 100 a day (inside the match cap), and a quest or first win finished in a bot match gives half its XP. Playing
+ * only bots gets about 240 XP a day at most, short of finishing the pass in a season; real opponents finish it.
+ */
+export const XP_BOT_MATCH_PLAYED = 10;
+export const XP_BOT_MATCH_WON = 5;
+export const XP_BOT_DAILY_CAP = 100;
+export const XP_BOT_SHARE = 0.5;
 
 export type PassTrack = 'free' | 'premium';
 export type PassCosmetic = 'title' | 'cardBack' | 'badge';
@@ -64,8 +73,12 @@ export const passSeasonAt = (ms: number) => passSeason(questDay(ms));
 /** Tiers reached with this much XP (0 to 30). */
 export const tierFor = (xp: number) => Math.min(PASS_TIERS, Math.floor(Math.max(0, xp) / PASS_XP_PER_TIER));
 
-/** XP one finished match earns before the daily cap. A win against the easy `random` bot isn't a win. */
-export const matchXp = (won: boolean) => XP_MATCH_PLAYED + (won ? XP_MATCH_WON : 0);
+/** XP one finished match earns before the daily caps. A win against the easy `random` bot isn't a win. */
+export const matchXp = (won: boolean, vsBot = false) =>
+  vsBot ? XP_BOT_MATCH_PLAYED + (won ? XP_BOT_MATCH_WON : 0) : XP_MATCH_PLAYED + (won ? XP_MATCH_WON : 0);
+
+/** Quest or first-win XP, halved when the match that finished it was against a house bot. */
+export const bonusXp = (xp: number, vsBot = false) => (vsBot ? Math.floor(xp * XP_BOT_SHARE) : xp);
 
 /** Cosmetic ids a season's pass unlocks: the title (free, tier 30), card back (premium, tier 1), badge (premium, tier 30). */
 export const passCosmeticId = (kind: PassCosmetic, season: number) => `${kind === 'cardBack' ? 'back' : kind}:season-${season}`;

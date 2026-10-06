@@ -1,4 +1,6 @@
-import { trackTotals, XP_FIRST_WIN, XP_MATCH_PLAYED, XP_MATCH_WON, XP_QUEST } from '@forkfall/engine';
+import {
+  trackTotals, XP_BOT_MATCH_PLAYED, XP_BOT_MATCH_WON, XP_BOT_SHARE, XP_FIRST_WIN, XP_MATCH_PLAYED, XP_MATCH_WON, XP_QUEST,
+} from '@forkfall/engine';
 import { faucetTokenAbi, seasonPassAbi, type PassStatus, type QuestPayoutStatus } from '@forkfall/sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -70,10 +72,12 @@ function PassView({ s }: { s: PassStatus }) {
             <li><span>Win it</span><b>+{XP_MATCH_WON}</b></li>
             <li><span>Finish a daily quest</span><b>+{XP_QUEST}</b></li>
             <li><span>First win of the day</span><b>+{XP_FIRST_WIN}</b></li>
+            <li className="bot"><span>Against a bot: a match, a win</span><b>+{XP_BOT_MATCH_PLAYED}, +{XP_BOT_MATCH_WON}</b></li>
           </ul>
           <p className="small muted">
-            Match XP today: {s.matchXpToday}/{s.matchXpCap}. Quests and the first win count on top, so a few matches a day
-            fill the pass within the season. Matches need four turns each, like quests.
+            Match XP today: {s.matchXpToday}/{s.matchXpCap}, of which bots {s.botXpToday}/{s.botXpCap}. Quests and the first
+            win count on top ({XP_BOT_SHARE * 100}% when finished against a bot), so a few real matches a day fill the pass
+            within the season. Matches need four turns each, like quests.
           </p>
         </section>
         <Premium s={s} />

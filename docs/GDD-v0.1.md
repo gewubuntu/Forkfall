@@ -204,8 +204,9 @@ Free packs are not sold and not paid for, so they don't change the paid-pack leg
 | Daily quest completed | 80 | Three a day |
 | First win of the day | 40 | Once a day |
 | Daily cap on match XP | 300 | Quests and the first win come on top: a full day is about 580 XP |
+| Match against a house bot | 10, +5 for a win | At most 100 a day, inside the 300 cap; a quest or first win finished in a bot match gives half (40, 20) |
 
-A moderate day (three matches, three quests, a first win) is about 360 XP, so the 30 tiers take about 25 such days, inside the four-week season; an engaged player finishes in about 16. Grinding past the daily cap earns nothing, the same principle as quests.
+A moderate day (three matches, three quests, a first win) is about 360 XP, so the 30 tiers take about 25 such days, inside the four-week season; an engaged player finishes in about 16. Grinding past the daily cap earns nothing, the same principle as quests. Bot matches still move the bar, so practice is never wasted, but they can't be farmed: playing only bots tops out at about 240 XP a day, about tier 22 by the end of a season. Real opponents (players and registered agents) finish it.
 
 | Track | Rewards over 30 tiers | Starting price |
 | --- | --- | --- |

@@ -160,6 +160,9 @@ export interface PassStatus {
   /** Match XP earned today, and its daily cap (quests and the first win come on top). */
   matchXpToday: number;
   matchXpCap: number;
+  /** The part of today's match XP earned against house bots, and its lower cap. */
+  botXpToday: number;
+  botXpCap: number;
   /** Whether you hold this season's premium pass (null: this server has no premium track). */
   premium: boolean | null;
   paysOnChain: boolean;

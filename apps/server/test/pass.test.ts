@@ -1,5 +1,6 @@
 import {
-  dailyQuests, PASS_TIERS, PASS_TIERS_TABLE, PASS_XP_PER_TIER, questDay, XP_FIRST_WIN, XP_MATCH_DAILY_CAP, XP_QUEST, type GameEvent,
+  dailyQuests, PASS_TIERS, PASS_TIERS_TABLE, PASS_XP_PER_TIER, questDay, XP_BOT_DAILY_CAP, XP_FIRST_WIN, XP_MATCH_DAILY_CAP, XP_QUEST,
+  type GameEvent,
 } from '@forkfall/engine';
 import type { AddressInfo } from 'node:net';
 import type { Address, Hex } from 'viem';
@@ -71,6 +72,43 @@ describe('season pass XP', () => {
     expect(alice.tier).toBe(Math.floor(alice.xp / PASS_XP_PER_TIER));
     clock.t += DAY_MS;
     expect(q.passStatus(ALICE).matchXpToday).toBe(0); // a new day, a new cap
+  });
+
+  it('counts matches against house bots for less: lower match XP with its own cap, half quest and first-win XP', () => {
+    const clock = { t: NOON };
+    const q = new Quests({ chainId: 31337, now: () => clock.t });
+    const vsBot = (id: string, kind = 'standard') => {
+      const m = match(id, clock.t);
+      m.players[1] = { address: BOB, race: 'degens', bot: kind };
+      return m;
+    };
+    q.record(vsBot('b1'));
+    const done = dailyQuests(ALICE, questDay(NOON))
+      .filter((x) => x.progress({ seat: 0, won: true, race: 'agents', turns: 9, events: match('x').events }) >= x.goal).length;
+    expect(q.passStatus(ALICE).xp).toBe(15 + done * XP_QUEST / 2 + XP_FIRST_WIN / 2);
+    for (let i = 2; i <= 20; i++) q.record(vsBot(`b${i}`));
+    expect(q.passStatus(ALICE)).toMatchObject({ matchXpToday: XP_BOT_DAILY_CAP, botXpToday: XP_BOT_DAILY_CAP, botXpCap: XP_BOT_DAILY_CAP });
+    const before = q.passStatus(ALICE).xp;
+    q.record(vsBot('b21', 'random')); // the easy bot: no win, and the bot cap is spent anyway
+    expect(q.passStatus(ALICE).xp).toBe(before);
+    q.record(match('h1', clock.t)); // a real opponent still earns full match XP after the bot cap
+    expect(q.passStatus(ALICE).xp).toBe(before + 35);
+  });
+
+  it('cannot finish the pass in a season playing only bots, but makes real progress', () => {
+    const clock = { t: Date.UTC(2026, 9, 5, 12) }; // the first day of season 1
+    const q = new Quests({ chainId: 31337, now: () => clock.t });
+    for (let d = 0; d < 28; d++) {
+      clock.t = Date.UTC(2026, 9, 5, 12) + d * DAY_MS;
+      for (let i = 0; i < 30; i++) {
+        const m = match(`d${d}-b${i}`, clock.t);
+        m.players[1] = { address: BOB, race: 'degens', bot: 'strong' };
+        q.record(m);
+      }
+    }
+    const tier = q.passStatus(ALICE).tier;
+    expect(tier).toBeGreaterThanOrEqual(15);
+    expect(tier).toBeLessThan(PASS_TIERS);
   });
 
   it('queues each free tier reward once as it is reached, with its own claim id, and unlocks the title at tier 30', () => {

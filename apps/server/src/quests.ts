@@ -1,6 +1,6 @@
 import {
-  dailyQuests, dayStartMs, FIRST_WIN_SCRAP, matchCounts, matchXp, PACK_GOAL, PACK_PERIOD_DAYS, packPeriod, PASS_TIERS_TABLE, PASS_XP_PER_TIER,
-  passCosmeticId, passSeason, questDay, REROLLS_PER_DAY, tierFor, XP_FIRST_WIN, XP_MATCH_DAILY_CAP, XP_QUEST,
+  dailyQuests, dayStartMs, FIRST_WIN_SCRAP, bonusXp, matchCounts, matchXp, PACK_GOAL, PACK_PERIOD_DAYS, packPeriod, PASS_TIERS_TABLE, PASS_XP_PER_TIER,
+  passCosmeticId, passSeason, questDay, REROLLS_PER_DAY, tierFor, XP_BOT_DAILY_CAP, XP_FIRST_WIN, XP_MATCH_DAILY_CAP, XP_QUEST,
   type GameEvent, type PassTrack, type Race,
 } from '@forkfall/engine';
 import type { PassStatus, QuestStatus } from '@forkfall/sdk';
@@ -41,6 +41,8 @@ interface PassState {
   /** Match XP earned on `matchDay` (capped per day). */
   matchDay: number;
   matchXp: number;
+  /** The part of `matchXp` earned against house bots (capped lower). */
+  botXp?: number;
   /** Highest tier whose rewards were queued, per track. */
   freeTier: number;
   premiumTier: number;
@@ -191,23 +193,27 @@ export class Quests {
       const qs = dailyQuests(address, day, p.today.rerolls);
       const period = packPeriod(day, this.periodDays).index;
       const pass = this.passOf(p, day);
-      if (pass.matchDay !== day) { pass.matchDay = day; pass.matchXp = 0; }
-      const fromMatch = Math.min(matchXp(won), XP_MATCH_DAILY_CAP - pass.matchXp);
+      // House bots count for less (and for at most XP_BOT_DAILY_CAP a day), so the pass can't be farmed against them.
+      const vsBot = !!m.players[1 - seat]?.bot;
+      if (pass.matchDay !== day) { pass.matchDay = day; pass.matchXp = 0; pass.botXp = 0; }
+      const room = Math.min(XP_MATCH_DAILY_CAP - pass.matchXp, vsBot ? XP_BOT_DAILY_CAP - (pass.botXp ?? 0) : Infinity);
+      const fromMatch = Math.max(0, Math.min(matchXp(won, vsBot), room));
       pass.matchXp += fromMatch;
+      if (vsBot) pass.botXp = (pass.botXp ?? 0) + fromMatch;
       let xp = fromMatch;
       qs.forEach((q, slot) => {
         if (p.today.progress[slot] >= q.goal) return;
         p.today.progress[slot] = Math.min(q.goal, p.today.progress[slot] + q.progress({ seat: seat as 0 | 1, won, race: pl.race, turns: m.turns, events: m.events }));
         if (p.today.progress[slot] < q.goal) return;
         out.push(this.queue(address, 'quest', `${q.id}#${slot}`, day, q.scrap, 0));
-        xp += XP_QUEST;
+        xp += bonusXp(XP_QUEST, vsBot);
         p.periods[period] = (p.periods[period] ?? 0) + 1;
         if (p.periods[period] === this.packGoal) out.push(this.queue(address, 'pack', `pack-${period}`, day, 0, 1));
       });
       if (won && !p.today.firstWin) {
         p.today.firstWin = true;
         out.push(this.queue(address, 'firstWin', 'first-win', day, FIRST_WIN_SCRAP, 0));
-        xp += XP_FIRST_WIN;
+        xp += bonusXp(XP_FIRST_WIN, vsBot);
       }
       pass.xp += xp;
       out.push(...this.queuePassTiers(address, p, day));
@@ -277,6 +283,7 @@ export class Quests {
       season: season.season, startsAt: dayStartMs(season.first), endsAt: dayStartMs(season.last + 1),
       xp, tier: tierFor(xp), xpPerTier: PASS_XP_PER_TIER,
       matchXpToday: pass?.matchDay === day ? pass.matchXp : 0, matchXpCap: XP_MATCH_DAILY_CAP,
+      botXpToday: pass?.matchDay === day ? pass.botXp ?? 0 : 0, botXpCap: XP_BOT_DAILY_CAP,
       premium: this.opts.passHolder ? pass?.premium === true : null,
       paysOnChain: this.paysOnChain,
       tiers: PASS_TIERS_TABLE.map((t) => ({

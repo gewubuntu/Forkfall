@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  cosmetic, matchXp, milestoneMet, parsePassCosmetic, PASS_EPOCH_DAY, PASS_SEASON_DAYS, PASS_TIERS, PASS_TIERS_TABLE, PASS_XP_PER_TIER,
-  passCosmeticId, passSeason, tierFor, trackTotals, XP_FIRST_WIN, XP_MATCH_DAILY_CAP, XP_QUEST,
+  bonusXp, cosmetic, matchXp, milestoneMet, parsePassCosmetic, PASS_EPOCH_DAY, PASS_SEASON_DAYS, PASS_TIERS, PASS_TIERS_TABLE, PASS_XP_PER_TIER,
+  passCosmeticId, passSeason, tierFor, trackTotals, XP_BOT_DAILY_CAP, XP_FIRST_WIN, XP_MATCH_DAILY_CAP, XP_QUEST,
 } from '../src/index.ts';
 
 describe('season pass', () => {
@@ -43,6 +43,15 @@ describe('season pass', () => {
     expect(Math.round(total / moderate)).toBe(25);
     expect(Math.ceil(total / full)).toBe(16);
     expect(total / moderate).toBeLessThan(PASS_SEASON_DAYS); // a moderate player can finish within the season
+  });
+
+  it('lets bot-only play make progress but not finish the pass in a season', () => {
+    expect(matchXp(true, true)).toBeLessThan(matchXp(true));
+    expect(bonusXp(XP_QUEST, true)).toBe(XP_QUEST / 2);
+    const botDay = XP_BOT_DAILY_CAP + 3 * bonusXp(XP_QUEST, true) + bonusXp(XP_FIRST_WIN, true);
+    expect(botDay).toBe(240);
+    expect(tierFor(botDay * PASS_SEASON_DAYS)).toBe(22);
+    expect(tierFor(botDay * PASS_SEASON_DAYS)).toBeLessThan(PASS_TIERS);
   });
 
   it('names season cosmetics and never unlocks them by a collection milestone', () => {
