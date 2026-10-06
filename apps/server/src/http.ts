@@ -97,8 +97,10 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
       if (serveMetadata(req, res, url.pathname, opts.publicUrl)) return;
       if (!url.pathname.startsWith('/v1/')) return serveStatic(url.pathname, res, opts.staticDir);
       if (opts.metrics && url.pathname === '/v1/metrics' && url.searchParams.get('format') === 'csv') {
+        // Built before the headers go out: a failure here must still answer with the JSON 500 below.
+        const csv = opts.metrics.csv(Number(url.searchParams.get('days') ?? 30));
         res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8' });
-        res.end(opts.metrics.csv(Number(url.searchParams.get('days') ?? 30)));
+        res.end(csv);
         return;
       }
       const session = authSession(req);

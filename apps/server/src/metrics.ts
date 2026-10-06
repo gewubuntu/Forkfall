@@ -85,7 +85,11 @@ export class Metrics {
 
   constructor(private opts: MetricsOptions = {}) {
     const empty = (): Store => ({ wallets: {}, crafters: {}, days: {}, seen: [] });
-    const valid = (x: Record<string, unknown>) => typeof x.wallets === 'object' && x.wallets !== null && typeof x.days === 'object' && x.days !== null && Array.isArray(x.seen);
+    // Every wallet record is checked, not just the top-level shape: a malformed bitmap would throw inside every report.
+    const wallet = (w: unknown) => typeof w === 'object' && w !== null && Number.isInteger((w as Wallet).first) && /^[0-9a-f]+$/.test(String((w as Wallet).bits));
+    const valid = (x: Record<string, unknown>) =>
+      typeof x.wallets === 'object' && x.wallets !== null && Object.values(x.wallets as object).every(wallet)
+      && typeof x.days === 'object' && x.days !== null && Array.isArray(x.seen);
     ({ data: this.data, setAside: this.setAside } = opts.file ? readJsonOrSetAside(opts.file, empty, { valid }) : { data: empty(), setAside: null });
     this.data.crafters ??= {};
     if (this.data.seenAt?.length !== this.data.seen.length) this.data.seenAt = this.data.seen.map(() => 0);
@@ -264,14 +268,19 @@ export class Metrics {
     const d1 = cohort(1, (r) => r.active.has(r.first + 1));
     const d7 = cohort(7, (r) => r.active.has(r.first + 7));
     const craft = this.onchain ? cohort(7, (r) => { const c = this.data.crafters[r.a]; return c !== undefined && c <= r.first + 7; }) : null;
-    let matches = 0; let packs = 0; let active = 0;
+    let matches = 0; let packs = 0; let active = 0; let players = 0;
     for (let d = lo; d < today; d++) {
       const c = this.data.days[d]?.h;
       if (c) { matches += c.matches; packs += c.packs; }
     }
-    for (const r of rows) for (const d of r.days) if (d >= lo && d < today) active++;
-    const mpa = active >= MIN_COHORT ? matches / active : null;
-    const ppa = this.onchain && active >= MIN_COHORT ? packs / active : null;
+    // Player-days are the denominator; the sample-size rule counts distinct players, so one wallet on five days is not enough.
+    for (const r of rows) {
+      let mine = 0;
+      for (const d of r.days) if (d >= lo && d < today) mine++;
+      if (mine) { active += mine; players++; }
+    }
+    const mpa = players >= MIN_COHORT ? matches / active : null;
+    const ppa = this.onchain && players >= MIN_COHORT ? packs / active : null;
     const row = (id: MetricsGateRow['id'], value: number | null): MetricsGateRow =>
       ({ id, label: GATE[id].label, target: GATE[id].target, value, met: value === null ? null : value >= GATE[id].target });
     const out = [row('d1', d1), row('d7', d7), row('matches', mpa), row('packs', ppa), row('craft', craft)];

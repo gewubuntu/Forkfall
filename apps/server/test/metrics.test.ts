@@ -1,6 +1,6 @@
 import { dayStartMs, questDay } from '@forkfall/engine';
 import type { MetricsReport } from '@forkfall/sdk';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { Chain, metricsChain } from '../src/chain.ts';
@@ -314,5 +314,38 @@ describe('review fixes', () => {
     const m = new Metrics({ now: () => NOON, chain });
     await m.poll();
     expect(asked).toEqual([]); // not a scan from genesis
+  });
+});
+
+
+describe('finecomb fixes', () => {
+  it('answers the CSV route with a JSON 500, not a hung connection, when the report fails', async () => {
+    const broken = { csv: () => { throw new Error('boom'); } } as unknown as Metrics;
+    const lobby = new Lobby({ chain: new Chain(null), house: privateKeyToAccount(generatePrivateKey()), now: () => NOON });
+    const { server } = createApi(lobby, { metrics: broken });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    try {
+      const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const r = await fetch(`${url}/v1/metrics?format=csv`, { signal: AbortSignal.timeout(2000) });
+      expect(r.status).toBe(500);
+      expect(await r.json()).toEqual({ error: 'boom' });
+    } finally { server.close(); }
+  });
+
+  it('sets aside a store whose wallet records are malformed instead of throwing on every report', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'metrics-')), 'm.json');
+    writeFileSync(file, JSON.stringify({ wallets: { '0xaa': { first: 20000, bits: 'zz' } }, crafters: {}, days: {}, seen: [] }));
+    const m = new Metrics({ file, now: () => NOON });
+    expect(m.setAside).not.toBeNull();
+    expect(() => m.csv(30)).not.toThrow();
+  });
+
+  it('needs five distinct players, not five player-days, for the per-player gate numbers', () => {
+    const one = new Metrics({ now: () => NOON });
+    for (let k = 1; k <= 5; k++) one.record(match(wallet(1), null, TODAY - k, { botB: true, sealed: true }));
+    expect(one.report(30).gate.rows.find((r) => r.id === 'matches')!.value).toBeNull();
+    const five = new Metrics({ now: () => NOON });
+    for (let i = 1; i <= 5; i++) five.record(match(wallet(i), null, TODAY - 1, { botB: true, sealed: true }));
+    expect(five.report(30).gate.rows.find((r) => r.id === 'matches')!.value).toBe(1);
   });
 });
