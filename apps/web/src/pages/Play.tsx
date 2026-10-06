@@ -164,6 +164,11 @@ export function Play() {
         )}
       </div>
       <LearnBanner races />
+      <Link to="/sealed" className="panel sealed-banner">
+        <span className="sb-ico" aria-hidden>🎴</span>
+        <span><b>Sealed</b> <span className="muted">Open 6 packs, build a deck from them, play to 7 wins. One free run a day, prizes up to 2 packs.</span></span>
+        <span className="btn btn-sm">Play Sealed</span>
+      </Link>
       <IncomingChallenges />
 
       <section aria-labelledby="race-h">

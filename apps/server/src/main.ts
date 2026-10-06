@@ -5,6 +5,7 @@ import { generatePrivateKey, nonceManager, privateKeyToAccount } from 'viem/acco
 import type { Address, Hex } from 'viem';
 import { ANVIL, BASE_SEPOLIA, Chain, DEFAULT_RPC, devVrfFulfiller, EXPLORER, giftDeliverer, humanAttestor, leagueOps, questRewarder, refereeSettler } from './chain.ts';
 import { Invites, invitesFile } from './invites.ts';
+import { Sealed, sealedFile } from './sealed.ts';
 import { LeaguePayouts, leagueDir } from './league.ts';
 import { HumanVerification } from './humans.ts';
 import { Rewards, rewardsDir } from './rewards.ts';
@@ -98,7 +99,6 @@ try {
     passHolder: chain.online && chain.hasSeasonPass ? (a, season) => chain.hasPass(a, season) : undefined,
   });
 } catch (e) { fail([(e as Error).message, 'Check QUEST_PACK_DAYS, QUEST_PACK_GOAL and QUEST_PACK_KIND.']); }
-profiles.passUnlocked = (a) => quests.passCosmetics(a);
 
 const archive = new MatchArchive(archiveDir);
 const lobby = new Lobby({
@@ -126,10 +126,26 @@ const invites = new Invites({
   gifts: chain.online ? giftDeliverer(chain, house) : null,
 });
 
+// Sealed fun mode: runs, the record-matched queue (house bot after 45 s) and prizes through the quest payout loop.
+const sealed = new Sealed({
+  file: env.SEALED_FILE || sealedFile(root, chainId),
+  chainId,
+  quests,
+  botAfterMs: env.SEALED_BOT_SECONDS ? Number(env.SEALED_BOT_SECONDS) * 1000 : undefined,
+  host: {
+    matches: lobby.matches,
+    houseAddress: house.address,
+    sealedMatch: (p, r) => lobby.sealedMatch(p, r),
+    eligibleFor: (a, ag) => lobby.eligibleFor(a, ag),
+  },
+});
+profiles.passUnlocked = (a) => [...quests.passCosmetics(a), ...sealed.titles(a)];
+
 // Archive finished matches and export a Foundry-ready settlement file as soon as a match has enough signatures.
 // Set before anything is restored: a finished match recovered at startup is archived through this too.
 lobby.onChange = (m) => {
   if (m.phase !== 'ended') return true;
+  try { sealed.recordMatch(m); } catch (e) { console.error('sealed tracking failed', e); }
   try {
     const f = finishedMatch(m);
     if (f) {
@@ -190,7 +206,7 @@ const flushLobby = (force = false) => {
 };
 
 
-setInterval(() => { lobby.tick(); flushLobby(); }, 1000);
+setInterval(() => { lobby.tick(); try { sealed.tick(); } catch (e) { console.error('sealed tick failed', e); } flushLobby(); }, 1000);
 const botLoop = async () => {
   try { await lobby.stepBots(); } catch (e) { console.error('bot error', e); }
   setTimeout(botLoop, Number(env.BOT_DELAY_MS || 600));
@@ -242,7 +258,7 @@ const staticDir = join(root, 'apps/web/dist');
 // Human verification (optional; gates season rewards) and published season rewards.
 const humans = new HumanVerification(chain, chain.online ? humanAttestor(chain, house) : null, { testnet: env.HUMAN_TESTNET_VERIFY !== '0' });
 const rewards = new Rewards(env.REWARDS_DIR || rewardsDir(root, chain.chainId));
-const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, invites, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR || leagueDir(root, chain.chainId)), store });
+const { server, live } = createApi(lobby, { staticDir: existsSync(staticDir) ? staticDir : undefined, humans, rewards, profiles, quests, invites, sealed, publicUrl: env.PUBLIC_URL, payouts: new LeaguePayouts(env.LEAGUE_DIR || leagueDir(root, chain.chainId)), store });
 
 // Stop cleanly on a redeploy: stop taking new connections, let requests already in flight finish (a move being
 // verified is applied and answered), then save the queue and challenges and exit. Matches and sessions are saved
@@ -278,10 +294,11 @@ server.listen(port, () => {
   console.log(`  Agent League: ${league ? `ON (${chain.book!.AgentLeague})` : 'off (no AgentLeague in the address book)'}`);
   if (vrfFulfill) console.log('  pack randomness: local mock VRF coordinator, fulfilled by this server every 2 s');
   console.log('  live updates: WebSocket on /v1/live (clients fall back to polling without it)');
-  for (const [what, aside] of [['quests', quests.setAside], ['profiles', profiles.setAside], ['invites', invites.setAside]] as const) {
+  for (const [what, aside] of [['quests', quests.setAside], ['profiles', profiles.setAside], ['invites', invites.setAside], ['sealed', sealed.setAside]] as const) {
     if (aside) console.warn(`  WARNING: the ${what} file was not valid and was moved to ${aside}; started empty. Fix it and restore it while the server is stopped.`);
   }
   console.log(`  daily quests: ${quests.paysOnChain ? 'rewards paid on-chain via QuestRewards' : 'progress only (no QuestRewards: rewards not paid)'} · free pack every ${quests.periodDays} days for ${quests.packGoal} quests`);
+  console.log('  Sealed fun mode: ON (one free run a day; a house bot plays you after 45 s in the queue)');
   console.log(`  referrals: ON · challenge pack gifts: ${invites.offersGifts ? `ON (${chain.book!.PackGifts})` : 'off (no PackGifts in the address book)'}`);
   console.log(`  referee auto-settlement ${settler ? `ON (after ${lobby.graceMs / 1000}s grace, instantly on timeout/concede)` : 'OFF'}`);
   console.log(`  settlement files → ${settlementDir}`);

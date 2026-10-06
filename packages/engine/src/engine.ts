@@ -1,6 +1,7 @@
 import { PREDICTION_TIERS, TOKEN_DRONE, validateDeck } from './cards.ts';
 import { cardIn, cardsFor, isRulesVersion, RULES_VERSION } from './rules.ts';
 import { keccakHex, randWord, shuffle } from './rng.ts';
+import { validateSealedDeck } from './sealed.ts';
 import type {
   Action, CardDef, Effect, GameEvent, GameState, HandCard, MatchConfig, PlayerState, Race,
   PredictionCondition, Seat, UnitState,
@@ -28,7 +29,7 @@ export function createMatch(cfg: MatchConfig): ApplyResult {
   const rules = cfg.rules ?? RULES_VERSION;
   if (!isRulesVersion(rules)) throw new IllegalAction(`unknown rules version ${rules}`);
   cfg.players.forEach((p, i) => {
-    const check = validateDeck(p.race, p.deck, false);
+    const check = cfg.format === 'sealed' ? validateSealedDeck(p.deck) : validateDeck(p.race, p.deck, false);
     if (!check.ok) throw new IllegalAction(`player ${i} deck invalid: ${check.errors.join('; ')}`);
     const missing = p.deck.find((id) => !cardsFor(rules).has(id));
     if (missing !== undefined) throw new IllegalAction(`player ${i} deck invalid: card ${missing} is not in rules v${rules}`);

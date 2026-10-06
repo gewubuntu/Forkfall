@@ -1,5 +1,6 @@
 import { COLLECTIBLE, RACES, setOf } from './cards.ts';
 import { parsePassCosmetic, passCosmeticName, passCosmeticTier } from './pass.ts';
+import { SEALED_TITLES } from './sealed.ts';
 import { LESSONS } from './tutorial.ts';
 import type { CardDef } from './types.ts';
 
@@ -10,8 +11,11 @@ import type { CardDef } from './types.ts';
  * equip one) and the web app (which shows progress and lets you equip).
  */
 export type CosmeticKind = 'title' | 'cardBack' | 'badge';
-/** `pass`: a season pass cosmetic, unlocked by the referee when the player reaches its tier (never by a milestone). */
-export type MilestoneRule = 'tutorial' | 'lessons' | 'commons' | 'every' | 'playset' | 'pass';
+/**
+ * `pass`: a season pass cosmetic, unlocked by the referee when the player reaches its tier; `sealed`: a Sealed title,
+ * unlocked by the referee from finished runs (neither is ever a collection milestone).
+ */
+export type MilestoneRule = 'tutorial' | 'lessons' | 'commons' | 'every' | 'playset' | 'pass' | 'sealed';
 
 export interface CosmeticSet { key: string; label: string; cards: CardDef[] }
 export interface Cosmetic { id: string; kind: CosmeticKind; name: string; set?: string; rule: MilestoneRule; description: string; season?: number }
@@ -31,6 +35,7 @@ const TITLES: Record<string, string> = {
 export const COSMETICS: Cosmetic[] = [
   { id: 'title:graduate', kind: 'title', name: 'Graduate', rule: 'tutorial', description: 'Finish the tutorial.' },
   { id: 'title:scholar', kind: 'title', name: 'Scholar', rule: 'lessons', description: 'Finish every lesson: the basics and one per race.' },
+  ...Object.values(SEALED_TITLES).map((t): Cosmetic => ({ id: t.id, kind: 'title', name: t.name, rule: 'sealed', description: t.description })),
   ...COSMETIC_SETS.flatMap((s): Cosmetic[] => [
     { id: `back:${s.key}`, kind: 'cardBack', name: `${s.label} card back`, set: s.key, rule: 'commons', description: `Own every ${s.label} Common.` },
     { id: `title:${s.key}`, kind: 'title', name: TITLES[s.key], set: s.key, rule: 'every', description: `Own every ${s.label} card.` },
@@ -53,7 +58,7 @@ function passCosmetic(id: string): Cosmetic | undefined {
 
 /** Whether a milestone is met, given copies owned per card (tradeable + starter + foil) and the lessons finished. */
 export function milestoneMet(rule: MilestoneRule, set: string | undefined, owned: (id: number) => number, lessons: readonly string[]): boolean {
-  if (rule === 'pass') return false;
+  if (rule === 'pass' || rule === 'sealed') return false;
   if (rule === 'tutorial') return lessons.includes('basics');
   if (rule === 'lessons') return LESSONS.every((l) => lessons.includes(l.id));
   const cards = COSMETIC_SETS.find((s) => s.key === set)?.cards ?? [];

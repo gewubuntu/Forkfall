@@ -138,11 +138,20 @@ export class Lobby {
     return { matchId: m.id };
   }
 
-  private newMatch(mode: Mode, season: number, players: [Seatholder, Seatholder]): Match {
+  /** A casual match between two Sealed decks (a seat may be the house bot), tagged with each seat's Sealed run. */
+  sealedMatch(players: [Seatholder, Seatholder], runs: [string | null, string | null]): Match {
+    return this.newMatch('casual', 0, players, { format: 'sealed', sealed: runs });
+  }
+
+  /** Whether this wallet may play (banned wallets can't; agents are flagged). Used by Sealed. */
+  eligibleFor(address: Address, declaredAgent: boolean) { return this.checkEligibility(address, 'casual', declaredAgent); }
+
+  private newMatch(mode: Mode, season: number, players: [Seatholder, Seatholder], extra: Pick<Match, 'format' | 'sealed'> = {}): Match {
     const id = keccakHex('forkfall-match', randomHex32(), String(this.now())) as Hex;
     const m: Match = {
       id, mode, season: mode === 'casual' ? 0 : season, createdAt: this.now(), phase: 'reveal', players,
       events: [], moves: [], head: ZERO32, clock: { turnStartedAt: 0, bank: [this.bankMs, this.bankMs], timeouts: [0, 0] },
+      ...extra,
     };
     this.matches.set(id, m);
     this.save(m);
@@ -192,6 +201,7 @@ export class Lobby {
     const [a, b] = m.players;
     return createMatch({
       rules,
+      ...(m.format ? { format: m.format } : {}),
       matchId: m.id, seed: combineSeeds(m.id, a.seedShare!, b.seedShare!),
       players: [
         { address: a.address, race: a.race, deck: a.deck, deckSalt: a.deckSalt! },
@@ -390,7 +400,7 @@ export class Lobby {
     this.full(m);
     return {
       matchId: m.id, mode: m.mode, season: m.season, createdAt: m.createdAt, endedAt: m.endedAt, endReason: m.state?.endReason,
-      rules: m.rules, domain: { ...this.domain, chainId: Number(this.domain.chainId) },
+      rules: m.rules, ...(m.format ? { format: m.format } : {}), domain: { ...this.domain, chainId: Number(this.domain.chainId) },
       players: m.players.map((p) => ({ address: p.address, race: p.race, deck: p.deck, deckId: p.deckId, agent: p.agent, seedCommit: p.seedCommit, seedShare: p.seedShare!, deckSalt: p.deckSalt!, delegations: p.delegations ?? [] })),
       moves: m.moves, head: m.head, result: m.result!,
     };
@@ -428,7 +438,7 @@ export class Lobby {
     const players = archivedSeats(rec);
     this.matches.set(log.matchId, {
       id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
-      phase: 'ended', players, rules: replay.rules, state: replay.final, events: replay.frames.flatMap((f) => f.events),
+      phase: 'ended', players, rules: replay.rules, ...(log.format ? { format: log.format } : {}), state: replay.final, events: replay.frames.flatMap((f) => f.events),
       moves: log.moves, head: log.head, clock: { turnStartedAt: 0, bank: [0, 0], timeouts: [0, 0] },
       result: log.result, refereeSig: rec.refereeSig, referee: rec.referee,
       archived: true, usedAt: 0,
@@ -446,7 +456,7 @@ export class Lobby {
     if (!this.ownDomain(log.domain)) return false;
     this.matches.set(log.matchId, {
       id: log.matchId, mode: log.mode, season: log.season ?? log.result.season, createdAt: log.createdAt ?? 0, endedAt: log.endedAt,
-      phase: 'ended', rules: log.rules, events: [], moves: [], head: log.head,
+      phase: 'ended', rules: log.rules, ...(log.format ? { format: log.format } : {}), events: [], moves: [], head: log.head,
       players: log.players.map((p, i): Seatholder => ({
         ...p, deck: [], resultSig: s.resultSigs[i] ?? undefined, bot: s.bots[i] ?? undefined,
       })) as [Seatholder, Seatholder],

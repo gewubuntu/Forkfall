@@ -14,6 +14,7 @@ import { Decks } from './pages/Decks.tsx';
 import { Match } from './pages/Match.tsx';
 import { Matches } from './pages/Matches.tsx';
 import { Pass } from './pages/Pass.tsx';
+import { Sealed } from './pages/Sealed.tsx';
 import { Play } from './pages/Play.tsx';
 import { Profile } from './pages/Profile.tsx';
 import { Replay } from './pages/Replay.tsx';
@@ -91,6 +92,7 @@ export function App() {
             <Route path="/match/:id" element={<Match />} />
             <Route path="/collection" element={<Collection />} />
             <Route path="/pass" element={<Pass />} />
+            <Route path="/sealed" element={<Sealed />} />
             <Route path="/decks" element={<Decks />} />
             <Route path="/decks/new" element={<DeckBuilder />} />
             <Route path="/matches" element={<Matches />} />
