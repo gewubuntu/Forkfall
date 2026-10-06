@@ -191,6 +191,51 @@ Payouts are automatic and on-chain: the referee calls `QuestRewards.reward` (it 
 
 Free packs are not sold and not paid for, so they don't change the paid-pack legal question; pack sales feeding the season pot is still waiting on the legal review.
 
+### Season pass (proposed)
+
+**Why.** Packs can't sell power (the ranked rarity cap is the guardrail), so the pull to play and to buy has to come from progress, events and status. A season pass gives every match a visible step forward, and its premium track is a fixed price for known rewards: no randomness in the purchase itself, which is far easier legally than paid random packs.
+
+**Shape.** One XP bar per ranked season (`MatchSettlement.currentSeason`, about four weeks) with 30 tiers of 300 XP, and two reward tracks on the same bar: a free track for everyone and a premium track unlocked by buying the season's pass. A pass bought mid-season pays every premium tier already reached.
+
+| XP source | XP | Rule |
+| --- | --- | --- |
+| Match played | 20 | At least four turns each, like quests; the easy `random` bot counts as played only |
+| Match won | +15 | Not against the `random` bot |
+| Daily quest completed | 80 | Three a day |
+| First win of the day | 40 | Once a day |
+| Daily cap on match XP | 300 | Quests and the first win come on top: a full day is about 580 XP |
+
+A moderate day (three matches, three quests, a first win) is about 370 XP, so the 30 tiers take about 24 such days; an engaged player finishes in about 16. Grinding past the daily cap earns nothing, the same principle as quests.
+
+| Track | Rewards over 30 tiers | Starting price |
+| --- | --- | --- |
+| Free | 600 Scrap (50 on every even tier except 10, 20 and 30), 3 Set 1 packs (tiers 10, 20, 30), the season title at tier 30 | Free |
+| Premium | Everything on the free track, plus 8 Set 1 packs, 1,000 Scrap, the season card back (tier 1), an animated season badge (tier 30) | About 4 packs' price (8 tUSDC on testnet) |
+
+**How it runs.** The referee counts XP from the matches it refereed (it replays every signed move, as for quests) and pays tier rewards through `QuestRewards.reward` with a unique claim id per (chain, player, season, track, tier), so a retried payout never pays twice and the existing per-claim and daily caps still bound it. A new `SeasonPass` contract sells the premium pass for ETH or USDC (`buy(season)`, `buyFor(player, season)` for gifts, `hasPass(player, season)`), with revenue split like pack revenue. Season cosmetics are unlocked by the referee when the tier is reached and equipped like milestone cosmetics. Rewards go to verified humans and registered agents only, held otherwise, exactly like quests. Agents can earn the pass too.
+
+### Sealed events (proposed)
+
+**Why.** The classic trading card game engine: packs become gameplay. You open fresh packs for an event, build a deck from what you opened and play a short run for more packs. You keep every card, so a Sealed entry is also a way to open packs with a skill reason to do it, and prizes put packs back into circulation.
+
+**Format (recommended, to decide):** pick a race, open 6 race boosters (a new pack kind per race: that race's cards plus Neutral, same rarity slots, pity, duplicate protection and foils), and build a 30-card deck from the pool, topped up with free *basic* cards (the 8 core neutral starter cards, event-only copies) so every pool makes a legal deck. Normal deck rules otherwise. Then play until 7 wins or 3 losses, matched by record against other Sealed players and agents.
+
+| Wins | 0–1 | 2–3 | 4–5 | 6 | 7 |
+| --- | --- | --- | --- | --- | --- |
+| Prize (Set 1 packs) | 1 | 2 | 3 | 4 | 5 and a Sealed title step |
+
+**Entry:** on testnet, one free run a day. On mainnet, 6 packs' price (or 6 unopened packs from your inventory): the entry buys the 6 packs you open and keep, and prizes average about 2 packs, paid from entries. A paid entry with prizes is a contest in many jurisdictions, so paid Sealed waits for the same legal review as the Agent League.
+
+**Open questions:** race boosters vs. mixed-race pools with a relaxed deck rule for Sealed only; best-of-one vs. best-of-three; a Sealed rating.
+
+### Gifts and referrals (proposed)
+
+- **Gift a pack:** buy a pack for any address (`PackSale` gets `buyFor`), or attach it to a challenge link so a friend opens it after their first match.
+- **Referral:** an invite link (challenge links count). When the invited player verifies as human (or registers as an agent) and finishes 5 matches of at least four turns each within 14 days, both get a Set 1 pack through `QuestRewards`. At most 10 paid referrals per player per season; the verification gate is what stops self-referral farming.
+- **Prize-pool meter:** from stage 2 the shop shows the season prize pool and the share of every pack that goes into it (30%), so buying a pack visibly grows the prize.
+
+**Build order:** season pass first (cheapest, safest legally, drives daily play), then gifts and referrals, then Sealed (needs race boosters and an event queue). In the testnet alpha, measure day-1 and day-7 retention, matches per player per day, packs opened per active player and the share of players who craft: those numbers are the alpha's gate before paid packs.
+
 ### Onboarding and cosmetics
 
 **Guided first match (`/learn`).** A new player's first game is a tutorial against a gentle scripted Degens bot, played entirely in the browser with the real rules engine and match effects; no wallet, server or chain is needed. Decks are stacked (`createScriptedMatch`: no shuffle, fixed first player) and the bot's Treasury starts at 12, so a full lesson takes about five turns. The player's Agents deck opens with Compute Node, Launch Bot and Bridge Runner; the bot plays its hand in order, so Cold Wallet (Guard) lands on its second turn. A coach in the sidebar (pinned to the bottom on phones) walks through 11 lessons, glowing on the thing to click; each lesson completes when the player actually does it, in any order:
@@ -377,11 +422,13 @@ The game token launches through Bankr, and its 95% share of the 0.7% swap fee fu
 
 **Principle: rewards are paid from revenue, never printed.** Play-to-earn tokens that paid players in fresh emissions all failed the same way: players sold, the price fell, rewards lost their value and players left. In Forkfall every token that goes out as a reward was first bought or earned by real revenue (packs, fees, swap volume), and the token is spent and burned inside the game. Gameplay never requires it.
 
-**The loop:** play free → want better cards → buy packs (ETH, USDC or the token) → pack revenue funds prize pools and buys back the token on its Bankr pool → the token is spent in game (Legendary crafting, collab drops, later tournament entry) and that spend is burned → trading volume on the Bankr pool → the creator share of swap fees tops up prize pools and agent compute → bigger prizes and shareable pulls bring more players and agents → back to the start.
+**The loop:** play free (every match fills the season pass) → want more cards and the premium track → buy packs or the pass, or enter Sealed (ETH, USDC or the token) → pack revenue funds prize pools and buys back the token on its Bankr pool → the token is spent in game (Legendary crafting, collab drops, later tournament entry) and that spend is burned → trading volume on the Bankr pool → the creator share of swap fees tops up prize pools and agent compute → bigger prizes and shareable pulls bring more players and agents → back to the start.
 
 | Part | In | Out | Role in the loop |
 | --- | --- | --- | --- |
 | Packs | ETH, USDC, or the token at about 10% off | Ops, prize pools, buyback | Turns real revenue into prizes |
+| Season pass | ETH or USDC, a fixed price for known rewards | Split like pack revenue | Pays for daily play; every match moves the bar |
+| Sealed events | Entry (6 packs' price) | Packs opened and kept; prizes from entries | Turns packs into gameplay and puts packs back into circulation |
 | Crafting and Legendary upgrades | Token + Scrap | Token burned | A sink tied to what players want most |
 | Ranked seasons | Pack share + swap fees | Season pool for verified humans and registered agents | Prizes are funded, not printed; the referee checks the on-chain `HumanRegistry` and `AgentRegistry` before paying (`SeasonRewards`, `QuestRewards`) |
 | Agent League | x402 entry fees in USDC (80% pot, 10% buyback, 10% ops) | Weekly pot | Bots pay to play: volume most game tokens never get |
@@ -395,8 +442,8 @@ The game token launches through Bankr, and its 95% share of the 0.7% swap fee fu
 
 | Stage | What runs | Money in | Money out | Gate to the next stage |
 | --- | --- | --- | --- | --- |
-| 1. Testnet alpha (now) | Free play, quests, free packs, Scrap and crafting, cosmetics, shareable pulls, Agent League with test USDC | Nothing real | Nothing real | Fun without money (retention in the alpha), balance gate, audit, legal review of paid packs, prize pools and entry fees |
-| 2. Mainnet beta | Packs for ETH and USDC, ranked season pools, Agent League fees via x402, marketplace royalty | Pack sales, league fees, royalties | Season pools, league pots, ops | Steady pack revenue, a liquidity plan, legal review of the token (MiCA in the EU) |
+| 1. Testnet alpha (now) | Free play, quests, free packs, Scrap and crafting, cosmetics, shareable pulls, Agent League with test USDC; next: season pass (premium with test USDC), gifts and referrals, free daily Sealed runs | Nothing real | Nothing real | Fun without money (retention in the alpha), balance gate, audit, legal review of paid packs, prize pools and entry fees |
+| 2. Mainnet beta | Packs and the season pass for ETH and USDC, ranked season pools, Agent League fees via x402, paid Sealed entry (after legal review), marketplace royalty | Pack sales, league fees, royalties | Season pools, league pots, ops | Steady pack revenue, a liquidity plan, legal review of the token (MiCA in the EU) |
 | 3. Token on Bankr | Token launch via Bankr on Base (WETH pair), token pack discount, burns on Legendary crafting, pack-revenue buybacks for prizes, swap fees to prize pools, the Forkfall Bankr skill | Plus swap fees and token spend | Plus buyback and burn | Robinhood Chain security review; collab partner agreements |
 | 4. Cross-chain and collabs | Token and cards bridged to Robinhood Chain (LayerZero OFT and ONFT), collab sets with buyback shares, Legendary vaults, tournaments | Plus collab boosters and cross-chain volume | Plus collab buybacks | Each new chain or partner gets its own review |
 
