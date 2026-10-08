@@ -50,7 +50,8 @@ A change is done when its PR has:
 ## Never
 
 - Merge or approve a pull request: the owner merges.
-- Deploy contracts or run any script with `--broadcast`; edit `contracts/deployments/*.json` by hand.
+- Deploy contracts or run any script with `--broadcast` against a network other than local Anvil (chain 31337,
+  `pnpm deploy:local`); edit or commit `contracts/deployments/*.json` (only a real deploy by the owner writes it).
 - Read, print or commit keys, `.env` files, or RPC URLs that contain an API key.
 - Point anything at a mainnet chain id or RPC.
 - Skip, disable or loosen a test to get CI green.

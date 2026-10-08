@@ -45,7 +45,9 @@ reviewer nits and small asks, missing tests, a stale PR description, a GDD line 
 
 ## Never
 
-- Deploy contracts, run anything with `--broadcast`, or edit `contracts/deployments/*.json` (only a real deploy writes it).
+- Deploy contracts or run anything with `--broadcast` against a network other than local Anvil (chain 31337,
+  `pnpm deploy:local`, which the screenshot rule needs for on-chain pages); edit or commit
+  `contracts/deployments/*.json` (only a real deploy by the owner writes it).
 - Read, print or commit keys or `.env` files; never put an RPC URL with an API key in a commit, log or PR text.
 - Point anything at a mainnet chain id or RPC.
 - Skip, disable or loosen a test to get green; push empty commits; merge or approve your own PR.
