@@ -31,7 +31,7 @@ contract DefineCards is ForkfallScript {
             j++;
         }
         vm.startBroadcast();
-        cards.defineCards(nIds, nRaces, nRarities, nChains);
+        defineCardsInBatches(cards, nIds, nRaces, nRarities, nChains);
         vm.stopBroadcast();
         console2.log("Defined new cards:", n);
     }

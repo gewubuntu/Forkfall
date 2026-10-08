@@ -133,7 +133,7 @@ contract Deploy is ForkfallScript {
     {
         d.cards = new CardRegistry(admin, uri);
         (uint16[] memory ids, uint8[] memory races, uint8[] memory rarities, uint8[] memory chains) = Set1Cards.all();
-        d.cards.defineCards(ids, races, rarities, chains);
+        defineCardsInBatches(d.cards, ids, races, rarities, chains);
 
         d.starters = new StarterDecks(d.cards);
         d.packs = new PackSale(d.cards, admin, payable(admin), packPrice);
