@@ -161,6 +161,25 @@ describe('chain logs', () => {
     expect(two.report(1).humans.daily[0].packs).toBe(1);
   });
 
+  it('reads in ranges a free RPC tier accepts when METRICS_LOG_BLOCKS is set, and still keeps up', async () => {
+    // Alchemy's free tier rejects eth_getLogs over more than 10 blocks.
+    const events = [{ kind: 'pack' as const, owner: wallet(1), at: at(TODAY), block: 250 }];
+    const { chain: inner, asked } = fakeChain(events, 400);
+    const chain: MetricsChain = {
+      ...inner,
+      events: async (from, to) => {
+        if (to - from + 1 > 10) throw new Error('Under the Free tier plan, you can make eth_getLogs requests with up to a 10 block range');
+        return inner.events(from, to);
+      },
+    };
+    const m = new Metrics({ now: () => NOON, chain, since: TODAY - 30, logBlocks: 10 });
+    await m.poll();
+    expect(asked.every(([from, to]) => to - from + 1 <= 10)).toBe(true);
+    expect(asked[0]).toEqual([100, 109]);
+    expect(asked.at(-1)![1]).toBe(299); // 200 blocks a poll: Base makes about 15 in 30 s
+    expect(m.report(1).humans.daily[0].packs).toBe(1);
+  });
+
   it('reads packs and crafts as null, not zero, without a chain', () => {
     const m = new Metrics({ now: () => NOON });
     const d = m.report(1).humans.daily[0];

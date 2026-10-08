@@ -143,7 +143,11 @@ const sealed = new Sealed({
 profiles.passUnlocked = (a) => [...quests.passCosmetics(a), ...sealed.titles(a)];
 
 // Alpha metrics (the gate before paid packs): matches from onChange, packs and crafts from chain logs.
-const metrics = new Metrics({ file: env.METRICS_FILE || metricsFile(root, chainId), chain: metricsChain(chain) });
+const metrics = new Metrics({
+  file: env.METRICS_FILE || metricsFile(root, chainId),
+  chain: metricsChain(chain),
+  logBlocks: Number(env.METRICS_LOG_BLOCKS) || undefined,
+});
 
 // Archive finished matches and export a Foundry-ready settlement file as soon as a match has enough signatures.
 // Set before anything is restored: a finished match recovered at startup is archived through this too.
