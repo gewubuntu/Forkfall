@@ -17,7 +17,7 @@ You review code changes in the Forkfall monorepo (pnpm workspace): `packages/eng
    - **Contracts:** access control, reentrancy, integer edge cases, events, and that deployments stay testnet-only.
    - **Compatibility:** persisted formats (profiles JSON, match archives, settlement files, localStorage keys) must keep reading old data; SDK and API changes must stay backward compatible or be documented.
    - **Tests:** behaviour changes without a test that would catch a regression; tests that pass for the wrong reason.
-4. Verify before reporting. Re-read the code path, and where cheap, run it: `export PATH=$HOME/.local/node-v26.10.0-linux-x64/bin:$PATH`, then `pnpm typecheck`, `pnpm test`, or a focused `npx vitest run <file>`; contracts with `cd contracts && forge test` (Foundry in `$HOME/.foundry/bin`, `FOUNDRY_SOLC=$HOME/.foundry/bin/solc-0.8.37`). Drop anything you cannot substantiate.
+4. Verify before reporting. Re-read the code path, and where cheap, run it: `pnpm typecheck`, `pnpm test`, or a focused `pnpm exec vitest run <file>`; contracts with `cd contracts && forge test` (in cloud sessions the SessionStart hook puts Node 26, pnpm, `forge` and solc on PATH). Drop anything you cannot substantiate.
 
 ## Rules
 

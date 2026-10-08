@@ -34,3 +34,24 @@ affected screen, at desktop (1280 px wide) and phone (390 px wide) width.
 races, packs and odds, quests and rewards, the economy and token, matchmaking and timers, the referee and
 on-chain architecture, the MVP scope or roadmap), update the GDD in the same PR and say what changed in the PR
 description. If a change would contradict a design decision in the GDD, ask the user before making it.
+
+## Definition of done
+
+A change is done when its PR has:
+
+- tests that fail without the change (or screenshots, for what a player sees);
+- the GDD updated in the same PR when the change touches what it describes;
+- the review above done, its confirmed findings fixed;
+- CI green on the latest commit and no merge conflict;
+- a description that matches the final diff.
+
+`.claude/skills/steward/SKILL.md` says how to reproduce each CI check and when to stop and ask.
+
+## Never
+
+- Merge or approve a pull request: the owner merges.
+- Deploy contracts or run any script with `--broadcast` against a network other than local Anvil (chain 31337,
+  `pnpm deploy:local`); edit or commit `contracts/deployments/*.json` (only a real deploy by the owner writes it).
+- Read, print or commit keys, `.env` files, or RPC URLs that contain an API key.
+- Point anything at a mainnet chain id or RPC.
+- Skip, disable or loosen a test to get CI green.
