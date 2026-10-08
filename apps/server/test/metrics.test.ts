@@ -180,6 +180,15 @@ describe('chain logs', () => {
     expect(m.report(1).humans.daily[0].packs).toBe(1);
   });
 
+  it('ignores a METRICS_LOG_BLOCKS below 1 instead of reading one block at a time', async () => {
+    for (const logBlocks of [-10, 0, 0.5, NaN]) {
+      const { chain, asked } = fakeChain([], 20_000);
+      await new Metrics({ now: () => NOON, chain, since: TODAY - 30, logBlocks }).poll();
+      expect(asked).toHaveLength(5);
+      expect(asked[0]).toEqual([100, 2099]);
+    }
+  });
+
   it('reads packs and crafts as null, not zero, without a chain', () => {
     const m = new Metrics({ now: () => NOON });
     const d = m.report(1).humans.daily[0];

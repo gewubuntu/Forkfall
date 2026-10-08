@@ -183,7 +183,8 @@ export class Metrics {
         this.data.cursor = safe;
         this.save();
       }
-      const chunk = Math.max(1, Math.floor(this.opts.logBlocks ?? 0) || CHUNK);
+      const want = Math.floor(this.opts.logBlocks ?? 0);
+      const chunk = want >= 1 ? want : CHUNK; // 0, negative or not a number: the default
       const chunks = Math.max(CHUNKS_PER_POLL, Math.ceil(MIN_BLOCKS_PER_POLL / chunk));
       for (let i = 0; i < chunks; i++) {
         const from = (this.data.cursor ?? chain.startBlock! - 1) + 1;
