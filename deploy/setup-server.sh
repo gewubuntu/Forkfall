@@ -52,8 +52,12 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 CONF
   [ -f /etc/ssh/sshd_config.d/11-forkfall-root.conf ] || echo 'PermitRootLogin prohibit-password' > /etc/ssh/sshd_config.d/11-forkfall-root.conf
+  # Ubuntu 24.04 starts sshd only on a connection (ssh.socket), so its runtime directory can be missing: `sshd -t`
+  # then fails with "Missing privilege separation directory: /run/sshd".
+  mkdir -p /run/sshd && chmod 755 /run/sshd
   sshd -t
-  systemctl reload ssh || systemctl reload sshd
+  # A running sshd reloads; a socket-activated one that isn't running reads the new files on the next connection.
+  systemctl try-reload-or-restart ssh || systemctl try-reload-or-restart sshd
 else
   echo "   no SSH key for root found: leaving password login on. Add a key, then run this again."
 fi
