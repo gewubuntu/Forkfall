@@ -31,7 +31,7 @@
     "contracts:build": "cd contracts && forge build",
     "contracts:test": "cd contracts && forge test",
     "deploy:local": "cd contracts && forge script script/Deploy.s.sol --rpc-url local --broadcast --slow --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-    "deploy:base-sepolia": "sh scripts/with-env.sh sh -c 'cd contracts && forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify --account ${DEPLOYER_ACCOUNT:-forkfall-deployer}'",
+    "deploy:base-sepolia": "sh scripts/with-env.sh sh -c 'cd contracts && forge script script/Deploy.s.sol --rpc-url base_sepolia --broadcast --verify --slow --account ${DEPLOYER_ACCOUNT:-forkfall-deployer} --sender ${DEPLOYER_ADDRESS:?set DEPLOYER_ADDRESS in .env}'",
     "check:base-sepolia": "sh scripts/with-env.sh sh -c 'cd contracts && forge script script/CheckDeployment.s.sol --rpc-url base_sepolia'"
   },
   "devDependencies": {

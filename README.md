@@ -122,7 +122,7 @@ cast wallet import forkfall-deployer --interactive   # paste the key, choose a p
 
 Get Base Sepolia ETH from a faucet (for example the Coinbase Developer Platform faucet), and an Etherscan API v2 key from etherscan.io for Basescan verification.
 
-**2. Configure.** `cp .env.example .env`, then set `ETHERSCAN_API_KEY`, `REFEREE_ADDRESS` (the referee key's address) and `HOUSE_PRIVATE_KEY` (the referee key), plus `METADATA_BASE`: where card metadata lives, either your referee server (`https://<server>/metadata`) or a pinned `pnpm art:export` folder (`ipfs://<cid>`). The deploy refuses to run on a testnet without it, so the cards never ship with a dead URI. Optional: `RPC_URL` / `BASE_SEPOLIA_RPC_URL` (a dedicated RPC is recommended over `https://sepolia.base.org`), `TREASURY_ADDRESS`, `PACK_PRICE_WEI`, `CARD_URI` / `CONTRACT_URI` (override the derived URIs).
+**2. Configure.** `cp .env.example .env`, then set `ETHERSCAN_API_KEY`, `DEPLOYER_ADDRESS` (the keystore account's address: `cast wallet address --account forkfall-deployer`), `REFEREE_ADDRESS` (the referee key's address) and `HOUSE_PRIVATE_KEY` (the referee key), plus `METADATA_BASE`: where card metadata lives, either your referee server (`https://<server>/metadata`) or a pinned `pnpm art:export` folder (`ipfs://<cid>`). The deploy refuses to run on a testnet without it, so the cards never ship with a dead URI. Optional: `RPC_URL` / `BASE_SEPOLIA_RPC_URL` (a dedicated RPC is recommended over `https://sepolia.base.org`), `TREASURY_ADDRESS`, `PACK_PRICE_WEI`, `CARD_URI` / `CONTRACT_URI` (override the derived URIs).
 
 **3. Deploy, verify, check.**
 

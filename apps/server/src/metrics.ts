@@ -24,8 +24,11 @@ const SEEN_LIMIT = 5000;
 /** Per-day counters are kept this long; older ones are dropped (a wallet's own record is a few bytes and stays). */
 const KEEP_DAYS = 400;
 const MAX_DAYS = 90;
+/** Blocks per log read (METRICS_LOG_BLOCKS lowers it for RPC plans with a small eth_getLogs range, e.g. 10). */
 const CHUNK = 2000;
 const CHUNKS_PER_POLL = 5;
+/** With small chunks, still read at least this many blocks per poll: Base makes about 15 blocks every 30 s poll. */
+const MIN_BLOCKS_PER_POLL = 200;
 
 interface Counts { matches: number; packs: number; crafts: number }
 const zero = (): Counts => ({ matches: 0, packs: 0, crafts: 0 });
@@ -66,6 +69,8 @@ export interface MetricsOptions {
   chain?: MetricsChain | null;
   /** First day this store counts (default: today); tests set it earlier. */
   since?: number;
+  /** Blocks per eth_getLogs request (default 2000). Free RPC tiers can cap the range (Alchemy free: 10). */
+  logBlocks?: number;
 }
 /** Logs are read only this many blocks behind the head, so a shallow reorg can't leave a pack or craft counted twice. */
 const CONFIRMATIONS = 5;
@@ -178,10 +183,13 @@ export class Metrics {
         this.data.cursor = safe;
         this.save();
       }
-      for (let i = 0; i < CHUNKS_PER_POLL; i++) {
+      const want = Math.floor(this.opts.logBlocks ?? 0);
+      const chunk = want >= 1 ? want : CHUNK; // 0, negative or not a number: the default
+      const chunks = Math.max(CHUNKS_PER_POLL, Math.ceil(MIN_BLOCKS_PER_POLL / chunk));
+      for (let i = 0; i < chunks; i++) {
         const from = (this.data.cursor ?? chain.startBlock! - 1) + 1;
         if (from > safe) break;
-        const to = Math.min(safe, from + CHUNK - 1);
+        const to = Math.min(safe, from + chunk - 1);
         const events = await chain.events(from, to);
         this.applyEvents(events);
         this.data.cursor = to; // counted and advanced together, saved together
