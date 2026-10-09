@@ -9,8 +9,16 @@ export interface AgentLoopOptions {
   pollMs?: number;
   /** Use the live socket to wake up on moves instead of polling (default true). It's closed again on return unless you opened it with `client.live()`. */
   live?: boolean;
+  /** Pause between back-to-back moves in one turn, so a long turn stays under the referee's 10 requests/s (default 110 ms). */
+  moveGapMs?: number;
+  /** Wait after a 429 before trying the same request again (default 1000 ms). */
+  backoffMs?: number;
   log?: (msg: string) => void;
 }
+
+/** The referee rejects a rate-limited request before acting on it, so the same request is safe to send again. */
+const isRateLimited = (e: unknown) => / → 429: /.test(String(e));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Minimal agent loop: reveal, poll state, move when it's our turn, co-sign the result.
@@ -20,6 +28,19 @@ export async function runMatch(client: ForkfallClient, matchId: Hex, opts: Agent
   const log = opts.log ?? (() => {});
   const pollMs = opts.pollMs ?? 400;
   const decide = opts.decide ?? viewGreedy;
+  const moveGapMs = opts.moveGapMs ?? 110;
+  const backoffMs = opts.backoffMs ?? 1000;
+  // Rate limited: back off and retry, same rules as everyone. Any other error goes to the caller.
+  const retry429 = async <T>(send: () => Promise<T>): Promise<T> => {
+    for (;;) {
+      try { return await send(); } catch (e) {
+        if (!isRateLimited(e)) throw e;
+        log('rate limited: backing off');
+        await sleep(backoffMs);
+      }
+    }
+  };
+  const state = () => retry429(() => client.state(matchId));
   // With the live socket, sleep until the match changes (or a slow safety-net timeout); without it, poll.
   let wake: (() => void) | null = null;
   let changed = false; // a notice that arrived while we weren't waiting: don't sleep through it
@@ -34,23 +55,23 @@ export async function runMatch(client: ForkfallClient, matchId: Hex, opts: Agent
     wake = () => { clearTimeout(t); wake = null; changed = false; r(); };
   });
   try {
-  let snap = await client.state(matchId);
-  if (snap.phase === 'reveal') { await client.reveal(matchId); snap = await client.state(matchId); }
+  let snap = await state();
+  if (snap.phase === 'reveal') { await retry429(() => client.reveal(matchId)); snap = await state(); }
+  let moved = false; // the last request was one of our moves: pace the next one
   while (snap.phase !== 'ended' && snap.phase !== 'cancelled') {
     if (snap.phase === 'active' && snap.view && snap.view.active === snap.seat && snap.legalActions.length) {
       const action = await decide(snap);
       log(`turn ${snap.view.turn}: ${JSON.stringify(action)}`);
-      try { snap = await client.move(matchId, snap, action); continue; } catch (e) { log(String(e)); }
+      if (moved) await sleep(moveGapMs);
+      const at = snap;
+      try { snap = await retry429(() => client.move(matchId, at, action)); moved = true; continue; } catch (e) { log(String(e)); }
     }
+    moved = false;
     await pause();
-    snap = await client.state(matchId).catch(async (e) => {
-      if (!String(e).includes('429')) throw e;
-      await new Promise((r) => setTimeout(r, 1000)); // rate limited: back off, same rules as everyone
-      return snap;
-    });
+    snap = await state();
   }
-  if (snap.phase === 'ended') await client.signResult(matchId).catch((e) => log(`result sign failed: ${e}`));
-  return client.state(matchId);
+  if (snap.phase === 'ended') await retry429(() => client.signResult(matchId)).catch((e) => log(`result sign failed: ${e}`));
+  return state();
   } finally { off?.(); held?.release(); }
 }
 
