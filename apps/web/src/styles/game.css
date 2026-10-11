@@ -669,9 +669,10 @@
 @media (max-height: 500px) and (orientation: landscape) {
   .compact .arena { display: grid; grid-template-columns: minmax(0, 1fr) 132px; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
     grid-template-areas: 'opp rail' 'me rail' 'hand hand'; padding: 4px max(6px, var(--sar)) 4px max(6px, var(--sal)); }
-  .compact .side.opp { grid-area: opp; }
-  .compact .side.me { grid-area: me; }
-  .compact .hand-wrap { grid-area: hand; min-width: 0; }
+  /* By order, not by .me/.opp: to a spectator both sides are "opp". The opponent's side always comes first. */
+  .compact .arena > .side:first-of-type { grid-area: opp; }
+  .compact .arena > .side:last-of-type { grid-area: me; }
+  .compact .hand-wrap, .compact .arena > .hand:not(.replay-hand) { grid-area: hand; min-width: 0; }
   .compact .side { flex-direction: row; align-items: stretch; gap: 6px; padding: 3px 6px; }
   .compact .side.me .side-bar { order: 0; }
   /* The bar as a small grid: name on top, Treasury beside Gas and the counts, tags below. */
@@ -709,6 +710,8 @@
   /* The picked-up card's bar covers your board, not the opponent's; it stays clear of the rail. */
   .compact .armed { right: 138px; }
   .compact .result { max-height: calc(var(--vh) - 16px); overflow: auto; }
+  /* Lessons: the coach stays above in the flow, and the board below it is one screen tall like a match. */
+  .learn.compact .arena { height: calc(var(--vh) - var(--sat) - var(--sab)); }
 }
 @media (max-height: 500px) and (orientation: landscape) and (max-width: 640px) {
   .compact .arena { grid-template-columns: minmax(0, 1fr) 116px; }

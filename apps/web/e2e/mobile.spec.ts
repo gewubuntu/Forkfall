@@ -291,6 +291,57 @@ for (const [name, size] of [['Pixel 7 landscape', null], ['iPhone SE landscape',
   });
 }
 
+test.describe('spectator on a phone in landscape', () => {
+  test.use(phone('Pixel 7 landscape'));
+  test('both boards show, one above the other, beside the rail', async ({ page, browser }) => {
+    // Someone else's live match against the bot.
+    const player = await browser.newPage();
+    await installTestWallet(player, privateKeyToAccount(generatePrivateKey()), HUB_CHAIN);
+    await player.goto('/play');
+    await player.getByRole('button', { name: 'Connect wallet' }).first().click();
+    await player.getByRole('button', { name: /Forkfall Test Wallet/ }).click();
+    await player.getByRole('button', { name: 'Sign in with wallet' }).click();
+    await player.getByRole('button', { name: /vs bot/ }).click();
+    await player.waitForURL(/\/match\/0x[0-9a-f]{64}/);
+    const id = player.url().split('/').pop()!;
+
+    await installTestWallet(page, privateKeyToAccount(generatePrivateKey()), HUB_CHAIN);
+    await page.goto('/play');
+    await signIn(page);
+    await page.goto(`/match/${id}`);
+    await expect(page.locator('.arena .side')).toHaveCount(2);
+    await expect(page.locator('.side.me')).toHaveCount(0);   // a spectator: both sides are "opp"
+    const [top, bottom, rail] = await Promise.all([
+      page.locator('.arena > .side').first().boundingBox(), page.locator('.arena > .side').last().boundingBox(), page.locator('.turnbar').boundingBox(),
+    ]);
+    expect(bottom!.y).toBeGreaterThanOrEqual(top!.y + top!.height);
+    expect(bottom!.y + bottom!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    expect(rail!.x).toBeGreaterThanOrEqual(top!.x + top!.width);
+    await player.close();
+  });
+});
+
+test.describe('lesson on a phone in landscape', () => {
+  test.use({ ...phone('iPhone SE'), viewport: { width: 568, height: 320 } });
+  test('the board below the coach is one screen, with the hand under your board', async ({ page }) => {
+    await page.goto('/learn/basics');
+    await page.locator('.hand .gcard').first().waitFor();
+    await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished)));
+    const arena = page.locator('.arena');
+    await arena.evaluate((e) => e.scrollIntoView());
+    const [box, me, hand, bar] = await Promise.all(['.arena', '.side.me', '.hand', '.turnbar'].map((s) => page.locator(s).first().boundingBox()));
+    expect(box!.height).toBeLessThanOrEqual(320);
+    expect(hand!.y).toBeGreaterThanOrEqual(me!.y + me!.height - 1);
+    expect(hand!.y + hand!.height).toBeLessThanOrEqual(box!.y + box!.height + 1);
+    // The cards fit the hand row instead of spilling up over your board.
+    for (const c of await page.locator('.hand .gcard').evaluateAll((cs) => cs.map((e) => e.getBoundingClientRect().top))) {
+      expect(c).toBeGreaterThanOrEqual(me!.y + me!.height - 2);
+    }
+    expect(bar!.x).toBeGreaterThanOrEqual(me!.x + me!.width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(568);
+  });
+});
+
 test.describe('replay on a phone', () => {
   test.use(phone('iPhone SE (3rd gen)'));
   test('the board and controls fill the first screen, steps work, a tap shows a card, and the checks sit below', async ({ page }) => {

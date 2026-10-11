@@ -117,9 +117,6 @@
   /* Landscape: the controls take the right rail (as End turn does in a match), each hand sits on its side of the board. */
   .compact.replay .arena { grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto auto;
     grid-template-areas: 'ohand rail' 'opp rail' 'me rail' 'mhand rail' 'scrub scrub'; grid-template-columns: minmax(0, 1fr) 156px; }
-  /* Both sides are "opp" to a spectator: place them by order, not by class. */
-  .compact.replay .arena > .side:first-of-type { grid-area: opp; }
-  .compact.replay .arena > .side:last-of-type { grid-area: me; }
   .compact .replay-hand.top { grid-area: ohand; }
   .compact .replay-hand:not(.top) { grid-area: mhand; }
   .compact .replay-hand { height: clamp(56px, calc(var(--vh) * .17), 84px); }
