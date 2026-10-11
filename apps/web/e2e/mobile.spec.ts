@@ -82,18 +82,19 @@ for (const name of ['iPhone SE', 'iPhone SE (3rd gen)', 'Pixel 7'] as const) {
       await expect(page.locator('header.header')).toBeHidden();
       await expectBoardFits(page);
 
-      // Long-press: details open, nothing is played.
-      const handBefore = await page.locator('.hand .gcard').count();
-      await longPress(page, '.hand .gcard');
-      await expect(page.getByRole('dialog', { name: /details/ })).toBeVisible();
-      await page.getByRole('dialog', { name: /details/ }).getByRole('button', { name: 'Close' }).tap();
-      expect(await page.locator('.hand .gcard').count()).toBe(handBefore);
-
-      // A turn with a playable card (the bot may start, and an opening hand may be too expensive).
+      // A turn with a playable card (the bot may start, and an opening hand may be too expensive). Everything below
+      // happens in our own turn, so a draw at the start of a turn can't change the hand mid-check.
       await untilPlayable(page);
       const inHand = await page.locator('.hand .gcard').count();
       const gas = () => page.locator('.side.me .gas').getAttribute('aria-label');
       const gasBefore = await gas();
+
+      // Long-press a card we could afford: details open, nothing is played.
+      await longPress(page, '.hand .gcard.is-playable');
+      await expect(page.getByRole('dialog', { name: /details/ })).toBeVisible();
+      await page.getByRole('dialog', { name: /details/ }).getByRole('button', { name: 'Close' }).tap();
+      expect(await gas()).toBe(gasBefore);
+      expect(await page.locator('.hand .gcard').count()).toBe(inHand);
       // First tap arms the card and shows its rules text; nothing is played yet.
       await page.locator('.hand .gcard.is-playable').first().tap();
       const armed = page.locator('.armed');
