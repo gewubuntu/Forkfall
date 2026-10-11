@@ -24,3 +24,15 @@ test('a page chunk missing after a deploy reloads into the new build instead of 
   await expect(page.getByRole('heading', { name: 'Matches', level: 1 })).toBeVisible();
   expect(failed).toBeGreaterThanOrEqual(2); // failed once, then loaded after the reload
 });
+
+test('a deep link starts its page chunks before the stylesheet has loaded', async ({ request }) => {
+  const html = await (await request.get('/learn/basics')).text();
+  const preload = html.indexOf("l.rel='modulepreload'");
+  const css = html.search(/<link rel="stylesheet"/);
+  expect(preload).toBeGreaterThan(0);
+  expect(css).toBeGreaterThan(0);
+  // An inline script after a stylesheet <link> waits for the CSS, which held the preloads back a round trip.
+  expect(preload).toBeLessThan(css);
+  // ...and it doesn't push <meta charset> out of the first 1024 bytes, where browsers look for it.
+  expect(html.indexOf('<meta charset')).toBeLessThan(1024);
+});

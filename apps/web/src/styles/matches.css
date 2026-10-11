@@ -90,3 +90,46 @@
 .league-claims { margin-top: 18px; }
 .league-claims h3 { margin: 0 0 4px; font-size: 16px; }
 .ok-text { color: var(--ok); font-weight: 600; }
+
+/* Replay on a phone (.compact, game.css's phone board): both hands, both boards and the controls fill the first
+   screen; the verification, card log and Download sit below it. Hands are a strip of small cards (tap one for
+   details), and the controls wrap under the move text. */
+.compact.replay .arena { touch-action: pan-x pan-y; }
+.compact.replay .sidebar { display: flex; flex-direction: column; gap: 10px; position: static; max-height: none; padding: 10px 6px max(16px, var(--sab)); }
+.compact.replay .sidebar .preview { display: none; }
+.compact.replay .lane .gcard, .compact.replay .hand .gcard { touch-action: manipulation; }
+.compact .replay-hand { height: clamp(72px, calc(var(--vh) * .12), 112px); padding: 4px 2px 2px; align-items: center; }
+.compact .replay-hand .gcard { --cw: max(40px, min(calc(100cqh - 34px), 84px, calc((100cqw - (var(--n) - 1) * 4px) / var(--n)))); padding: 3px; border-radius: 8px; }
+.compact .replay-hand .gcard + .gcard { margin-left: min(4px, calc((100cqw - var(--n) * var(--cw)) / max(var(--n) - 1, 1))); }
+.compact .replay-hand .gc-name, .compact .replay-hand .gc-kw, .compact .replay-hand .gc-type { display: none; }
+.compact .replay-hand .gc-stats { margin-top: 3px; }
+.compact .replay-hand .gc-atk, .compact .replay-hand .gc-hp { min-width: 18px; height: 17px; font-size: 11.5px; padding: 0 3px; }
+.compact .replay-hand .gc-cost { width: 20px; height: 20px; font-size: 11px; top: -6px; left: -5px; }
+.compact .replay-bar { flex-wrap: wrap; row-gap: 2px; }
+.compact .replay-bar .tb-left { flex: 1 1 100%; flex-direction: row; align-items: center; gap: 8px; }
+.compact .replay-bar .rb-move { max-width: none; min-width: 0; flex: 1; }
+.compact .replay-bar .rb-controls { flex: 1 1 100%; flex-wrap: wrap; justify-content: space-between; gap: 2px; }
+/* Real 44 px buttons, not the 30 px circle with a wider invisible hit area: neighbours are only 2 px apart here. */
+.compact .rb-controls .icon-btn { width: 44px; height: 44px; font-size: 15px; }
+.compact .rb-controls .rb-speed { min-width: 44px; }
+.compact .rb-scrub { flex: none; height: 28px; margin: 0; }
+@media (max-height: 500px) and (orientation: landscape) {
+  /* Landscape: the controls take the right rail (as End turn does in a match), each hand sits on its side of the board. */
+  .compact.replay .arena { grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto auto;
+    grid-template-areas: 'ohand rail' 'opp rail' 'me rail' 'mhand rail' 'scrub scrub'; grid-template-columns: minmax(0, 1fr) 156px; }
+  /* Both sides are "opp" to a spectator: place them by order, not by class. */
+  .compact.replay .arena > .side:first-of-type { grid-area: opp; }
+  .compact.replay .arena > .side:last-of-type { grid-area: me; }
+  .compact .replay-hand.top { grid-area: ohand; }
+  .compact .replay-hand:not(.top) { grid-area: mhand; }
+  .compact .replay-hand { height: clamp(56px, calc(var(--vh) * .17), 84px); }
+  .compact .rb-scrub { grid-area: scrub; }
+  .compact .replay-bar { flex-wrap: nowrap; justify-content: center; gap: 10px; }
+  .compact .replay-bar .tb-left { flex: none; flex-direction: column; text-align: center; }
+  .compact .replay-bar .rb-move { white-space: normal; flex: none; max-width: 100%; }
+  .compact .replay-bar .rb-controls { flex: none; width: 100%; }
+  /* Play on top across the rail, then back/forward pairs, then speed and Flip. */
+  .compact .replay-bar .rb-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; justify-items: center; }
+  .compact .replay-bar .rb-play { order: -1; grid-column: 1 / -1; width: 100%; }
+  .compact .replay-bar .rb-controls .btn-ghost { width: 100%; padding: 0 4px; }
+}

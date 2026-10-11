@@ -547,7 +547,6 @@
   /* No pinch zoom, double-tap zoom, text selection or long-press callouts on the board; modals keep them. */
   touch-action: pan-x pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
-@media (orientation: landscape) { .compact .arena { min-height: 540px; } }
 .compact .side { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 3px 6px; border-radius: 12px; }
 .compact .side-bar { flex-wrap: wrap; gap: 4px 8px; min-height: 44px; row-gap: 2px; }
 .compact .who { flex: 1 1 0; min-width: 0; gap: 6px; padding: 0; margin: 0; border: 0; background: none; }
@@ -661,4 +660,59 @@
   .compact .clock-bar { display: none; }
   .compact .end-turn { min-width: 92px; padding: 0 10px; }
   .compact .turn-pill { font-size: 13px; padding: 1px 8px; }
+}
+
+/* ─── Phone match board, landscape ──────────────────
+   A phone on its side is ~320–430 px tall: the portrait stack (bars above each lane, turn bar between) would push
+   the hand off screen. Here each side's bar becomes a column left of its lane, the turn bar a rail on the right,
+   and the hand runs along the bottom, so the whole board fits without scrolling. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .compact .arena { display: grid; grid-template-columns: minmax(0, 1fr) 132px; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-areas: 'opp rail' 'me rail' 'hand hand'; padding: 4px max(6px, var(--sar)) 4px max(6px, var(--sal)); }
+  .compact .side.opp { grid-area: opp; }
+  .compact .side.me { grid-area: me; }
+  .compact .hand-wrap { grid-area: hand; min-width: 0; }
+  .compact .side { flex-direction: row; align-items: stretch; gap: 6px; padding: 3px 6px; }
+  .compact .side.me .side-bar { order: 0; }
+  /* The bar as a small grid: name on top, Treasury beside Gas and the counts, tags below. */
+  .compact .side-bar { flex: none; width: 168px; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-auto-rows: auto;
+    align-content: center; gap: 2px 6px; min-height: 0; overflow: hidden; }
+  .compact .who { grid-column: 1 / -1; }
+  .compact .who .avatar { width: 22px; height: 22px; border-radius: 6px; }
+  .compact .who-name { font-size: 13px; }
+  .compact .treasury { grid-row: span 2; justify-content: center; padding: 2px 8px; }
+  .compact .treasury .t-label { display: none; }
+  .compact .treasury::before { content: '◈'; color: #c78a98; font-size: 13px; }
+  .compact .treasury .t-val { font-size: 20px; }
+  .compact .gas { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; align-self: end; }
+  .compact .gas-pips i { width: 4px; height: 8px; }
+  .compact .gas .small { font-size: 11px; }
+  .compact .side-stats { font-size: 11px; gap: 6px; align-self: start; }
+  .compact .side-tags { grid-column: 1 / -1; flex: none; order: 0; }
+  .compact .tag { max-width: 100%; }
+  .compact .lane { padding: 4px 0 8px; }
+  .compact .side.me .lane { order: 1; }
+
+  /* Turn bar → a rail: menu at the top, whose turn and the clock, End turn at the bottom under the thumb. */
+  .compact .turnbar { grid-area: rail; flex-direction: column; align-items: stretch; justify-content: space-between; gap: 6px; padding: 6px; min-height: 0; }
+  .compact .tb-menu-wrap { align-self: flex-start; }
+  .compact .tb-menu { left: auto; right: 0; }
+  .compact .tb-left { align-items: center; text-align: center; flex: none; }
+  .compact .tb-left .small { white-space: normal; }
+  .compact .clock { justify-content: center; }
+  .compact .clock-bar { display: block; width: 40px; }
+  .compact .tb-right { flex-direction: column; align-items: stretch; gap: 6px; }
+  .compact .end-turn { min-width: 0; width: 100%; padding: 0 8px; white-space: normal; line-height: 1.15; }
+  .compact .hint-inline { left: auto; right: calc(100% + 6px); top: 6px; width: min(300px, 50vw); }
+
+  .compact .hand { height: clamp(108px, calc(var(--vh) * .32), 136px); padding-top: 10px; }
+  /* The picked-up card's bar covers your board, not the opponent's; it stays clear of the rail. */
+  .compact .armed { right: 138px; }
+  .compact .result { max-height: calc(var(--vh) - 16px); overflow: auto; }
+}
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 640px) {
+  .compact .arena { grid-template-columns: minmax(0, 1fr) 116px; }
+  .compact .side-bar { width: 172px; }
+  .compact .who-name .badge { display: none; }
+  .compact .armed { right: 122px; }
 }

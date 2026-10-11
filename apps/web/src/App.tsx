@@ -63,7 +63,8 @@ export function App() {
   const auth = useAuth();
   const signedIn = auth.status === 'signedIn';
   const path = useLocation().pathname;
-  const inMatch = path.startsWith('/match/') || path.startsWith('/learn/');
+  // A replay (/matches/:id) is a board too; the match list (/matches) is not.
+  const inMatch = path.startsWith('/match/') || path.startsWith('/learn/') || /^\/matches\/[^/]/.test(path);
   // Phones hide the header and banner on the board and lock pull-to-refresh (game.css, html.in-match). Set before
   // the first paint, or the board jumps up when the header disappears (a layout shift).
   useLayoutEffect(() => {
