@@ -358,6 +358,20 @@ export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: 
 export const isRateLimited = (e: unknown) => / → 429: /.test(String(e));
 
 /**
+ * Send a request again while the referee refuses it for the rate limit (safe: it did nothing with it), waiting
+ * backoffMs, then twice that, and so on. Any other error, or a 429 on the last try, goes to the caller.
+ */
+export async function withRateLimitRetry<T>(send: () => Promise<T>, opts: { tries?: number; backoffMs?: number } = {}): Promise<T> {
+  const tries = opts.tries ?? 5, backoffMs = opts.backoffMs ?? 500;
+  for (let i = 1; ; i++) {
+    try { return await send(); } catch (e) {
+      if (!isRateLimited(e) || i >= tries) throw e;
+      await new Promise((r) => setTimeout(r, backoffMs * i));
+    }
+  }
+}
+
+/**
  * Forkfall API client. The same client drives the web app, the agent SDK and the Bankr/MCP skill:
  * it authenticates by signature, signs every move with EIP-712 and co-signs the final result.
  */
@@ -633,17 +647,21 @@ export class ForkfallClient {
    * concede signed for a position the bot has since moved past comes back "stale seq". Re-read the board and sign
    * it again (a short pause between tries) until it lands or `timeoutMs` passes.
    */
-  async concede(matchId: Hex, opts: { snap?: Pick<MatchSnapshot, 'seq' | 'head'>; timeoutMs?: number; retryMs?: number } = {}) {
+  async concede(matchId: Hex, opts: { snap?: Pick<MatchSnapshot, 'seq' | 'head'>; timeoutMs?: number; retryMs?: number; rateLimitMs?: number } = {}) {
     const deadline = Date.now() + (opts.timeoutMs ?? 10_000);
-    let snap = opts.snap ?? await this.state(matchId);
+    const state = () => withRateLimitRetry(() => this.state(matchId), { backoffMs: opts.rateLimitMs ?? 500 });
+    let snap = opts.snap ?? await state();
     for (;;) {
+      let limited = false;
       try {
         return await this.move(matchId, snap, { type: 'concede' });
       } catch (e) {
-        if (!String((e as Error).message).includes('stale seq') || Date.now() > deadline) throw e;
+        // A stale position (the opponent moved meanwhile) or the rate limit: the concede didn't land, try again.
+        limited = isRateLimited(e);
+        if ((!limited && !String((e as Error).message).includes('stale seq')) || Date.now() > deadline) throw e;
       }
-      await new Promise((r) => setTimeout(r, opts.retryMs ?? 250)); // two requests a try: stays under 10/s
-      snap = await this.state(matchId);
+      await new Promise((r) => setTimeout(r, limited ? (opts.rateLimitMs ?? 1000) : (opts.retryMs ?? 250))); // two requests a try: stays under 10/s
+      snap = await state();
     }
   }
 
