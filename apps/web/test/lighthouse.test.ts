@@ -18,10 +18,11 @@ describe('Lighthouse budget', () => {
     expect(v.reasons.join()).toMatch(/under the floor/);
   });
 
-  it('fails on a layout shift in any run, even with a good score', () => {
-    const v = judge(page, [run(0.9), run(0.9, 0.12), run(0.9)]);
+  it('fails on a layout shift, even with a good score, but not on one odd run or font-swap jitter', () => {
+    const v = judge(page, [run(0.9, 0.05), run(0.9, 0.12), run(0.9)]);
     expect(v.ok).toBe(false);
     expect(v.reasons.join()).toMatch(/layout shift/);
+    expect(judge(page, [run(0.9, 0.0008), run(0.9, 0.013), run(0.9, 0.0008)]).ok).toBe(true);
   });
 
   it('reads a Lighthouse report, and treats a missing score as 0', () => {

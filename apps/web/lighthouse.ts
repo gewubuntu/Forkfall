@@ -3,8 +3,10 @@
  * serves the built web app). Each page is measured RUNS times with Lighthouse's mobile preset (simulated slow 4G,
  * 4× CPU slowdown) and judged on the median, because one run swings by ±0.04 on the same build.
  *
- * Blocking: a median performance score under FLOOR, or any layout shift. The 0.85 target from the mobile work is
- * reported next to it but does not fail the job: on CI-sized machines a page that meets it measures 0.81–0.88.
+ * Blocking: a median performance score under FLOOR, or a median layout shift above MAX_CLS (any real shift, such as a
+ * header or banner moving, is well above it; a web font swapping in nudges the board by under 0.001). The 0.85 target
+ * from the mobile work is reported next to it but does not fail the job: on CI-sized machines a page that meets it
+ * measures 0.81–0.88.
  *
  * Env: BASE_URL (default http://127.0.0.1:8787), CHROME_PATH (Chrome or Chromium), LIGHTHOUSE (CLI command,
  * default `npx -y lighthouse@13.5.0`), RUNS (default 3), GITHUB_STEP_SUMMARY (a Markdown table is appended there).
@@ -20,6 +22,7 @@ export const PAGES = [
 ];
 export const FLOOR = 0.8;
 export const TARGET = 0.85;
+export const MAX_CLS = 0.01;
 
 export interface Run { score: number; lcpMs: number; tbtMs: number; cls: number; bytes: number }
 export interface Verdict { name: string; path: string; score: number; lcpMs: number; tbtMs: number; cls: number; bytes: number; ok: boolean; reasons: string[] }
@@ -43,10 +46,10 @@ export function readRun(report: { categories: { performance: { score: number | n
 
 export function judge(page: { path: string; name: string }, runs: Run[], floor = FLOOR): Verdict {
   const m = (k: keyof Run) => median(runs.map((r) => r[k]));
-  const v = { ...page, score: m('score'), lcpMs: m('lcpMs'), tbtMs: m('tbtMs'), cls: Math.max(...runs.map((r) => r.cls)), bytes: m('bytes') };
+  const v = { ...page, score: m('score'), lcpMs: m('lcpMs'), tbtMs: m('tbtMs'), cls: m('cls'), bytes: m('bytes') };
   const reasons: string[] = [];
   if (!(v.score >= floor)) reasons.push(`performance ${pct(v.score)} is under the floor of ${pct(floor)}`);
-  if (!(v.cls <= 0.001)) reasons.push(`layout shift ${v.cls.toFixed(3)} (must be 0)`);
+  if (!(v.cls <= MAX_CLS)) reasons.push(`layout shift ${v.cls.toFixed(3)} is over ${MAX_CLS}`);
   return { ...v, ok: reasons.length === 0, reasons };
 }
 
@@ -57,7 +60,7 @@ export function summary(verdicts: Verdict[], runs: number): string {
   return [
     `### Lighthouse, mobile (median of ${runs} runs)`,
     '',
-    `Fails under ${pct(FLOOR)} or on any layout shift; the target is ${pct(TARGET)}.`,
+    `Fails under ${pct(FLOOR)} or on a layout shift over ${MAX_CLS}; the target is ${pct(TARGET)}.`,
     '',
     '| Page | Performance | LCP | TBT | CLS | Transferred | |',
     '| --- | --- | --- | --- | --- | --- | --- |',

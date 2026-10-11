@@ -2,6 +2,13 @@
    Base side: cool, clean, blue. Robinhood Chain side: warmer, greener, wilder (GDD art direction).
    Pixel font for the logo and headings only; clean sans-serif for everything you read. */
 
+/* While Inter downloads, text renders in Arial (Liberation Sans on Linux) scaled to Inter's metrics, so nothing moves
+   when Inter swaps in (it did on the tutorial board: a layout shift wherever Inter isn't a system font). */
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans'), local('Helvetica');
+  ascent-override: 90.44%; descent-override: 22.52%; line-gap-override: 0%; size-adjust: 107.12%;
+}
 :root {
   --bg: #0a0c12;
   --bg-2: #0e1119;
@@ -35,7 +42,7 @@
   --danger: #ff5d73;
 
   --font-pixel: 'Pixelify Sans', ui-monospace, monospace;
-  --font-ui: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-ui: 'Inter Variable', Inter, 'Inter Fallback', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --r-sm: 8px;
