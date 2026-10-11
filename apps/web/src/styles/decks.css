@@ -114,3 +114,10 @@
 @media (prefers-reduced-motion: reduce) {
   .dl-n, .deck-list li, .curve-col .curve-bar, .curve-col .curve-val, .meter.ok .meter-bar i { animation: none !important; }
 }
+
+/* Off-screen pool cards skip layout and paint until scrolled near (the full set is ~170 cards). */
+.pool-cell { content-visibility: auto; contain-intrinsic-size: auto 240px; }
+@media (pointer: coarse) {
+  .mini-btn { width: 44px; height: 44px; font-size: 18px; }
+  .pool-cell .gcard { touch-action: manipulation; -webkit-touch-callout: none; }
+}

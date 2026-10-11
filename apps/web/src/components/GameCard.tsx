@@ -1,7 +1,7 @@
 import { card, type UnitState } from '@forkfall/engine';
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
 import { KEYWORD_LABEL, RACE_COLOR } from '../game/meta.ts';
-import { spriteSvg } from '../lib/art.ts';
+import { spriteArt } from '../lib/art.ts';
 import { backClass } from '../lib/cosmetics.ts';
 
 export interface GameCardProps {
@@ -49,6 +49,7 @@ export function GameCard(p: GameCardProps) {
   ].filter(Boolean).join(' ');
   const style = { ['--rc' as string]: RACE_COLOR[c.faction] } as CSSProperties;
   const interactive = !!p.onClick;
+  const art = spriteArt(p.cardId);
   const onKey = (e: KeyboardEvent) => { if (interactive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); p.onClick!(); } };
   const onClick = (e: MouseEvent) => { e.stopPropagation(); p.onClick?.(); };
 
@@ -73,7 +74,11 @@ export function GameCard(p: GameCardProps) {
     >
       {!u && <span className={`gc-cost ${p.cost !== undefined && p.cost < c.cost ? 'cheaper' : ''}`}>{p.cost ?? c.cost}</span>}
       {chain && <span className="gc-chain">{chain}</span>}
-      <div className="gc-art"><img src={spriteSvg(p.cardId)} alt="" draggable={false} /></div>
+      <div className="gc-art">
+        {'src' in art
+          ? <img src={art.src} alt="" draggable={false} loading="lazy" decoding="async" />
+          : <span className="gc-sprite" style={art.style} aria-hidden />}
+      </div>
       <div className="gc-name">{c.name}</div>
       {size !== 'board' && size !== 'mini' && <div className="gc-text">{c.text}</div>}
       {(size === 'board' || size === 'mini') && kws.length > 0 && <div className="gc-kw">{kws.join(' · ')}</div>}

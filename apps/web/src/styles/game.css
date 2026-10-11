@@ -55,6 +55,19 @@
 .gc-art { aspect-ratio: 1; border-radius: 8px; overflow: hidden; display: grid; place-items: center;
   background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--rc) 28%, #0d1018), #090b11 75%); }
 .gc-art img { width: 86%; height: 86%; image-rendering: pixelated; }
+/* Pixel sprites come from one atlas PNG (vite.config.ts). The sprite is sized in whole device pixels per art pixel
+   where round() is supported (32 px grid ÷ device pixel ratio), so every art pixel is the same size and stays sharp. */
+.gc-art { container-type: inline-size; }
+.gc-sprite {
+  --fill: 86cqw; --sz: var(--fill); --px: calc(var(--sz) / 32);
+  display: block; width: var(--sz); height: var(--sz); image-rendering: pixelated; background-repeat: no-repeat; background-image: var(--atlas-url);
+  background-size: calc(var(--px) * var(--atlas-cell) * var(--atlas-cols)) auto;
+  background-position: calc(var(--px) * -1 * (var(--atlas-cell) * var(--ax) + var(--atlas-pad))) calc(var(--px) * -1 * (var(--atlas-cell) * var(--ay) + var(--atlas-pad)));
+}
+@supports (width: round(nearest, 10px, 1px)) {
+  .gc-sprite { --sz: max(calc(32px / var(--dppx, 1)), round(nearest, var(--fill), calc(32px / var(--dppx, 1)))); }
+  .gcard-preview .gc-sprite { --sz: round(down, var(--fill), calc(32px / var(--dppx, 1))); }
+}
 .gc-name { font-weight: 700; font-size: 12.5px; line-height: 1.15; margin: 6px 2px 2px; }
 .gc-text { font-size: 10.5px; line-height: 1.3; color: #c2c8d6; margin: 0 2px; min-height: 40px; flex: 1; }
 .gc-kw { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--rc); margin: 0 2px; min-height: 13px; }
@@ -70,6 +83,8 @@
 
 .gcard-board { width: 100px; }
 .gcard-board .gc-art img { width: 80%; height: 80%; }
+.gcard-board .gc-sprite { --fill: 80cqw; }
+.gcard-preview .gc-sprite { --fill: 92cqw; }
 .gcard-board .gc-name { font-size: 12px; }
 .gcard-mini { width: 92px; }
 .gcard-preview { width: 220px; padding: 8px; }
@@ -512,10 +527,6 @@
 .zoom-kw p { margin: 0 0 6px; } .zoom-kw p:last-child { margin: 0; }
 @keyframes zoom-fade { from { opacity: 0; } }
 @keyframes zoom-pop { from { transform: scale(.85); opacity: 0; } }
-/* Sprites: integer multiples of the 32 px grid where the card is big enough (GDD: integer scaling only). */
-@supports (width: round(down, 10px, 1px)) {
-  .gcard-preview .gc-art img { width: round(down, 92%, 32px); height: auto; aspect-ratio: 1; }
-}
 
 /* ─── Phone match board ─────────────────────────────
    Portrait first (360×640 up to 430×932): opponent, turn bar, your board, your hand: all on one screen, no
@@ -589,7 +600,8 @@
 
 .compact .hand { position: relative; flex: none; height: clamp(116px, calc(var(--vh) * .22), 176px); container-type: size; overflow: visible;
   padding: 12px 2px 2px; gap: 0; justify-content: center; align-items: flex-end; min-height: 0; }
-.compact .hand .gcard { --cw: min(calc(100cqh - 56px), 104px); width: var(--cw); margin: 0; padding: 4px; border-radius: 10px; }
+/* As wide as the hand's height allows, narrower when the cards wouldn't fit side by side; below 64 px they overlap. */
+.compact .hand .gcard { --cw: max(64px, min(calc(100cqh - 56px), 104px, calc((100cqw - (var(--n) - 1) * 6px) / var(--n)))); width: var(--cw); margin: 0; padding: 4px; border-radius: 10px; }
 .compact .hand .gcard + .gcard { margin-left: min(6px, calc((100cqw - var(--n) * var(--cw)) / max(var(--n) - 1, 1))); }
 .compact .hand .gc-text, .compact .hand .gc-chain { display: none; }
 .compact .hand .gc-name { font-size: 11.5px; margin: 4px 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -632,3 +644,9 @@
   .learn.compact .arena { flex: none; height: 540px; }
   .learn.compact .coach { max-height: none; }
 }
+/* Death/attack ghosts (FxLayer) are copies of a board card outside the lane: keep the phone card's proportions. */
+.fx-ghost { overflow: hidden; }
+.fx-ghost .gc-art { flex: none; }
+.compact .fx-ghost .gc-name, .compact .fx-ghost .gc-kw, .compact .fx-ghost .gc-chain { display: none; }
+.compact .fx-ghost .gc-stats { margin-top: 3px; }
+.compact .fx-ghost .gc-atk, .compact .fx-ghost .gc-hp { min-width: 22px; height: 20px; font-size: 13px; padding: 0 4px; }

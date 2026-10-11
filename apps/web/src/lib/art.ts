@@ -1,5 +1,7 @@
 import { spriteDataUri } from '@forkfall/art';
 import type { Faction } from '@forkfall/engine';
+import type { CSSProperties } from 'react';
+import atlas from 'virtual:forkfall-sprites';
 
 /** Avatar palettes per race (card art lives in @forkfall/art). */
 const PALETTES: Record<Faction, string[]> = {
@@ -10,8 +12,43 @@ const PALETTES: Record<Faction, string[]> = {
   neutral: ['#1f2430', '#8390a8', '#cfd6e4', '#5d6679'],
 };
 
-/** Card sprites come from @forkfall/art, the same generator the on-chain metadata uses. */
-export const spriteSvg = (cardId: number): string => spriteDataUri(cardId);
+/** Generated Poncho artwork as separate WebP files (fetched only when a Poncho card is on screen). */
+const PONCHO_WEB: Record<number, string> = Object.fromEntries(
+  Object.entries(import.meta.glob<string>('../assets/poncho/*.webp', { eager: true, query: '?url', import: 'default' }))
+    .map(([path, url]) => [Number(/(\d+)\.webp$/.exec(path)![1]), url]),
+);
+
+/**
+ * Card art: the pixel sprite from @forkfall/art (the same generator the on-chain metadata uses), or the Poncho
+ * artwork's WebP file where one exists.
+ */
+export const spriteSvg = (cardId: number): string => PONCHO_WEB[cardId] ?? spriteDataUri(cardId);
+
+// The atlas image and grid, plus the screen's device pixel ratio for integer-pixel sprite sizes (game.css .gc-sprite).
+if (typeof document !== 'undefined') {
+  const root = document.documentElement.style;
+  root.setProperty('--atlas-url', `url("${atlas.url}")`);
+  root.setProperty('--atlas-cols', String(atlas.cols));
+  root.setProperty('--atlas-cell', String(atlas.cell));
+  root.setProperty('--atlas-pad', String(atlas.pad));
+  const dppx = () => {
+    root.setProperty('--dppx', String(window.devicePixelRatio || 1));
+    matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener('change', dppx, { once: true });
+  };
+  dppx();
+}
+
+/**
+ * How GameCard draws a card's art: a cell of the build-time sprite atlas (one decoded PNG for the whole set), or an
+ * image URL (Poncho artwork, or a card the atlas doesn't have).
+ */
+export function spriteArt(cardId: number): { src: string } | { style: CSSProperties } {
+  const poncho = PONCHO_WEB[cardId];
+  if (poncho) return { src: poncho };
+  const i = atlas.index[cardId];
+  if (i === undefined) return { src: spriteDataUri(cardId) };
+  return { style: { ['--ax' as string]: i % atlas.cols, ['--ay' as string]: Math.floor(i / atlas.cols) } };
+}
 
 function rng(seed: number) {
   let s = seed * 2654435761 >>> 0;

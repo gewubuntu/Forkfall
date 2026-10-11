@@ -1,26 +1,31 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, type ComponentType } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { useAuth } from './auth/AuthProvider.tsx';
 import { Logo } from './components/Logo.tsx';
 import { WalletButton } from './components/WalletButton.tsx';
 import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
-import { Economy } from './pages/Economy.tsx';
-import { Metrics } from './pages/Metrics.tsx';
-import { Learn } from './pages/Learn.tsx';
-import { Challenge } from './pages/Challenge.tsx';
 import { ChallengeAlert } from './components/Challenges.tsx';
-import { Collection } from './pages/Collection.tsx';
-import { DeckBuilder } from './pages/DeckBuilder.tsx';
-import { Decks } from './pages/Decks.tsx';
-import { Match } from './pages/Match.tsx';
-import { Matches } from './pages/Matches.tsx';
-import { Pass } from './pages/Pass.tsx';
-import { Sealed } from './pages/Sealed.tsx';
-import { Play } from './pages/Play.tsx';
-import { Profile } from './pages/Profile.tsx';
-import { Replay } from './pages/Replay.tsx';
 import { SignInGate } from './pages/SignInGate.tsx';
+
+// Every other page loads on first visit (its own chunk), so the landing page and sign-in stay light on a phone.
+const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) =>
+  lazy(() => load().then((m) => ({ default: m[name] })));
+const Economy = page(() => import('./pages/Economy.tsx'), 'Economy');
+const Metrics = page(() => import('./pages/Metrics.tsx'), 'Metrics');
+const Learn = page(() => import('./pages/Learn.tsx'), 'Learn');
+const Challenge = page(() => import('./pages/Challenge.tsx'), 'Challenge');
+const Collection = page(() => import('./pages/Collection.tsx'), 'Collection');
+const DeckBuilder = page(() => import('./pages/DeckBuilder.tsx'), 'DeckBuilder');
+const Decks = page(() => import('./pages/Decks.tsx'), 'Decks');
+const Match = page(() => import('./pages/Match.tsx'), 'Match');
+const Matches = page(() => import('./pages/Matches.tsx'), 'Matches');
+const Pass = page(() => import('./pages/Pass.tsx'), 'Pass');
+const Sealed = page(() => import('./pages/Sealed.tsx'), 'Sealed');
+const Play = page(() => import('./pages/Play.tsx'), 'Play');
+const Profile = page(() => import('./pages/Profile.tsx'), 'Profile');
+const Replay = page(() => import('./pages/Replay.tsx'), 'Replay');
+const pageLoading = <div className="gate"><span className="spinner" aria-label="Loading" /></div>;
 
 const NAV = [
   { to: '/play', label: 'Play' },
@@ -54,7 +59,7 @@ export function App() {
         <div className="spacer" />
         {auth.status !== 'offline' && auth.status !== 'loading' && <WalletButton />}
       </header>
-      <main>{body()}</main>
+      <main><Suspense fallback={pageLoading}>{body()}</Suspense></main>
       {signedIn && <ChallengeAlert />}
       {signedIn && !inMatch && (
         <nav className="mobile-nav" aria-label="Main">

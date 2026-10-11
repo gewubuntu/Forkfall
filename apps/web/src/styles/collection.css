@@ -286,3 +286,6 @@
 .gift-addr { display: grid; gap: 4px; }
 .gift-addr input { padding: 8px 10px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text); font-family: var(--font-mono); }
 .gift-addr .err { color: var(--danger); }
+
+/* Off-screen collection cards skip layout and paint until scrolled near. */
+.card-grid .grid-cell { content-visibility: auto; contain-intrinsic-size: auto 260px; }
