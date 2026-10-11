@@ -197,8 +197,8 @@ test.describe('phone browser without a wallet', () => {
   });
 });
 
-/** A finished match to replay: start one against the bot and concede it at once. */
-async function concededMatch(page: Page): Promise<string> {
+/** A finished match to replay: start one against the bot, end `turns` turns without playing (the hand fills up), then concede. */
+async function finishedMatch(page: Page, turns = 0): Promise<string> {
   await installTestWallet(page, privateKeyToAccount(generatePrivateKey()), HUB_CHAIN);
   await page.goto('/play');
   await signIn(page);
@@ -206,20 +206,35 @@ async function concededMatch(page: Page): Promise<string> {
   await page.waitForURL(/\/match\/0x[0-9a-f]{64}/);
   const id = page.url().split('/').pop()!;
   await page.locator('.hand .gcard').first().waitFor();
-  await page.getByRole('button', { name: 'Match menu' }).tap();
-  await page.getByRole('menuitem', { name: 'Concede…' }).tap();
-  await page.getByRole('dialog').getByRole('button', { name: 'Concede', exact: true }).tap();
-  await expect(page.getByText('Conceded')).toBeVisible();
+  for (let t = 0; t < turns; t++) {
+    await expect(page.locator('.end-turn')).toBeVisible({ timeout: 30_000 });
+    const turn = await page.locator('.tb-left .small').textContent();
+    await page.locator('.end-turn').tap();
+    const again = page.getByRole('button', { name: 'Tap again to end' });
+    if (await again.isVisible()) await again.tap();
+    await expect(page.locator('.tb-left .small')).not.toHaveText(turn ?? '', { timeout: 15_000 });
+  }
+  // An open board stays open to the bot: it may win first, which ends the match just as well.
+  if (!(await page.locator('.result').isVisible())) {
+    const t = { timeout: 5_000 };
+    await page.getByRole('button', { name: 'Match menu' }).tap(t).catch(() => {});
+    await page.getByRole('menuitem', { name: 'Concede…' }).tap(t).catch(() => {});
+    await page.getByRole('dialog').getByRole('button', { name: 'Concede', exact: true }).tap(t).catch(() => {});
+  }
+  await expect(page.locator('.result')).toBeVisible();
   return id;
 }
 
 /** The replay board (both hands, both boards, the controls and the scrubber) is on the first screen, nothing sideways. */
 async function expectReplayFits(page: Page) {
+  // Cards fly into the hand (card-draw): measure where they land, not mid-flight.
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished)));
   const m = await page.evaluate(() => {
     const parts = ['.replay-hand.top', '.replay-hand:not(.top)', '.arena > .side:first-of-type .lane', '.arena > .side:last-of-type .lane', '.replay-bar', '.rb-scrub'];
     return {
       scrollW: document.documentElement.scrollWidth, w: innerWidth, h: innerHeight,
       parts: parts.map((s) => { const r = document.querySelector(s)!.getBoundingClientRect(); return [s, { top: r.top, bottom: r.bottom, left: r.left, right: r.right }] as const; }),
+      cards: [...document.querySelectorAll('.replay-hand .gcard')].map((e) => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right }; }),
       small: [...document.querySelectorAll<HTMLElement>('.replay-bar button')].filter((e) => { const r = e.getBoundingClientRect(); return r.width < 44 || r.height < 44; })
         .map((e) => e.getAttribute('aria-label') ?? e.textContent),
     };
@@ -230,6 +245,11 @@ async function expectReplayFits(page: Page) {
     expect(r.bottom, `${sel} bottom`).toBeLessThanOrEqual(m.h);
     expect(r.left, `${sel} left`).toBeGreaterThanOrEqual(0);
     expect(r.right, `${sel} right`).toBeLessThanOrEqual(m.w);
+  }
+  // Every card of a full hand is on screen: they shrink, then overlap, but never run off the side.
+  for (const c of m.cards) {
+    expect(c.left, 'hand card left').toBeGreaterThanOrEqual(0);
+    expect(c.right, 'hand card right').toBeLessThanOrEqual(m.w);
   }
   expect(m.small, 'replay controls under 44 px').toEqual([]);
 }
@@ -276,10 +296,11 @@ test.describe('replay on a phone', () => {
   test('the board and controls fill the first screen, steps work, a tap shows a card, and the checks sit below', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    const id = await concededMatch(page);
+    const id = await finishedMatch(page, 3);
     await page.goto(`/matches/${id}`);
     await expect(page.getByText('Match over')).toBeVisible();
     await expect(page.locator('header.header')).toBeHidden();
+    expect(Math.max(...await page.locator('.replay-hand').evaluateAll((hs) => hs.map((h) => h.children.length)))).toBeGreaterThanOrEqual(7);
     await expectReplayFits(page);
 
     // Step back to the opening deal and forward again.
@@ -306,7 +327,7 @@ test.describe('replay on a phone', () => {
 test.describe('replay on a phone in landscape', () => {
   test.use(phone('Pixel 7 landscape'));
   test('the board and the controls rail fit the screen', async ({ page }) => {
-    const id = await concededMatch(page);
+    const id = await finishedMatch(page);
     await page.goto(`/matches/${id}`);
     await expect(page.getByText('Match over')).toBeVisible();
     await expectReplayFits(page);
