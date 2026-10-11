@@ -31,7 +31,11 @@ export const wagmiConfig = createConfig({
     baseAccount({ appName: 'Forkfall' }),
     metaMask({ dapp: { name: 'Forkfall', url: appUrl } }),
     ...(walletConnectEnabled
-      ? [walletConnect({ projectId, showQrModal: true, metadata: { name: 'Forkfall', description: 'On-chain card duels (testnet)', url: appUrl, icons: [] } })]
+      ? [walletConnect({ projectId, showQrModal: true, metadata: {
+        name: 'Forkfall', description: 'On-chain card duels (testnet)', url: appUrl, icons: [],
+        // After approving in a phone wallet, its "return to app" goes back to the game (WalletConnect redirect).
+        redirect: { universal: appUrl },
+      } })]
       : []),
     // Fallback for wallets that only expose window.ethereum without EIP-6963.
     injected({ shimDisconnect: true }),

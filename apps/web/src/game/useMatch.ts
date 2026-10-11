@@ -127,6 +127,20 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
     return () => clearInterval(t);
   }, [refresh, live, matchId]);
 
+  // Back from another app (a wallet, a message) or back online: the socket may have slept, so catch up at once
+  // instead of waiting for the safety poll. The match itself lives on the referee and never pauses.
+  useEffect(() => {
+    const wake = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('pageshow', wake);
+    window.addEventListener('online', wake);
+    return () => {
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('pageshow', wake);
+      window.removeEventListener('online', wake);
+    };
+  }, [refresh]);
+
   const send = useCallback(async (a: Action) => {
     if (!client || !snap || sendingRef.current) return false;
     sendingRef.current = true;

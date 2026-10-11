@@ -29,6 +29,7 @@ import { emblem } from '../lib/cosmetics.ts';
 import { inTime, shortAddr } from '../lib/format.ts';
 import { useLiveTopic } from '../lib/live.ts';
 import { COMPACT_QUERY, useMedia, useTouch } from '../lib/useMedia.ts';
+import { useReturnedWhilePending } from '../lib/useWalletReturn.ts';
 
 type PlayAction = Extract<Action, { type: 'play' }>;
 type Selection = { kind: 'hand' | 'unit'; uid: number } | null;
@@ -548,6 +549,7 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
   const seat = s.seat;
   const signed = seat !== null && !!s.resultSigned?.[seat];
   const both = !!s.resultSigned?.[0] && !!s.resultSigned?.[1];
+  const back = useReturnedWhilePending(signing);
 
   useEffect(() => {
     if (!client || !both) return;
@@ -582,9 +584,17 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
             {!signed ? (
               <>
                 <p>Sign the result with your wallet so it can be recorded on-chain{s.mode !== 'casual' ? ' and count for your rating' : ''}. No gas.</p>
-                {err && <div className="alert err">{err}</div>}
-                <button className="btn btn-primary btn-block" onClick={sign} disabled={signing}>
-                  {signing ? <><span className="spinner" /> Check your wallet…</> : 'Sign result'}
+                {signing && (
+                  <div className="sig-state pending" role="status">
+                    <span className="spinner" />
+                    <span>{back
+                      ? 'Signature pending: nothing has arrived from your wallet yet. If you approved it there, it lands in a moment; otherwise sign again.'
+                      : 'Signature pending: approve it in your wallet.'}</span>
+                  </div>
+                )}
+                {err && <div className="sig-state failed" role="alert"><b>Signature failed</b><span>{err}</span></div>}
+                <button className="btn btn-primary btn-block" onClick={sign} disabled={signing && !back}>
+                  {signing && !back ? <><span className="spinner" /> Check your wallet…</> : err || back ? 'Sign again' : 'Sign result'}
                 </button>
               </>
             ) : both ? (
@@ -784,7 +794,7 @@ function RefereeWait({ s }: { s: MatchSnapshot }) {
     return <div className="alert err">The referee couldn’t settle this result{r.willRetry ? ' yet and will retry' : ''}: {r.error}</div>;
   }
   if (won && s.refereeAt != null) {
-    return <p className="ok">✓ You signed. Waiting for your opponent’s signature. If they don’t sign, the referee settles it on-chain with yours {inTime(s.refereeAt)}.</p>;
+    return <p className="ok sig-state done">✓ You signed. Waiting for your opponent’s signature. If they don’t sign, the referee settles it on-chain with yours {inTime(s.refereeAt)}.</p>;
   }
-  return <p className="ok">✓ You signed. Waiting for your opponent’s signature.</p>;
+  return <p className="ok sig-state done">✓ You signed. Waiting for your opponent’s signature.</p>;
 }
