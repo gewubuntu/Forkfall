@@ -1,6 +1,7 @@
 import { CARDS, type Action } from '@forkfall/engine';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { brotliCompressSync, gzipSync, constants as zlibConstants } from 'node:zlib';
 import { extname, join, normalize } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { getAddress, isAddress, verifyMessage, type Address, type Hex } from 'viem';
@@ -95,7 +96,7 @@ export function createApi(lobby: Lobby, opts: { staticDir?: string; ratePerSec?:
     const url = new URL(req.url ?? '/', 'http://x');
     try {
       if (serveMetadata(req, res, url.pathname, opts.publicUrl)) return;
-      if (!url.pathname.startsWith('/v1/')) return serveStatic(url.pathname, res, opts.staticDir);
+      if (!url.pathname.startsWith('/v1/')) return serveStatic(req, url.pathname, res, opts.staticDir);
       if (opts.metrics && url.pathname === '/v1/metrics' && url.searchParams.get('format') === 'csv') {
         // Built before the headers go out: a failure here must still answer with the JSON 500 below.
         const csv = opts.metrics.csv(Number(url.searchParams.get('days') ?? 30));
@@ -399,15 +400,53 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new ApiError(400, 'invalid JSON'); }
 }
 
-const MIME: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
+const MIME: Record<string, string> = {
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json',
+  '.webp': 'image/webp', '.avif': 'image/avif', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.woff': 'font/woff', '.wasm': 'application/wasm',
+  '.ico': 'image/x-icon', '.txt': 'text/plain',
+};
+/** Text-like files worth compressing (images and fonts already are). */
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.svg', '.json', '.wasm', '.txt']);
+/** Each file read and compressed once per build (keyed by mtime), not on every request. */
+const staticCache = new Map<string, { mtime: number; raw: Buffer; br?: Buffer; gzip?: Buffer }>();
 
-function serveStatic(path: string, res: ServerResponse, dir?: string) {
+/**
+ * The web app (apps/web/dist). Hashed build output under /assets/ is cached for a year; everything else (index.html
+ * and the SPA fallback) is revalidated. Text is sent brotli- or gzip-compressed when the client accepts it, so a phone
+ * on 4G downloads a fraction of the bytes even without a compressing proxy in front.
+ */
+function serveStatic(req: IncomingMessage, path: string, res: ServerResponse, dir?: string) {
   if (!dir) throw new ApiError(404, 'not found');
   const rel = normalize(path === '/' ? '/index.html' : path).replace(/^(\.\.[/\\])+/, '');
   let file = join(dir, rel);
-  if (!file.startsWith(dir) || !existsSync(file)) file = join(dir, 'index.html');
-  res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
-  res.end(readFileSync(file));
+  if (!file.startsWith(dir) || !existsSync(file) || !statSync(file).isFile()) {
+    // A missing build file (an old chunk after a deploy) must fail, not get the app page cached for a year.
+    if (file.startsWith(join(dir, 'assets/'))) throw new ApiError(404, 'not found');
+    file = join(dir, 'index.html');
+  }
+  const ext = extname(file);
+  const mtime = statSync(file).mtimeMs;
+  let entry = staticCache.get(file);
+  if (!entry || entry.mtime !== mtime) staticCache.set(file, entry = { mtime, raw: readFileSync(file) });
+  const headers: Record<string, string> = {
+    'content-type': MIME[ext] ?? 'application/octet-stream',
+    'cache-control': file.startsWith(join(dir, 'assets/')) ? 'public, max-age=31536000, immutable' : 'no-cache',
+  };
+  let body = entry.raw;
+  if (COMPRESSIBLE.has(ext) && body.length > 1024) {
+    headers.vary = 'accept-encoding';
+    const accept = String(req.headers['accept-encoding'] ?? '');
+    if (/\bbr\b/.test(accept)) {
+      body = entry.br ??= brotliCompressSync(entry.raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } });
+      headers['content-encoding'] = 'br';
+    } else if (/\bgzip\b/.test(accept)) {
+      body = entry.gzip ??= gzipSync(entry.raw, { level: 9 });
+      headers['content-encoding'] = 'gzip';
+    }
+  }
+  headers['content-length'] = String(body.length);
+  res.writeHead(200, headers);
+  res.end(req.method === 'HEAD' ? undefined : body);
 }
 
 const CONTRACT_KEYS = [
