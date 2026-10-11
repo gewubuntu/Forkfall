@@ -354,6 +354,9 @@ export interface LeagueClaim { week: number; agent: Address; amount: string; pro
 
 export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: Hex }
 
+/** A request the referee refused for the rate limit; it did nothing with it, so the same request is safe to send again. */
+export const isRateLimited = (e: unknown) => / → 429: /.test(String(e));
+
 /**
  * Forkfall API client. The same client drives the web app, the agent SDK and the Bankr/MCP skill:
  * it authenticates by signature, signs every move with EIP-712 and co-signs the final result.
@@ -600,8 +603,10 @@ export class ForkfallClient {
   /** Reveal seed share + private deck salt once matched (commit-reveal randomness). */
   async reveal(matchId: Hex) {
     if (!this.secrets.get(matchId)) await this.queueStatus();
-    if (!this.secrets.get(matchId)) await this.challenges().catch(() => {});
-    if (!this.secrets.get(matchId)) await this.sealedStatus().catch(() => {});
+    // These lookups may fail harmlessly (e.g. Sealed off), but a 429 must reach the caller: it isn't "no secrets".
+    const keep429 = (e: unknown) => { if (isRateLimited(e)) throw e; };
+    if (!this.secrets.get(matchId)) await this.challenges().catch(keep429);
+    if (!this.secrets.get(matchId)) await this.sealedStatus().catch(keep429);
     const s = this.secrets.get(matchId);
     if (!s) throw new Error('no secrets for this match (queued from another client?)');
     return this.req('POST', `/v1/matches/${matchId}/reveal`, { seedShare: s.seedShare, deckSalt: s.deckSalt });

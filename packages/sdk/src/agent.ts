@@ -1,6 +1,6 @@
 import { greedyBot, type Bot, type GameState } from '@forkfall/engine';
 import type { Hex } from 'viem';
-import type { ForkfallClient, MatchSnapshot } from './client.ts';
+import { isRateLimited, type ForkfallClient, type MatchSnapshot } from './client.ts';
 
 export interface AgentLoopOptions {
   /** Decide a move from the redacted snapshot. Default: pick via legalActions heuristics. */
@@ -16,8 +16,6 @@ export interface AgentLoopOptions {
   log?: (msg: string) => void;
 }
 
-/** The referee rejects a rate-limited request before acting on it, so the same request is safe to send again. */
-const isRateLimited = (e: unknown) => / → 429: /.test(String(e));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
