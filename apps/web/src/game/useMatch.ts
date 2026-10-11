@@ -3,6 +3,7 @@ import type { ForkfallClient, MatchSnapshot } from '@forkfall/sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Hex } from 'viem';
 import { useLiveTopic } from '../lib/live.ts';
+import { retryRateLimited } from '../lib/retry.ts';
 
 export interface LogLine { id: number; text: string; event: GameEvent }
 
@@ -149,7 +150,8 @@ export function useMatch(client: ForkfallClient | null, matchId: Hex): MatchHook
     try {
       // A concede is legal at any point, even in the opponent's turn: if the bot moves meanwhile, the client signs it
       // again against the latest position until it lands (three quick tries used to run out during a long bot turn).
-      const next = a.type === 'concede' ? await client.concede(matchId, { snap }) : await client.move(matchId, snap, a);
+      // A burst (a quick bot turn, several moves in a row) can hit the rate limit: wait it out instead of failing the move.
+      const next = await retryRateLimited(() => (a.type === 'concede' ? client.concede(matchId, { snap }) : client.move(matchId, snap, a)));
       setSnap(next);
     } catch (e) {
       if (isNetworkError(e)) { setOffline(true); setError('Lost the connection to the referee: that move may not have gone through. The board updates once it’s back.'); }
