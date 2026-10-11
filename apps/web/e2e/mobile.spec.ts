@@ -5,7 +5,7 @@ import { installTestWallet } from './wallet.ts';
 const HUB_CHAIN = 84532;
 
 /** Phone emulation in Chromium (the device's own browser engine is a real-device check, see the PR notes). */
-const phone = (name: 'Pixel 7' | 'iPhone SE' | 'iPhone SE (3rd gen)' | 'Pixel 7 landscape') => {
+const phone = (name: 'Pixel 7' | 'iPhone SE' | 'iPhone SE (3rd gen)' | 'Pixel 7 landscape' | 'iPad Mini') => {
   const d = devices[name];
   return { viewport: d.viewport, userAgent: d.userAgent, deviceScaleFactor: d.deviceScaleFactor, isMobile: true, hasTouch: true };
 };
@@ -124,6 +124,30 @@ for (const name of ['iPhone SE', 'iPhone SE (3rd gen)', 'Pixel 7'] as const) {
       expect(errors).toEqual([]);
     });
 
+    test('dragging a hand card and letting go over the hand cancels: nothing is played', async ({ page }) => {
+      await installTestWallet(page, privateKeyToAccount(generatePrivateKey()), HUB_CHAIN);
+      await page.goto('/play');
+      await signIn(page);
+      await page.getByRole('button', { name: /vs bot/ }).tap();
+      await page.waitForURL(/\/match\//);
+      await untilPlayable(page);
+      const gas = () => page.locator('.side.me .gas').getAttribute('aria-label');
+      const before = { gas: await gas(), hand: await page.locator('.hand .gcard').count() };
+      const b = (await page.locator('.hand .gcard.is-playable').first().boundingBox())!;
+      const cdp = await page.context().newCDPSession(page);
+      const at = (dx: number, dy: number) => [{ x: b.x + b.width / 2 + dx, y: b.y + b.height / 2 + dy }];
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0, 0) });
+      // Out towards the board and back down into the hand, as a player changing their mind would.
+      for (const [dx, dy] of [[6, -20], [10, -60], [14, -30], [18, 0]]) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(dx, dy) });
+        await page.waitForTimeout(30);
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(1500);
+      expect(await gas()).toBe(before.gas);
+      expect(await page.locator('.hand .gcard').count()).toBe(before.hand);
+    });
+
     test('ending a turn with moves left takes a second tap', async ({ page }) => {
       await installTestWallet(page, privateKeyToAccount(generatePrivateKey()), HUB_CHAIN);
       await page.goto('/play');
@@ -184,5 +208,33 @@ test.describe('phone in landscape', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(page.viewportSize()!.width);
     await page.locator('.end-turn').scrollIntoViewIfNeeded();
     await expect(page.locator('.end-turn')).toBeInViewport();
+  });
+});
+
+test.describe('tablet (touch, wider than the phone layout)', () => {
+  test.use(phone('iPad Mini'));
+  test('a picked-up card shows its Play bar unclipped, and Play plays it', async ({ page }) => {
+    await installTestWallet(page, privateKeyToAccount(generatePrivateKey()), HUB_CHAIN);
+    await page.goto('/play');
+    await signIn(page);
+    await page.getByRole('button', { name: /vs bot/ }).tap();
+    await page.waitForURL(/\/match\//);
+    await untilPlayable(page);
+    const gas = () => page.locator('.side.me .gas').getAttribute('aria-label');
+    const before = await gas();
+    await page.locator('.hand .gcard.is-playable').first().tap();
+    const armed = page.locator('.armed');
+    await expect(armed).toBeInViewport({ ratio: 1 });
+    // Not clipped by the scrolling hand: the bar's middle is the topmost element there.
+    const box = (await armed.boundingBox())!;
+    const topmost = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.armed'), [box.x + box.width / 2, box.y + box.height / 2]);
+    expect(topmost).toBe(true);
+    const play = armed.getByRole('button', { name: 'Play' });
+    if (await play.isVisible()) await play.tap();
+    else await page.locator('.gcard.is-target, .treasury.target').first().tap();
+    for (const b of [page.getByRole('button', { name: 'Play normally' }), page.locator('.choice-list .choice').first()]) {
+      if (await b.isVisible().catch(() => false)) await b.tap();
+    }
+    await expect.poll(gas).not.toBe(before);
   });
 });

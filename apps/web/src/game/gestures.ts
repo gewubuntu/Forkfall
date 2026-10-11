@@ -30,14 +30,17 @@ export function classifyGesture(dx: number, dy: number, heldMs: number, pointerT
   return 'tap';
 }
 
-/** Read the drop target under a point from the data attributes the board renders. */
+/**
+ * Read the drop target under a point from the data attributes the board renders. Letting go over your hand is a
+ * cancel (null), not a play: dragging a card out and back is how a player changes their mind.
+ */
 export function targetFromElement(el: Element | null): DropTarget {
-  if (!el) return null;
+  if (!el || el.closest('.hand')) return null;
   const unit = el.closest<HTMLElement>('[data-uid]');
   if (unit?.dataset.uid) return { kind: 'unit', uid: Number(unit.dataset.uid) };
   const t = el.closest<HTMLElement>('[data-treasury]');
   if (t?.dataset.treasury) return { kind: 'treasury', side: Number(t.dataset.treasury) as 0 | 1 };
-  if (el.closest('.side.me, .hand')) return { kind: 'board' };
+  if (el.closest('.side.me')) return { kind: 'board' };
   return null;
 }
 
@@ -132,7 +135,7 @@ export function useBoardGestures(root: RefObject<HTMLElement | null>, handlers: 
       g.ghost.style.transform = `translate3d(${dx}px, ${dy}px, 0) rotate(${Math.max(-8, Math.min(8, dx / 20))}deg)`;
       const under = document.elementFromPoint(e.clientX, e.clientY);
       const t = targetFromElement(under);
-      setHover(t?.kind === 'unit' ? under!.closest('[data-uid]') : t?.kind === 'treasury' ? under!.closest('[data-treasury]') : t?.kind === 'board' ? under!.closest('.side.me, .hand') : null);
+      setHover(t?.kind === 'unit' ? under!.closest('[data-uid]') : t?.kind === 'treasury' ? under!.closest('[data-treasury]') : t?.kind === 'board' ? under!.closest('.side.me') : null);
     };
 
     const up = (e: PointerEvent) => {

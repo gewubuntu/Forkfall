@@ -209,7 +209,12 @@ function MatchView() {
         const a = legal.find((x): x is PlayAction => x.type === 'play' && x.uid === src.uid && x.target === target && !x.ape && !x.condition);
         if (a) { send(a); return; }
       }
-      if (t?.kind === 'board') { setSelected(null); commitHand(src.uid); return; }
+      // Your own half of the board, including one of your units or your Treasury when the card doesn't target it
+      // (a crowded board is mostly units): play it as if dropped on the lane.
+      const ownSide = t?.kind === 'board'
+        || (t?.kind === 'unit' && v.players[me].board.some((u) => u.uid === t.uid))
+        || (t?.kind === 'treasury' && t.side === me);
+      if (ownSide) { setSelected(null); commitHand(src.uid); return; }
       setSelected(null);
       if (t) setHint('That card can’t target there.');
     },
@@ -258,7 +263,8 @@ function MatchView() {
         </Side>
 
         {seat !== null && (
-          <div className="hand" aria-label="Your hand" style={{ ['--n' as string]: Math.max(1, v.hand.length) }}>
+          // The picked-up card's bar sits outside .hand: a scrolling hand (wider touch screens) would clip it.
+          <div className="hand-wrap">
             {touch && armedHand && (
               <div className="armed" role="status" onClick={(e) => e.stopPropagation()}>
                 <div className="armed-text">
@@ -271,6 +277,7 @@ function MatchView() {
                   : <button className="btn btn-primary" onClick={() => commitHand(armedHand.uid)} disabled={m.sending}>Play</button>}
               </div>
             )}
+          <div className="hand" aria-label="Your hand" style={{ ['--n' as string]: Math.max(1, v.hand.length) }}>
             {v.hand.map((h) => {
               const c = card(h.cardId);
               return (
@@ -281,6 +288,7 @@ function MatchView() {
               );
             })}
             {v.hand.length === 0 && <span className="lane-empty">Your hand is empty</span>}
+          </div>
           </div>
         )}
       </div>
@@ -561,12 +569,17 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
   const reason = { treasury: 'Treasury drained', concede: 'Conceded', turnLimit: 'Turn limit reached', timeout: 'Ran out of time' }[v.endReason ?? 'treasury'];
   const winnerSprite = v.winner === 'draw' ? null : RACE_INFO[v.players[v.winner as 0 | 1].race].sprite;
 
+  // "Sign again" can start a new request while an earlier one is still open in the wallet: only the latest one
+  // decides what this screen shows.
+  const attempt = useRef(0);
   const sign = async () => {
+    const mine = ++attempt.current;
     setErr(null); setSigning(true);
     try { await client!.signResult(s.matchId); } catch (e) {
+      if (mine !== attempt.current) return;
       const msg = (e as { shortMessage?: string }).shortMessage ?? (e as Error).message;
       setErr(/reject|denied|cancel/i.test(msg) ? 'Signature cancelled in your wallet.' : msg);
-    } finally { setSigning(false); }
+    } finally { if (mine === attempt.current) setSigning(false); }
   };
 
   return (

@@ -65,7 +65,7 @@
   background-position: calc(var(--px) * -1 * (var(--atlas-cell) * var(--ax) + var(--atlas-pad))) calc(var(--px) * -1 * (var(--atlas-cell) * var(--ay) + var(--atlas-pad)));
 }
 @supports (width: round(nearest, 10px, 1px)) {
-  .gc-sprite { --sz: max(calc(32px / var(--dppx, 1)), round(nearest, var(--fill), calc(32px / var(--dppx, 1)))); }
+  .gc-sprite { --sz: max(calc(32px / var(--dppx, 1)), round(down, var(--fill), calc(32px / var(--dppx, 1)))); } /* down: never wider than the art box */
   .gcard-preview .gc-sprite { --sz: round(down, var(--fill), calc(32px / var(--dppx, 1))); }
 }
 .gc-name { font-weight: 700; font-size: 12.5px; line-height: 1.15; margin: 6px 2px 2px; }
@@ -516,7 +516,11 @@
 .gcard.is-dragging { opacity: .35; }
 .drop-hover.gcard, .drop-hover.treasury { outline: 3px solid var(--ok); outline-offset: 2px; }
 .side.me.drop-hover, .hand.drop-hover { outline: 2px dashed color-mix(in srgb, var(--ok) 70%, transparent); outline-offset: -2px; }
-.lane .gcard, .hand .gcard { touch-action: none; -webkit-touch-callout: none; }
+.lane .gcard, .hand .gcard { -webkit-touch-callout: none; }
+/* Cards take the whole gesture on the phone board (drag, long-press). On wider touch screens the hand scrolls
+   sideways, so cards there still let the finger pan it. */
+.compact .lane .gcard, .compact .hand .gcard { touch-action: none; }
+.hand .gcard { touch-action: pan-x; }
 .gcard img { -webkit-touch-callout: none; -webkit-user-drag: none; }
 .zoom-bg { position: fixed; inset: 0; z-index: 65; display: grid; place-items: center; background: rgba(4, 6, 10, .78);
   padding: max(16px, var(--sat)) max(16px, var(--sar)) max(16px, var(--sab)) max(16px, var(--sal)); animation: zoom-fade .15s ease-out; }
@@ -598,6 +602,7 @@
 .tb-menu-btn { min-width: 44px; min-height: 44px; font-size: 20px; line-height: 1; }
 .tb-menu { left: 0; right: auto; width: 240px; }
 
+.compact .hand-wrap { flex: none; }
 .compact .hand { position: relative; flex: none; height: clamp(116px, calc(var(--vh) * .22), 176px); container-type: size; overflow: visible;
   padding: 12px 2px 2px; gap: 0; justify-content: center; align-items: flex-end; min-height: 0; }
 /* As wide as the hand's height allows, narrower when the cards wouldn't fit side by side; below 64 px they overlap. */
@@ -620,7 +625,7 @@
 .armed-text span { font-size: 13px; line-height: 1.35; color: #c9cfdc; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .armed .btn { flex: none; min-height: 44px; min-width: 44px; }
 .armed-hint { flex: none; font-size: 13px; font-weight: 700; color: #ffd98a; max-width: 92px; text-align: right; }
-.hand { position: relative; }
+.hand-wrap { position: relative; }
 
 .compact .result { padding: 18px; }
 .compact .result-title { font-size: 36px; }

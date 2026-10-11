@@ -1,4 +1,5 @@
-import { lazy, Suspense, useLayoutEffect, type ComponentType } from 'react';
+import { Component, lazy, Suspense, useLayoutEffect, type ComponentType, type ReactNode } from 'react';
+import { isChunkLoadError, reloadForNewBuild } from './lib/chunkReload.ts';
 import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { useAuth } from './auth/AuthProvider.tsx';
 import { Logo } from './components/Logo.tsx';
@@ -26,6 +27,29 @@ const Play = page(() => import('./pages/Play.tsx'), 'Play');
 const Profile = page(() => import('./pages/Profile.tsx'), 'Profile');
 const Replay = page(() => import('./pages/Replay.tsx'), 'Replay');
 const pageLoading = <div className="gate"><span className="spinner" aria-label="Loading" /></div>;
+
+// A preloaded chunk from an older build (the tab outlived a deploy): reload into the new one instead of failing.
+if (typeof window !== 'undefined') window.addEventListener('vite:preloadError', (e) => { if (reloadForNewBuild()) e.preventDefault(); });
+
+/** Catches a page that failed to load: reloads once for a stale build, otherwise offers a reload instead of a blank screen. */
+class PageErrorBoundary extends Component<{ children: ReactNode; path: string }, { error: unknown; path: string }> {
+  state = { error: null as unknown, path: this.props.path };
+  static getDerivedStateFromError(error: unknown) { return { error }; }
+  static getDerivedStateFromProps(p: { path: string }, s: { error: unknown; path: string }) {
+    return p.path !== s.path ? { error: null, path: p.path } : null; // navigating away clears the error
+  }
+  componentDidCatch(error: unknown) { if (isChunkLoadError(error)) reloadForNewBuild(); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="gate"><div className="card" role="alert">
+        <h2>This page didn’t load</h2>
+        <p className="lead">{isChunkLoadError(this.state.error) ? 'A new version of Forkfall is out. Reload to get it.' : 'Something went wrong showing this page.'}</p>
+        <button className="btn btn-primary" onClick={() => location.reload()}>Reload</button>
+      </div></div>
+    );
+  }
+}
 
 const NAV = [
   { to: '/play', label: 'Play' },
@@ -60,7 +84,7 @@ export function App() {
         <div className="spacer" />
         {auth.status !== 'offline' && auth.status !== 'loading' && <WalletButton />}
       </header>
-      <main><Suspense fallback={pageLoading}>{body()}</Suspense></main>
+      <main><PageErrorBoundary path={path}><Suspense fallback={pageLoading}>{body()}</Suspense></PageErrorBoundary></main>
       {signedIn && <ChallengeAlert />}
       {signedIn && !inMatch && (
         <nav className="mobile-nav" aria-label="Main">

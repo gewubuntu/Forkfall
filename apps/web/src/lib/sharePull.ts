@@ -1,5 +1,6 @@
-import { cardDataUri } from '@forkfall/art';
+import { cardDataUri, isPonchoArt } from '@forkfall/art';
 import { card, type Rarity } from '@forkfall/engine';
+import { PONCHO_IMAGES } from './ponchoImages.web.ts';
 
 const FOIL_OFFSET = 20_000;
 const ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'legendary'];
@@ -22,8 +23,20 @@ const load = (src: string) => new Promise<HTMLImageElement>((res, rej) => {
   img.src = src;
 });
 
+/**
+ * The web build leaves @forkfall/art's embedded Poncho artwork out (vite.config.ts) and shows WebP files instead, but
+ * a card SVG drawn into a canvas can't fetch external images. So for a pull with Poncho cards, load the embedded
+ * artwork (its own chunk, only now) into the map the art package reads.
+ */
+export async function withPonchoArtwork(ids: number[]) {
+  if (!ids.some((id) => isPonchoArt(split(id).base)) || Object.keys(PONCHO_IMAGES).length) return;
+  const real = await import('../../../../packages/art/src/ponchoImages.ts');
+  Object.assign(PONCHO_IMAGES, real.PONCHO_IMAGES);
+}
+
 /** A 1200×630 share image (the size X and Farcaster previews use): the five cards on the pack's backdrop. */
 export async function pullImage(ids: number[], packName: string): Promise<Blob> {
+  await withPonchoArtwork(ids);
   const W = 1200, H = 630;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
