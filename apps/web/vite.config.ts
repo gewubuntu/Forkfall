@@ -40,8 +40,45 @@ function spriteAtlas(): Plugin {
   };
 }
 
+/**
+ * Deep links (a match after coming back from a wallet app, a lesson, a challenge link) would fetch their page's chunk
+ * only after the main bundle has run. A few bytes of inline script start those downloads with the main bundle.
+ */
+function routeModulePreload(routes: Record<string, string>): Plugin {
+  return {
+    name: 'forkfall:route-modulepreload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(_html, ctx) {
+        const bundle = ctx.bundle;
+        if (!bundle) return;
+        const map: Record<string, string[]> = {};
+        for (const [prefix, mod] of Object.entries(routes)) {
+          const entry = Object.values(bundle).find((c) => c.type === 'chunk' && c.facadeModuleId?.endsWith(mod));
+          if (!entry) continue;
+          const files = new Set<string>();
+          const walk = (f: string) => {
+            const c = bundle[f];
+            if (files.has(f) || c?.type !== 'chunk') return;
+            files.add(f);
+            c.imports.forEach(walk);
+          };
+          walk(entry.fileName);
+          map[prefix] = [...files];
+        }
+        const js = `(function(m){var p=location.pathname;for(var k in m)if(p.indexOf(k)===0)m[k].forEach(function(f){var l=document.createElement('link');l.rel='modulepreload';l.crossOrigin='';l.href='/'+f;document.head.appendChild(l)})})(${JSON.stringify(map)})`;
+        return [{ tag: 'script', children: js, injectTo: 'head' }];
+      },
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [ponchoImagesAsFiles(), spriteAtlas(), react()],
+  plugins: [
+    ponchoImagesAsFiles(), spriteAtlas(), react(),
+    routeModulePreload({ '/match/': 'src/pages/Match.tsx', '/learn/': 'src/pages/Learn.tsx', '/challenge/': 'src/pages/Challenge.tsx', '/play': 'src/pages/Play.tsx' }),
+  ],
   server: { port: 5173, proxy: { '/v1': { target: 'http://localhost:8787', ws: true } } },
   build: {
     outDir: 'dist',

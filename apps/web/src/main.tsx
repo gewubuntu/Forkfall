@@ -13,7 +13,7 @@ import './styles/sealed.css';
 import './styles/metrics.css';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { StrictMode } from 'react';
+import { StrictMode, useEffect, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { WagmiProvider } from 'wagmi';
@@ -21,27 +21,35 @@ import { App } from './App.tsx';
 import { AuthProvider } from './auth/AuthProvider.tsx';
 import { ConnectModalProvider } from './components/ConnectModal.tsx';
 import { TxProvider } from './chain/Tx.tsx';
-import { wagmiConfig } from './wagmi.ts';
+import { reconnectRecent, wagmiConfig } from './wagmi.ts';
 
 import { captureRef } from './lib/invite.ts';
 
 captureRef();
+
+/** Restores the last wallet connection once on load (see reconnectRecent). */
+function Reconnect({ children }: { children: ReactNode }) {
+  useEffect(() => { reconnectRecent().catch(() => {}); }, []);
+  return children;
+}
 const queryClient = new QueryClient();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <ConnectModalProvider>
-          <BrowserRouter>
-            <AuthProvider>
-              <TxProvider>
-                <App />
-              </TxProvider>
-            </AuthProvider>
-          </BrowserRouter>
-        </ConnectModalProvider>
-      </QueryClientProvider>
+    <WagmiProvider config={wagmiConfig} reconnectOnMount={false}>
+      <Reconnect>
+        <QueryClientProvider client={queryClient}>
+          <ConnectModalProvider>
+            <BrowserRouter>
+              <AuthProvider>
+                <TxProvider>
+                  <App />
+                </TxProvider>
+              </AuthProvider>
+            </BrowserRouter>
+          </ConnectModalProvider>
+        </QueryClientProvider>
+      </Reconnect>
     </WagmiProvider>
   </StrictMode>,
 );

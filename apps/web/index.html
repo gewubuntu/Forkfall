@@ -9,9 +9,18 @@
   <meta name="description" content="Forkfall: on-chain pixel card duels on Base and Robinhood Chain (testnet alpha)." />
   <meta name="theme-color" content="#0b0d14" />
   <title>Forkfall</title>
+  <!-- Fetched in parallel with the app code instead of after it (AuthProvider reads it first; same request, so it's reused). -->
+  <link rel="preload" href="/v1/config" as="fetch" crossorigin />
+  <style>
+    /* Painted before any script runs: no white flash, and something to look at on a slow connection. */
+    html, body { background: #0a0c12; margin: 0; }
+    .boot { min-height: 100vh; min-height: 100dvh; display: grid; place-content: center; gap: 10px; text-align: center; color: #9198ad;
+      font: 600 14px/1.4 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    .boot b { font: 700 28px/1 ui-monospace, monospace; letter-spacing: .12em; color: #eef1f8; }
+  </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root"><div class="boot" role="status"><b>FORKFALL</b><span>Loading the game…</span></div></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

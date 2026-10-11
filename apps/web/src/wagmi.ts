@@ -1,4 +1,5 @@
 import { createConfig, http, injected } from 'wagmi';
+import { reconnect } from 'wagmi/actions';
 import { baseSepolia, foundry } from 'wagmi/chains';
 import { baseAccount, metaMask, walletConnect } from 'wagmi/connectors';
 import { defineChain } from 'viem';
@@ -46,6 +47,18 @@ export const wagmiConfig = createConfig({
     [anvil.id]: http('http://127.0.0.1:8545'),
   },
 });
+
+/**
+ * Restore the last wallet session on load, asking only the connector used last time and the browser's injected
+ * wallets. wagmi's own reconnect-on-mount asks every connector, which downloads the MetaMask and Base Account SDKs
+ * (~260 kB) on every page load, even for players who never used them; they now load when picked in the connect dialog.
+ */
+export async function reconnectRecent(config = wagmiConfig) {
+  let recent: string | null | undefined;
+  try { recent = await config.storage?.getItem('recentConnectorId'); } catch { /* storage blocked */ }
+  const connectors = config.connectors.filter((c) => c.type === 'injected' || c.id === recent);
+  if (connectors.length) await reconnect(config, { connectors });
+}
 
 declare module 'wagmi' {
   interface Register { config: typeof wagmiConfig }
