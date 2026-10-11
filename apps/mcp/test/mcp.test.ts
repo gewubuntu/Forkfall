@@ -98,6 +98,52 @@ describe('Forkfall MCP server', () => {
     expect(lobby.get(matchId).players[ended.yourSeat as 0 | 1].resultSig).toMatch(/^0x/);
   }, 30_000);
 
+  it('rides out the rate limit: a 429 on a move, a concede or the result signature is sent again, not dropped', async () => {
+    // A second MCP server on the same client, with short back-off; each patched call answers 429 once.
+    const [cs, ss] = InMemoryTransport.createLinkedPair();
+    await createForkfallMcp(agent, { backoffMs: 1 }).connect(ss);
+    const fast = new Client({ name: 'forkfall-test-429', version: '1.0.0' });
+    await fast.connect(cs);
+    const call2 = async (name: string, args: Record<string, unknown>) => {
+      const r = await fast.callTool({ name, arguments: args }) as { content: { text: string }[]; isError?: boolean };
+      // A tool error is plain text: report it as such, so a failure reads as the error, not as a JSON parse error.
+      return r.isError ? { json: r.content[0].text, isError: true } : { json: JSON.parse(r.content[0].text), isError: false };
+    };
+    // Each patched call answers 429 on the listed attempts. A concede is a move inside client.concede, so the move's
+    // third attempt (the concede's first) is limited too: the tool must not drop it either.
+    const tries: Record<string, number> = {};
+    const limitOn = <K extends 'move' | 'signResult'>(name: K, attempts: number[]) => {
+      const real = agent[name].bind(agent) as (...a: unknown[]) => Promise<unknown>;
+      (agent as unknown as Record<string, unknown>)[name] = async (...a: unknown[]) => {
+        tries[name] = (tries[name] ?? 0) + 1;
+        if (attempts.includes(tries[name])) throw new Error(`POST /v1/${name} → 429: rate limited`);
+        return real(...a);
+      };
+      return () => { (agent as unknown as Record<string, unknown>)[name] = real; };
+    };
+    const undo = [limitOn('move', [1, 3]), limitOn('signResult', [1])];
+    try {
+      const { json: started } = await call2('forkfall_practice', { race: 'agents' });
+      const matchId = started.matchId as Hex;
+      let state = (await call2('forkfall_state', { matchId })).json;
+      for (let i = 0; i < 50 && !state.yourTurn; i++) { await lobby.stepBots(); state = (await call2('forkfall_state', { matchId })).json; }
+      const moved = await call2('forkfall_move', { matchId, action: { type: 'endTurn' } });
+      expect(moved.isError).toBe(false);
+      expect(tries.move).toBe(2);
+      // Concede in the bot's turn (legal in either turn): client.concede also re-signs it if the bot moves first.
+      expect(moved.json.yourTurn).toBe(false);
+      const ended = await call2('forkfall_move', { matchId, action: { type: 'concede' } });
+      expect(ended.isError).toBe(false);
+      expect(ended.json.phase).toBe('ended');
+      expect(tries.move).toBeGreaterThanOrEqual(4); // endTurn 429 + retry, concede 429 + retry (more if the bot moved first)
+      expect(tries.signResult).toBe(2);
+      expect(lobby.get(matchId).players[ended.json.yourSeat as 0 | 1].resultSig).toMatch(/^0x/);
+    } finally {
+      undo.forEach((f) => f());
+      await fast.close();
+    }
+  }, 30_000);
+
   it("shows only the agent's own hand: the opponent's cards are counts, never uids or names", async () => {
     const { json: started } = await call('forkfall_practice', { race: 'agents', botRace: 'prophets' });
     const matchId = started.matchId as Hex;

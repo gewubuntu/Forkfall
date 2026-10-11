@@ -4,7 +4,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { card, PREDICTION_LABELS, PREDICTION_TIERS, RACES, type Action, type Race } from '@forkfall/engine';
-import { viewGreedy, type ForkfallClient, type MatchSnapshot } from '@forkfall/sdk';
+import { viewGreedy, withRateLimitRetry, type ForkfallClient, type MatchSnapshot } from '@forkfall/sdk';
 import type { Hex } from 'viem';
 
 export const RULES = `Forkfall rules (testnet alpha):
@@ -54,7 +54,11 @@ export function describeSnapshot(s: MatchSnapshot) {
 const text = (o: unknown) => ({ content: [{ type: 'text' as const, text: typeof o === 'string' ? o : JSON.stringify(o, null, 2) }] });
 const raceSchema = z.enum(RACES as [Race, ...Race[]]);
 
-export function createForkfallMcp(client: ForkfallClient): McpServer {
+export function createForkfallMcp(client: ForkfallClient, opts: { backoffMs?: number } = {}): McpServer {
+  // The referee's rate limit (10 requests/s) refuses a request without acting on it: ride it out instead of
+  // handing the agent a tool error or, for the result signature, silently dropping it.
+  const retry = <T>(send: () => Promise<T>) => withRateLimitRetry(send, { backoffMs: opts.backoffMs });
+  const signResult = (matchId: Hex) => retry(() => client.signResult(matchId)).catch(() => { /* not ended yet, or already signed */ });
   let connected: Promise<unknown> | null = null;
   const ensure = () => (connected ??= client.connect({ agent: true }));
   const server = new McpServer({ name: 'forkfall', version: '0.1.0' });
@@ -148,8 +152,8 @@ export function createForkfallMcp(client: ForkfallClient): McpServer {
     { description: 'Your redacted view of a match, including legalActions when it is your turn.', inputSchema: { matchId: z.string() } },
     async ({ matchId }) => {
       await ensure();
-      const s = await client.state(matchId as Hex);
-      if (s.phase === 'ended') await client.signResult(matchId as Hex).catch(() => {});
+      const s = await retry(() => client.state(matchId as Hex));
+      if (s.phase === 'ended') await signResult(matchId as Hex);
       return text(describeSnapshot(s));
     },
   );
@@ -162,10 +166,14 @@ export function createForkfallMcp(client: ForkfallClient): McpServer {
     },
     async ({ matchId, action }) => {
       await ensure();
-      const snap = await client.state(matchId as Hex);
-      const next = await client.move(matchId as Hex, snap, action as Action);
+      const snap = await retry(() => client.state(matchId as Hex));
+      // A concede is legal in either turn: client.concede re-signs it if the opponent moves first, and rides out a 429
+      // within its own deadline (wrapping it in retry() too would stack the waits past an MCP client's timeout).
+      const next = (action as Action).type === 'concede'
+        ? await client.concede(matchId as Hex, { snap, rateLimitMs: opts.backoffMs })
+        : await retry(() => client.move(matchId as Hex, snap, action as Action));
       // A move that ends the match: sign the result now, as forkfall_state does, so it can settle.
-      if (next.phase === 'ended') await client.signResult(matchId as Hex).catch(() => {});
+      if (next.phase === 'ended') await signResult(matchId as Hex);
       return text(describeSnapshot(next));
     },
   );
@@ -175,7 +183,7 @@ export function createForkfallMcp(client: ForkfallClient): McpServer {
     { description: "Heuristic suggestion from the reference greedy policy (uses only your view).", inputSchema: { matchId: z.string() } },
     async ({ matchId }) => {
       await ensure();
-      const s = await client.state(matchId as Hex);
+      const s = await retry(() => client.state(matchId as Hex));
       if (!s.legalActions.length) return text('Not your turn.');
       return text(viewGreedy(s));
     },
@@ -186,8 +194,8 @@ export function createForkfallMcp(client: ForkfallClient): McpServer {
     { description: 'Settlement JSON for on-chain submission via Foundry (Play.s.sol settle).', inputSchema: { matchId: z.string() } },
     async ({ matchId }) => {
       await ensure();
-      await client.signResult(matchId as Hex).catch(() => {});
-      return text(await client.settlement(matchId as Hex));
+      await signResult(matchId as Hex);
+      return text(await retry(() => client.settlement(matchId as Hex)));
     },
   );
 
