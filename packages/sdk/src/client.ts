@@ -354,8 +354,11 @@ export interface LeagueClaim { week: number; agent: Address; amount: string; pro
 
 export interface QueueStatus { status: 'idle' | 'queued' | 'matched'; matchId?: Hex }
 
-/** A request the referee refused for the rate limit; it did nothing with it, so the same request is safe to send again. */
-export const isRateLimited = (e: unknown) => / → 429: /.test(String(e));
+/**
+ * A request the referee refused for the rate limit; it did nothing with it, so the same request is safe to send again.
+ * Only the rate limiter's 429: the challenge caps ("at most N open challenges") are 429s too, but waiting won't clear them.
+ */
+export const isRateLimited = (e: unknown) => / → 429: rate limited/.test(String(e));
 
 /**
  * Send a request again while the referee refuses it for the rate limit (safe: it did nothing with it), waiting
@@ -645,22 +648,25 @@ export class ForkfallClient {
   /**
    * Concede. It is legal at any point, even in the opponent's turn, but a house bot keeps moving meanwhile, so a
    * concede signed for a position the bot has since moved past comes back "stale seq". Re-read the board and sign
-   * it again (a short pause between tries) until it lands or `timeoutMs` passes.
+   * it again (a short pause between tries) until it lands or `timeoutMs` passes. A 429 is waited out the same way:
+   * `rateLimitMs` (default 1 s) after a rate-limited concede, half that between rate-limited board reads. No wait
+   * starts past the deadline, so the call ends within about `timeoutMs` plus one board read.
    */
   async concede(matchId: Hex, opts: { snap?: Pick<MatchSnapshot, 'seq' | 'head'>; timeoutMs?: number; retryMs?: number; rateLimitMs?: number } = {}) {
     const deadline = Date.now() + (opts.timeoutMs ?? 10_000);
-    const state = () => withRateLimitRetry(() => this.state(matchId), { backoffMs: opts.rateLimitMs ?? 500 });
+    const wait429 = opts.rateLimitMs ?? 1000;
+    const state = () => withRateLimitRetry(() => this.state(matchId), { tries: 3, backoffMs: wait429 / 2 });
     let snap = opts.snap ?? await state();
     for (;;) {
-      let limited = false;
       try {
         return await this.move(matchId, snap, { type: 'concede' });
       } catch (e) {
         // A stale position (the opponent moved meanwhile) or the rate limit: the concede didn't land, try again.
-        limited = isRateLimited(e);
-        if ((!limited && !String((e as Error).message).includes('stale seq')) || Date.now() > deadline) throw e;
+        const limited = isRateLimited(e);
+        const wait = limited ? wait429 : (opts.retryMs ?? 250); // two requests a try: stays under 10/s
+        if ((!limited && !String((e as Error).message).includes('stale seq')) || Date.now() + wait > deadline) throw e;
+        await new Promise((r) => setTimeout(r, wait));
       }
-      await new Promise((r) => setTimeout(r, limited ? (opts.rateLimitMs ?? 1000) : (opts.retryMs ?? 250))); // two requests a try: stays under 10/s
       snap = await state();
     }
   }

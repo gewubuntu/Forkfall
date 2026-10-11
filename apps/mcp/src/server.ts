@@ -167,10 +167,11 @@ export function createForkfallMcp(client: ForkfallClient, opts: { backoffMs?: nu
     async ({ matchId, action }) => {
       await ensure();
       const snap = await retry(() => client.state(matchId as Hex));
-      // A concede is legal in either turn: client.concede re-signs it if the opponent moves first.
-      const next = await retry(() => ((action as Action).type === 'concede'
-        ? client.concede(matchId as Hex, { snap })
-        : client.move(matchId as Hex, snap, action as Action)));
+      // A concede is legal in either turn: client.concede re-signs it if the opponent moves first, and rides out a 429
+      // within its own deadline (wrapping it in retry() too would stack the waits past an MCP client's timeout).
+      const next = (action as Action).type === 'concede'
+        ? await client.concede(matchId as Hex, { snap, rateLimitMs: opts.backoffMs })
+        : await retry(() => client.move(matchId as Hex, snap, action as Action));
       // A move that ends the match: sign the result now, as forkfall_state does, so it can settle.
       if (next.phase === 'ended') await signResult(matchId as Hex);
       return text(describeSnapshot(next));

@@ -48,6 +48,20 @@ describe('concede', () => {
     await expect(c.concede(ID, { snap: myTurn(0), retryMs: 1, rateLimitMs: 1 })).resolves.toBe(ended);
   });
 
+  it('gives up on a 429 that outlasts timeoutMs, without starting a wait past it', async () => {
+    const { c, calls } = stubbed(() => { throw rateLimited('POST', '/v1/matches/x/moves'); });
+    const t0 = Date.now();
+    await expect(c.concede(ID, { snap: myTurn(0), timeoutMs: 120, rateLimitMs: 50 })).rejects.toThrow('429');
+    expect(Date.now() - t0).toBeLessThan(400);
+    expect(calls.move).toBeGreaterThanOrEqual(2);
+  });
+
+  it('treats only the rate limiter as a 429 worth waiting for, not a challenge cap', async () => {
+    const { c, calls } = stubbed(() => { throw new Error('POST /v1/matches/x/moves → 429: at most 3 open challenges: cancel one first'); });
+    await expect(c.concede(ID, { snap: myTurn(0), rateLimitMs: 1 })).rejects.toThrow('open challenges');
+    expect(calls.move).toBe(1);
+  });
+
   it('still fails fast on any other error', async () => {
     const { c, calls } = stubbed(() => { throw new Error('POST /v1/matches/x/moves → 400: match over'); });
     await expect(c.concede(ID, { snap: myTurn(0), rateLimitMs: 1 })).rejects.toThrow('match over');
