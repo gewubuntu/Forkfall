@@ -13,12 +13,14 @@ import { friendlyError } from '../chain/errors.ts';
 import { useHub } from '../chain/useHub.ts';
 import { useSeasonStats, useSettled, useSettleMatch, type SettledQuery } from '../chain/useSettlement.ts';
 import { CardBack, GameCard } from '../components/GameCard.tsx';
+import { CardZoom } from '../components/CardZoom.tsx';
 import { PassPanel } from '../components/PassPanel.tsx';
 import { QuestPanel } from '../components/QuestPanel.tsx';
 import { ChallengeWaiting } from '../components/Challenges.tsx';
 import { useQueryClient } from '@tanstack/react-query';
 import { describeEvent, KEYWORD_HELP, KEYWORD_LABEL, RACE_INFO, raceName } from '../game/meta.ts';
 import { FxLayer } from '../game/FxLayer.tsx';
+import { useBoardGestures, type DragSource, type DropTarget } from '../game/gestures.ts';
 import { summarize, useCountUp } from '../game/summary.ts';
 import { useMatch } from '../game/useMatch.ts';
 import { isMuted, setMuted } from '../lib/sfx.ts';
@@ -26,6 +28,8 @@ import { avatarSvg, spriteSvg } from '../lib/art.ts';
 import { emblem } from '../lib/cosmetics.ts';
 import { inTime, shortAddr } from '../lib/format.ts';
 import { useLiveTopic } from '../lib/live.ts';
+import { COMPACT_QUERY, useMedia, useTouch } from '../lib/useMedia.ts';
+import { useReturnedWhilePending } from '../lib/useWalletReturn.ts';
 
 type PlayAction = Extract<Action, { type: 'play' }>;
 type Selection = { kind: 'hand' | 'unit'; uid: number } | null;
@@ -50,7 +54,19 @@ function MatchView() {
   /** Whether the pending play of a hand card uses Ape (chosen in the Ape dialog). */
   const apeChoice = useRef(new Map<number, boolean>());
   const [resultOpen, setResultOpen] = useState(true);
+  const [zoom, setZoom] = useState<number | null>(null);
   const arenaRef = useRef<HTMLDivElement>(null);
+  const touch = useTouch();
+  const compact = useMedia(COMPACT_QUERY);
+  const [logOpen, setLogOpen] = useState(false);
+  /** Drag handlers for this render's board (the gesture hook is set up once, before the loading screens return). */
+  const drag = useRef<{ canDrag: (s: DragSource) => boolean; start: (s: DragSource) => void; drop: (s: DragSource, t: DropTarget) => void }>(null);
+  useBoardGestures(arenaRef, {
+    onZoom: setZoom,
+    canDrag: (src) => drag.current?.canDrag(src) ?? false,
+    onDragStart: (src) => drag.current?.start(src),
+    onDrop: (src, t) => drag.current?.drop(src, t),
+  });
 
   const s = m.snap;
   if (s?.now) skew.current = s.now - Date.now();
@@ -118,7 +134,16 @@ function MatchView() {
     if (!myTurn) { setHint('Wait for your turn.'); return; }
     const plays = legal.filter((a): a is PlayAction => a.type === 'play' && a.uid === uid);
     if (!plays.length) { setHint('Not enough Gas, no space, or no valid target.'); return; }
-    if (sel?.kind === 'hand' && sel.uid === uid) { setSelected(null); setHint(null); return; }
+    const armed = sel?.kind === 'hand' && sel.uid === uid;
+    // Touch: the first tap only picks the card up (details + targets show); a second tap or Play commits it.
+    if (touch && !armed) { setSelected({ kind: 'hand', uid }); setHint(null); return; }
+    if (armed && !touch) { setSelected(null); setHint(null); return; }
+    commitHand(uid);
+  }
+
+  function commitHand(uid: number) {
+    const plays = legal.filter((a): a is PlayAction => a.type === 'play' && a.uid === uid);
+    if (!plays.length) { setHint('Not enough Gas, no space, or no valid target.'); return; }
     const hasApe = plays.some((a) => a.ape);
     const hasNormal = plays.some((a) => !a.ape);
     if (hasApe && hasNormal) { setModal({ kind: 'ape', uid }); return; }
@@ -134,7 +159,7 @@ function MatchView() {
       setModal(null);
       setSelected({ kind: 'hand', uid });
       const c = card(v.hand.find((h) => h.uid === uid)!.cardId);
-      setHint(`Choose a target for ${c.name}. Esc to cancel.`);
+      setHint(`Choose a target for ${c.name}.${touch ? '' : ' Esc to cancel.'}`);
       return;
     }
     send(plays.find((a) => a.target === undefined) ?? plays[0]);
@@ -166,13 +191,47 @@ function MatchView() {
     if (a) send(a);
   }
 
+  // Drag and drop: the same moves as tapping, resolved from where the card was let go.
+  drag.current = {
+    canDrag: (src) => myTurn && (src.kind === 'hand' ? playableHand.has(src.uid) : readyUnits.has(src.uid)),
+    start: (src) => { setSelected(src); setHint(null); apeChoice.current.set(src.uid, false); },
+    drop: (src, t) => {
+      if (src.kind === 'unit') {
+        const target = t?.kind === 'unit' ? t.uid : t?.kind === 'treasury' && t.side === op ? 'treasury' : undefined;
+        const a = target !== undefined && legal.find((x) => x.type === 'attack' && x.attacker === src.uid && x.target === target);
+        if (a) { send(a); return; }
+        setSelected(null);
+        if (t && t.kind !== 'board') setHint('Can’t attack that. Guard units must be hit first.');
+        return;
+      }
+      if (t?.kind === 'unit' || t?.kind === 'treasury') {
+        const target = t.kind === 'unit' ? t.uid : 'treasury';
+        const a = legal.find((x): x is PlayAction => x.type === 'play' && x.uid === src.uid && x.target === target && !x.ape && !x.condition);
+        if (a) { send(a); return; }
+      }
+      // Your own half of the board, including one of your units or your Treasury when the card doesn't target it
+      // (a crowded board is mostly units): play it as if dropped on the lane.
+      const ownSide = t?.kind === 'board'
+        || (t?.kind === 'unit' && v.players[me].board.some((u) => u.uid === t.uid))
+        || (t?.kind === 'treasury' && t.side === me);
+      if (ownSide) { setSelected(null); commitHand(src.uid); return; }
+      setSelected(null);
+      if (t) setHint('That card can’t target there.');
+    },
+  };
+
+  const armedHand = sel?.kind === 'hand' ? v.hand.find((h) => h.uid === sel.uid) : undefined;
+  const armedPlays = armedHand ? legal.filter((a): a is PlayAction => a.type === 'play' && a.uid === armedHand.uid) : [];
+  const needsTarget = armedPlays.length > 0 && armedPlays.every((a) => a.target !== undefined && !a.condition) && !armedPlays.some((a) => a.ape);
+  const movesLeft = myTurn && (playableHand.size > 0 || readyUnits.size > 0);
+
   const swarmBonus = (side: 0 | 1, u: UnitState) =>
     u.keywords.includes('swarm') ? v.players[side].board.filter((x) => x.uid !== u.uid && x.keywords.includes('swarm')).length : 0;
 
   const now = Date.now() + skew.current;
 
   return (
-    <div className={`match ${myTurn ? 'my-turn' : ''}`}>
+    <div className={`match ${myTurn ? 'my-turn' : ''} ${compact ? 'compact' : ''}`}>
       <FxLayer events={m.events} seat={seat} arena={arenaRef} races={[raceName(races[0]), raceName(races[1])]} />
       <div className="arena" ref={arenaRef} onClick={() => { if (sel) { setSelected(null); setHint(null); } }}>
         <Side s={s} side={op} isMe={false} hits={m.hits}
@@ -187,7 +246,7 @@ function MatchView() {
           </div>
         </Side>
 
-        <TurnBar s={s} now={now} myTurn={myTurn} sending={m.sending} hint={hint}
+        <TurnBar s={s} now={now} myTurn={myTurn} sending={m.sending} hint={hint} confirmEnd={touch && movesLeft} compact={compact} onLog={() => setLogOpen(true)}
           onEnd={() => send({ type: 'endTurn' })} onConcede={() => setModal({ kind: 'concede' })}
           onShowResult={!resultOpen ? () => setResultOpen(true) : undefined} />
 
@@ -204,17 +263,32 @@ function MatchView() {
         </Side>
 
         {seat !== null && (
-          <div className="hand" aria-label="Your hand">
+          // The picked-up card's bar sits outside .hand: a scrolling hand (wider touch screens) would clip it.
+          <div className="hand-wrap">
+            {touch && armedHand && (
+              <div className="armed" role="status" onClick={(e) => e.stopPropagation()}>
+                <div className="armed-text">
+                  <b>{card(armedHand.cardId).name}</b>
+                  <span>{card(armedHand.cardId).text}</span>
+                </div>
+                <button className="btn btn-ghost icon-only" onClick={() => setZoom(armedHand.cardId)} aria-label="Card details">ⓘ</button>
+                {needsTarget
+                  ? <span className="armed-hint">Tap a glowing target</span>
+                  : <button className="btn btn-primary" onClick={() => commitHand(armedHand.uid)} disabled={m.sending}>Play</button>}
+              </div>
+            )}
+          <div className="hand" aria-label="Your hand" style={{ ['--n' as string]: Math.max(1, v.hand.length) }}>
             {v.hand.map((h) => {
               const c = card(h.cardId);
               return (
-                <GameCard key={h.uid} cardId={h.cardId} cost={Math.max(0, c.cost - v.players[me].discount)}
+                <GameCard key={h.uid} handUid={h.uid} cardId={h.cardId} cost={Math.max(0, c.cost - v.players[me].discount)}
                   playable={playableHand.has(h.uid)} dimmed={myTurn && !playableHand.has(h.uid)}
                   selected={sel?.kind === 'hand' && sel.uid === h.uid}
                   onClick={() => clickHand(h.uid)} onHover={setPreview} />
               );
             })}
             {v.hand.length === 0 && <span className="lane-empty">Your hand is empty</span>}
+          </div>
           </div>
         )}
       </div>
@@ -267,6 +341,12 @@ function MatchView() {
       )}
 
       {s.phase === 'ended' && resultOpen && <Result s={s} events={m.events} onClose={() => setResultOpen(false)} />}
+      {logOpen && (
+        <Dialog title="Match log" onClose={() => setLogOpen(false)}>
+          <Log events={m.events} seat={seat} races={races} />
+        </Dialog>
+      )}
+      {zoom !== null && <CardZoom cardId={zoom} onClose={() => setZoom(null)} />}
     </div>
   );
 }
@@ -297,7 +377,7 @@ export function Side({ s, side, isMe, hits, children, onTreasury, treasuryTarget
           <img className="avatar" src={avatarSvg(info.address)} alt="" />
           <div>
             <div className="who-name">
-              {isMe ? 'You · ' : s.seat !== null ? 'Opponent · ' : ''}<span style={{ color: 'var(--rc)' }}>{raceName(p.race)}</span>
+              <span className="who-prefix">{isMe ? 'You · ' : s.seat !== null ? 'Opponent · ' : ''}</span><span style={{ color: 'var(--rc)' }}>{raceName(p.race)}</span>
               {info.agent && <span className="badge agent">Agent</span>}
               {info.cosmetics?.badge && <span className={`cos-badge b-${info.cosmetics.badge.slice(6)}`} title={cosmetic(info.cosmetics.badge)?.name}>{emblem(info.cosmetics.badge)}</span>}
             </div>
@@ -337,12 +417,32 @@ export function Side({ s, side, isMe, hits, children, onTreasury, treasuryTarget
 }
 
 // ─── Turn bar: whose turn, clock, end turn ────────────────────────────────────
-function TurnBar({ s, now, myTurn, sending, hint, onEnd, onConcede, onShowResult }: {
+function TurnBar({ s, now, myTurn, sending, hint, confirmEnd, compact, onLog, onEnd, onConcede, onShowResult }: {
   s: MatchSnapshot; now: number; myTurn: boolean; sending: boolean; hint: string | null;
+  /** Phone layout: secondary actions (log, sound, concede, leave) move into a ⋯ menu so the bar stays one row. */
+  compact?: boolean; onLog?: () => void;
+  /** Ask for a second tap before ending a turn that still has moves left (touch screens: no accidental end). */
+  confirmEnd?: boolean;
   onEnd: () => void; onConcede: () => void; onShowResult?: () => void;
 }) {
   const [, tick] = useState(0);
+  const [askEnd, setAskEnd] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const off = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(false); };
+    document.addEventListener('pointerdown', off);
+    return () => document.removeEventListener('pointerdown', off);
+  }, [menu]);
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 250); return () => clearInterval(t); }, []);
+  useEffect(() => { if (!askEnd) return; const t = setTimeout(() => setAskEnd(false), 3000); return () => clearTimeout(t); }, [askEnd]);
+  useEffect(() => { if (!myTurn) setAskEnd(false); }, [myTurn]);
+  const end = () => {
+    if (confirmEnd && !askEnd) { setAskEnd(true); return; }
+    setAskEnd(false);
+    onEnd();
+  };
   const v = s.view!;
   const c = s.clock;
   const turnLeft = c ? Math.max(0, c.turnEndsAt - now) : 0;
@@ -355,29 +455,47 @@ function TurnBar({ s, now, myTurn, sending, hint, onEnd, onConcede, onShowResult
     : myTurn ? 'Your turn' : 'Opponent’s turn';
   return (
     <div className="turnbar" onClick={(e) => e.stopPropagation()}>
+      {compact && (
+        <div className="tb-menu-wrap" ref={menuRef}>
+          <button className="btn btn-ghost icon-only tb-menu-btn" onClick={() => setMenu((x) => !x)} aria-haspopup="menu" aria-expanded={menu} aria-label="Match menu">⋯</button>
+          {menu && (
+            <div className="menu tb-menu" role="menu" onClick={() => setMenu(false)}>
+              <button className="item" role="menuitem" onClick={onLog}>Match log</button>
+              <MuteButton item />
+              <Link className="item" role="menuitem" to="/play">Back to Play <span className="muted">(match keeps running)</span></Link>
+              {s.phase === 'active' && s.seat !== null && <button className="item btn-danger" role="menuitem" onClick={onConcede}>Concede…</button>}
+            </div>
+          )}
+        </div>
+      )}
       <div className="tb-left">
         <span className={`turn-pill ${myTurn ? 'mine' : ''}`}>{label}</span>
         <span className="muted small">Turn {v.turn} · {s.mode}</span>
       </div>
       {c && s.phase === 'active' && (
         <div className={`clock ${inBank ? 'bank' : turnLeft < 10000 ? 'warn' : ''}`} role="timer" aria-label="Turn timer">
-          <div className="clock-bar"><i style={{ width: `${inBank ? 0 : pct}%` }} /></div>
-          <span className="small">{inBank ? `Bank ${Math.ceil(bankLeft / 1000)}s` : `${Math.ceil(turnLeft / 1000)}s`}<span className="muted"> · bank {Math.ceil(bank / 1000)}s</span></span>
+          <div className="clock-bar"><i style={{ transform: `scaleX(${inBank ? 0 : pct / 100})` }} /></div>
+          <span className="small">{inBank ? `Bank ${Math.ceil(bankLeft / 1000)}s` : `${Math.ceil(turnLeft / 1000)}s`}<span className="muted clock-bank"> · bank {Math.ceil(bank / 1000)}s</span></span>
         </div>
       )}
-      <span className="hint-inline" role="status" title={hint ?? undefined}>{hint ?? ''}</span>
+      <span className={`hint-inline ${hint ? 'on' : ''}`} role="status" title={hint ?? undefined}>{hint ?? ''}</span>
       <div className="tb-right">
-        <MuteButton />
-        {s.phase === 'active' && s.seat !== null && <button className="btn btn-ghost" onClick={onConcede}>Concede</button>}
+        {!compact && <MuteButton />}
+        {!compact && s.phase === 'active' && s.seat !== null && <button className="btn btn-ghost" onClick={onConcede}>Concede</button>}
         {onShowResult && <button className="btn btn-primary" onClick={onShowResult}>Show result</button>}
-        {myTurn && <button className="btn btn-primary end-turn" onClick={onEnd} disabled={sending}>{sending ? <span className="spinner" /> : 'End turn'}</button>}
+        {myTurn && (
+          <button className={`btn btn-primary end-turn ${askEnd ? 'confirm' : ''}`} onClick={end} disabled={sending}>
+            {sending ? <span className="spinner" /> : askEnd ? 'Tap again to end' : 'End turn'}
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function MuteButton() {
+function MuteButton({ item }: { item?: boolean }) {
   const [muted, setM] = useState(isMuted());
+  if (item) return <button className="item" role="menuitem" onClick={() => { setMuted(!muted); setM(!muted); }}>{muted ? '🔇 Sound off' : '🔊 Sound on'}</button>;
   return (
     <button className="btn btn-ghost icon-only" onClick={() => { setMuted(!muted); setM(!muted); }}
       aria-label={muted ? 'Unmute sounds' : 'Mute sounds'} title={muted ? 'Sound off' : 'Sound on'}>{muted ? '🔇' : '🔊'}</button>
@@ -439,6 +557,7 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
   const seat = s.seat;
   const signed = seat !== null && !!s.resultSigned?.[seat];
   const both = !!s.resultSigned?.[0] && !!s.resultSigned?.[1];
+  const back = useReturnedWhilePending(signing);
 
   useEffect(() => {
     if (!client || !both) return;
@@ -450,12 +569,17 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
   const reason = { treasury: 'Treasury drained', concede: 'Conceded', turnLimit: 'Turn limit reached', timeout: 'Ran out of time' }[v.endReason ?? 'treasury'];
   const winnerSprite = v.winner === 'draw' ? null : RACE_INFO[v.players[v.winner as 0 | 1].race].sprite;
 
+  // "Sign again" can start a new request while an earlier one is still open in the wallet: only the latest one
+  // decides what this screen shows.
+  const attempt = useRef(0);
   const sign = async () => {
+    const mine = ++attempt.current;
     setErr(null); setSigning(true);
     try { await client!.signResult(s.matchId); } catch (e) {
+      if (mine !== attempt.current) return;
       const msg = (e as { shortMessage?: string }).shortMessage ?? (e as Error).message;
       setErr(/reject|denied|cancel/i.test(msg) ? 'Signature cancelled in your wallet.' : msg);
-    } finally { setSigning(false); }
+    } finally { if (mine === attempt.current) setSigning(false); }
   };
 
   return (
@@ -473,9 +597,17 @@ function Result({ s, events, onClose }: { s: MatchSnapshot; events: GameEvent[];
             {!signed ? (
               <>
                 <p>Sign the result with your wallet so it can be recorded on-chain{s.mode !== 'casual' ? ' and count for your rating' : ''}. No gas.</p>
-                {err && <div className="alert err">{err}</div>}
-                <button className="btn btn-primary btn-block" onClick={sign} disabled={signing}>
-                  {signing ? <><span className="spinner" /> Check your wallet…</> : 'Sign result'}
+                {signing && (
+                  <div className="sig-state pending" role="status">
+                    <span className="spinner" />
+                    <span>{back
+                      ? 'Signature pending: nothing has arrived from your wallet yet. If you approved it there, it lands in a moment; otherwise sign again.'
+                      : 'Signature pending: approve it in your wallet.'}</span>
+                  </div>
+                )}
+                {err && <div className="sig-state failed" role="alert"><b>Signature failed</b><span>{err}</span></div>}
+                <button className="btn btn-primary btn-block" onClick={sign} disabled={signing && !back}>
+                  {signing && !back ? <><span className="spinner" /> Check your wallet…</> : err || back ? 'Sign again' : 'Sign result'}
                 </button>
               </>
             ) : both ? (
@@ -675,7 +807,7 @@ function RefereeWait({ s }: { s: MatchSnapshot }) {
     return <div className="alert err">The referee couldn’t settle this result{r.willRetry ? ' yet and will retry' : ''}: {r.error}</div>;
   }
   if (won && s.refereeAt != null) {
-    return <p className="ok">✓ You signed. Waiting for your opponent’s signature. If they don’t sign, the referee settles it on-chain with yours {inTime(s.refereeAt)}.</p>;
+    return <p className="ok sig-state done">✓ You signed. Waiting for your opponent’s signature. If they don’t sign, the referee settles it on-chain with yours {inTime(s.refereeAt)}.</p>;
   }
-  return <p className="ok">✓ You signed. Waiting for your opponent’s signature.</p>;
+  return <p className="ok sig-state done">✓ You signed. Waiting for your opponent’s signature.</p>;
 }

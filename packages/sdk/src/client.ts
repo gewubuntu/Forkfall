@@ -676,7 +676,15 @@ export class ForkfallClient {
     const { result } = await this.req<{ result: MatchResult }>('GET', `/v1/matches/${matchId}/result`);
     const typed = { domain: this.config!.domain, types: RESULT_TYPES, primaryType: 'MatchResult' as const, message: { ...result } };
     const signature = this.opts.signResult ? await this.opts.signResult(typed) : await this.account.signTypedData(typed);
-    return this.req<{ ok: true; complete: boolean }>('POST', `/v1/matches/${matchId}/result`, { signature });
+    // The wallet has signed (a popup the player answered): a rate-limited submit is sent again, never re-signed.
+    for (let i = 1; ; i++) {
+      try {
+        return await this.req<{ ok: true; complete: boolean }>('POST', `/v1/matches/${matchId}/result`, { signature });
+      } catch (e) {
+        if (!isRateLimited(e) || i >= 4) throw e;
+        await new Promise((r) => setTimeout(r, 300 * i));
+      }
+    }
   }
 
   settlement(matchId: Hex) { return this.req<Settlement>('GET', `/v1/matches/${matchId}/settlement`); }

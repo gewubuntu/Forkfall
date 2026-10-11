@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useConnect, useConnection, useConnectors, type Connector } from 'wagmi';
+import { currentWalletEnv, openInWalletLinks, WALLET_NAMES } from '../lib/walletEnv.ts';
 import { walletConnectEnabled } from '../wagmi.ts';
 
 interface ConnectModalApi { open: () => void; close: () => void }
@@ -46,7 +47,13 @@ function ConnectModal({ onClose }: { onClose: () => void }) {
   const { isConnected } = useConnection();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const env = useMemo(() => currentWalletEnv(), []);
+  // Inside a wallet's own browser the injected wallet is the one to use; elsewhere on a phone, opening the game in
+  // the wallet app avoids switching apps for every signature.
+  const inWallet = env.inWallet && installed.length > 0;
+  const offerOpenIn = env.mobile && !env.inWallet && installed.length === 0;
 
   useEffect(() => { if (isConnected) onClose(); }, [isConnected, onClose]);
   useEffect(() => {
@@ -84,9 +91,34 @@ function ConnectModal({ onClose }: { onClose: () => void }) {
           <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
         {error && <div className="alert err" role="alert"><span>{error}</span></div>}
-        {installed.length > 0 && <><div className="wallet-group">Installed</div>{installed.map(row)}</>}
-        <div className="wallet-group">{installed.length ? 'Other options' : 'Choose a wallet'}</div>
-        {other.map(row)}
+        {inWallet ? (
+          <>
+            <p className="modal-note in-wallet">You’re in the {WALLET_NAMES[env.inWallet!]} browser: connect it here, and signatures pop up right in this app.</p>
+            {installed.map(row)}
+            {!more
+              ? <button className="btn btn-ghost btn-block" onClick={() => setMore(true)}>Other ways to connect</button>
+              : <><div className="wallet-group">Other options</div>{other.map(row)}</>}
+          </>
+        ) : (
+          <>
+            {offerOpenIn && (
+              <>
+                <div className="wallet-group">Play inside your wallet app</div>
+                <p className="modal-note open-in-note">Recommended on phones: the game opens in the wallet’s browser, so signing never switches apps.</p>
+                {openInWalletLinks(window.location.href).map((l) => (
+                  <a key={l.app} className="wallet" href={l.url} rel="noopener">
+                    <span className={`wallet-glyph wg-${l.app}`} aria-hidden>{l.label[0]}</span>
+                    <span className="wallet-text"><b>Open in {l.label}</b><small>Opens this page in the {l.label} app</small></span>
+                    <span aria-hidden>↗</span>
+                  </a>
+                ))}
+              </>
+            )}
+            {installed.length > 0 && <><div className="wallet-group">Installed</div>{installed.map(row)}</>}
+            <div className="wallet-group">{installed.length ? 'Other options' : offerOpenIn ? 'Or connect from this browser' : 'Choose a wallet'}</div>
+            {other.map(row)}
+          </>
+        )}
         {!walletConnectEnabled && <p className="modal-note">Phone wallets via WalletConnect are off until a project id is configured.</p>}
         <p className="modal-note">Testnet alpha: use a wallet with no real funds. Cards and tokens have no value.</p>
       </div>

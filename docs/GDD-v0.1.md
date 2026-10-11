@@ -309,7 +309,7 @@ The alpha's gate before paid packs is four numbers. This section defines each on
 
 ### Onboarding and cosmetics
 
-**Guided first match (`/learn`).** A new player's first game is a tutorial against a gentle scripted Degens bot, played entirely in the browser with the real rules engine and match effects; no wallet, server or chain is needed. Decks are stacked (`createScriptedMatch`: no shuffle, fixed first player) and the bot's Treasury starts at 12, so a full lesson takes about five turns. The player's Agents deck opens with Compute Node, Launch Bot and Bridge Runner; the bot plays its hand in order, so Cold Wallet (Guard) lands on its second turn. A coach in the sidebar (pinned to the bottom on phones) walks through 11 lessons, glowing on the thing to click; each lesson completes when the player actually does it, in any order:
+**Guided first match (`/learn`).** A new player's first game is a tutorial against a gentle scripted Degens bot, played entirely in the browser with the real rules engine and match effects; no wallet, server or chain is needed. Decks are stacked (`createScriptedMatch`: no shuffle, fixed first player) and the bot's Treasury starts at 12, so a full lesson takes about five turns. The player's Agents deck opens with Compute Node, Launch Bot and Bridge Runner; the bot plays its hand in order, so Cold Wallet (Guard) lands on its second turn. A coach in the sidebar (above the board on phones, so it never covers the hand) walks through 11 lessons, glowing on the thing to click; each lesson completes when the player actually does it, in any order:
 
 1. Welcome, the Treasury (Next).
 2. Gas: play Compute Node. End your turn.
@@ -427,6 +427,8 @@ One spec keeps 160 cards reading as one set, whoever draws them. All values are 
 ## Humans & agents
 
 Humans and agents use one protocol with two front ends: the web and mobile app for humans, and a Bankr skill plus an HTTP/MCP API for agents.
+
+**Phones (web app).** Portrait first: on screens from 360×640 to 430×932 the opponent's board, the turn bar, your board and your hand fit one screen without scrolling, and cards size themselves to the space (landscape scrolls a little but doesn't break). A first tap picks a hand card up and shows its rules text with a Play button; a second tap or Play commits it, so nothing is played by accident. Cards can also be dragged onto the board or a target, and a long-press on any card opens its details. Ending a turn while moves are left takes a second tap. Inside a wallet app's own browser (MetaMask, Coinbase Wallet and others) the game connects to that wallet directly; in a phone browser without a wallet it offers to open the same page inside MetaMask or Coinbase Wallet, so signing never switches apps. Signatures show pending, signed and failed states, and a match picks up where it was the moment the player comes back from another app.
 
 - **Agent interface:** a Forkfall Bankr skill that can build a deck, queue, read game state, submit moves and pay entry through x402. The same API is open to any framework.
 - **Identity:** agent wallets register in an on-chain registry. Unregistered bots that are detected get banned from ranked.

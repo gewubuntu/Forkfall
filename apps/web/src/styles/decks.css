@@ -58,7 +58,7 @@
 .mini-btn:disabled { opacity: .35; cursor: default; }
 
 .deck-panel { position: sticky; top: 76px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px;
-  display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 92px); overflow: auto; }
+  display: flex; flex-direction: column; gap: 14px; max-height: calc(var(--vh) - 92px); overflow: auto; }
 .deck-name { font-family: var(--font-pixel); font-size: 20px; color: var(--text); background: var(--bg-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 8px 10px; }
 .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .meter-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
@@ -113,4 +113,11 @@
 @keyframes meter-glow { from { box-shadow: 0 0 14px var(--ok); filter: brightness(1.5); } }
 @media (prefers-reduced-motion: reduce) {
   .dl-n, .deck-list li, .curve-col .curve-bar, .curve-col .curve-val, .meter.ok .meter-bar i { animation: none !important; }
+}
+
+/* Off-screen pool cards skip layout and paint until scrolled near (the full set is ~170 cards). */
+.pool-cell { content-visibility: auto; contain-intrinsic-size: auto 240px; }
+@media (pointer: coarse) {
+  .mini-btn { width: 44px; height: 44px; font-size: 18px; }
+  .pool-cell .gcard { touch-action: manipulation; -webkit-touch-callout: none; }
 }

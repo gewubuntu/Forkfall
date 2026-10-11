@@ -6,8 +6,11 @@ import {
 import type { MatchSnapshot } from '@forkfall/sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
+import { CardZoom } from '../components/CardZoom.tsx';
 import { GameCard } from '../components/GameCard.tsx';
 import { FxLayer } from '../game/FxLayer.tsx';
+import { useBoardGestures } from '../game/gestures.ts';
+import { COMPACT_QUERY, useMedia } from '../lib/useMedia.ts';
 import { RACE_COLOR, RACE_INFO, raceName } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { lessonsDoneLocally, markLessonDone } from '../lib/cosmetics.ts';
@@ -70,6 +73,10 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
   const [preview, setPreview] = useState<number | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const arena = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState<number | null>(null);
+  const compact = useMedia(COMPACT_QUERY);
+  // Long-press for card details on touch screens; lessons are played by tapping, so nothing drags here.
+  useBoardGestures(arena, { onZoom: setZoom, canDrag: () => false, onDrop: () => {} });
   const steps = lesson.steps;
   const s = steps[step];
 
@@ -173,7 +180,7 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
   const costOf = (uid: number) => Math.max(0, card(v.hand.find((h) => h.uid === uid)?.cardId ?? 0).cost - v.players[0].discount);
 
   return (
-    <div className="match learn">
+    <div className={`match learn ${compact ? 'compact' : ''}`}>
       <FxLayer events={events} seat={0} arena={arena} races={[raceName(races[0]), raceName(races[1])]} />
       <div className="arena" ref={arena} onClick={() => { if (sel) { setSelected(null); setHint(null); } }}>
         <Side s={snap} side={1} isMe={false} hits={new Set()} onTreasury={clickTreasury} treasuryTarget={sel?.kind === 'unit' && targets.has('treasury')}>
@@ -192,7 +199,9 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
           </div>
           <span className="hint-inline" role="status">{hint ?? ''}</span>
           <div className="tb-right">
-            <Link className="btn btn-ghost" to="/learn">All lessons</Link>
+            {compact
+              ? <Link className="btn btn-ghost icon-only tb-menu-btn" to="/learn" aria-label="All lessons">‹</Link>
+              : <Link className="btn btn-ghost" to="/learn">All lessons</Link>}
             {myTurn && <button className="btn btn-primary end-turn" onClick={() => act(0, { type: 'endTurn' })}>End turn</button>}
           </div>
         </div>
@@ -253,6 +262,7 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
         </Dialog>
       )}
 
+      {zoom !== null && <CardZoom cardId={zoom} onClose={() => setZoom(null)} />}
       {g.status === 'ended' && (
         <div className="modal-bg result-bg">
           <div className={`modal result ${g.winner === 0 ? 'win' : 'loss'}`} role="dialog" aria-modal="true" aria-label="Lesson complete">
