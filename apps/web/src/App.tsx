@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { useAuth } from './auth/AuthProvider.tsx';
 import { Logo } from './components/Logo.tsx';
@@ -34,6 +35,11 @@ export function App() {
   const signedIn = auth.status === 'signedIn';
   const path = useLocation().pathname;
   const inMatch = path.startsWith('/match/') || path.startsWith('/learn/');
+  // Phones hide the header and banner on the board and lock pull-to-refresh (game.css, html.in-match).
+  useEffect(() => {
+    document.documentElement.classList.toggle('in-match', inMatch);
+    return () => document.documentElement.classList.remove('in-match');
+  }, [inMatch]);
 
   return (
     <>
