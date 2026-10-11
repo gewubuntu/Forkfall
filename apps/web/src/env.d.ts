@@ -7,3 +7,9 @@ interface ImportMetaEnv {
   /** API origin; empty = same origin (the referee serves the app, or Vite proxies /v1). */
   readonly VITE_SERVER_URL?: string;
 }
+
+declare module 'virtual:forkfall-sprites' {
+  /** Card sprite atlas built by vite.config.ts (sprite-atlas.ts): cell `index[cardId]`, row-major, `cols` wide. */
+  const atlas: { url: string; cols: number; rows: number; cell: number; pad: number; index: Record<number, number> };
+  export default atlas;
+}

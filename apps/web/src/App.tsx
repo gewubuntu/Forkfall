@@ -1,25 +1,55 @@
+import { Component, lazy, Suspense, useLayoutEffect, type ComponentType, type ReactNode } from 'react';
+import { isChunkLoadError, reloadForNewBuild } from './lib/chunkReload.ts';
 import { NavLink, Route, Routes, useLocation } from 'react-router';
 import { useAuth } from './auth/AuthProvider.tsx';
 import { Logo } from './components/Logo.tsx';
 import { WalletButton } from './components/WalletButton.tsx';
 import { ComingSoon, Home } from './pages/Home.tsx';
 import { Landing } from './pages/Landing.tsx';
-import { Economy } from './pages/Economy.tsx';
-import { Metrics } from './pages/Metrics.tsx';
-import { Learn } from './pages/Learn.tsx';
-import { Challenge } from './pages/Challenge.tsx';
 import { ChallengeAlert } from './components/Challenges.tsx';
-import { Collection } from './pages/Collection.tsx';
-import { DeckBuilder } from './pages/DeckBuilder.tsx';
-import { Decks } from './pages/Decks.tsx';
-import { Match } from './pages/Match.tsx';
-import { Matches } from './pages/Matches.tsx';
-import { Pass } from './pages/Pass.tsx';
-import { Sealed } from './pages/Sealed.tsx';
-import { Play } from './pages/Play.tsx';
-import { Profile } from './pages/Profile.tsx';
-import { Replay } from './pages/Replay.tsx';
 import { SignInGate } from './pages/SignInGate.tsx';
+
+// Every other page loads on first visit (its own chunk), so the landing page and sign-in stay light on a phone.
+const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) =>
+  lazy(() => load().then((m) => ({ default: m[name] })));
+const Economy = page(() => import('./pages/Economy.tsx'), 'Economy');
+const Metrics = page(() => import('./pages/Metrics.tsx'), 'Metrics');
+const Learn = page(() => import('./pages/Learn.tsx'), 'Learn');
+const Challenge = page(() => import('./pages/Challenge.tsx'), 'Challenge');
+const Collection = page(() => import('./pages/Collection.tsx'), 'Collection');
+const DeckBuilder = page(() => import('./pages/DeckBuilder.tsx'), 'DeckBuilder');
+const Decks = page(() => import('./pages/Decks.tsx'), 'Decks');
+const Match = page(() => import('./pages/Match.tsx'), 'Match');
+const Matches = page(() => import('./pages/Matches.tsx'), 'Matches');
+const Pass = page(() => import('./pages/Pass.tsx'), 'Pass');
+const Sealed = page(() => import('./pages/Sealed.tsx'), 'Sealed');
+const Play = page(() => import('./pages/Play.tsx'), 'Play');
+const Profile = page(() => import('./pages/Profile.tsx'), 'Profile');
+const Replay = page(() => import('./pages/Replay.tsx'), 'Replay');
+const pageLoading = <div className="gate"><span className="spinner" aria-label="Loading" /></div>;
+
+// A preloaded chunk from an older build (the tab outlived a deploy): reload into the new one instead of failing.
+if (typeof window !== 'undefined') window.addEventListener('vite:preloadError', (e) => { if (reloadForNewBuild()) e.preventDefault(); });
+
+/** Catches a page that failed to load: reloads once for a stale build, otherwise offers a reload instead of a blank screen. */
+class PageErrorBoundary extends Component<{ children: ReactNode; path: string }, { error: unknown; path: string }> {
+  state = { error: null as unknown, path: this.props.path };
+  static getDerivedStateFromError(error: unknown) { return { error }; }
+  static getDerivedStateFromProps(p: { path: string }, s: { error: unknown; path: string }) {
+    return p.path !== s.path ? { error: null, path: p.path } : null; // navigating away clears the error
+  }
+  componentDidCatch(error: unknown) { if (isChunkLoadError(error)) reloadForNewBuild(); }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="gate"><div className="card" role="alert">
+        <h2>This page didn’t load</h2>
+        <p className="lead">{isChunkLoadError(this.state.error) ? 'A new version of Forkfall is out. Reload to get it.' : 'Something went wrong showing this page.'}</p>
+        <button className="btn btn-primary" onClick={() => location.reload()}>Reload</button>
+      </div></div>
+    );
+  }
+}
 
 const NAV = [
   { to: '/play', label: 'Play' },
@@ -34,6 +64,12 @@ export function App() {
   const signedIn = auth.status === 'signedIn';
   const path = useLocation().pathname;
   const inMatch = path.startsWith('/match/') || path.startsWith('/learn/');
+  // Phones hide the header and banner on the board and lock pull-to-refresh (game.css, html.in-match). Set before
+  // the first paint, or the board jumps up when the header disappears (a layout shift).
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('in-match', inMatch);
+    return () => document.documentElement.classList.remove('in-match');
+  }, [inMatch]);
 
   return (
     <>
@@ -48,7 +84,7 @@ export function App() {
         <div className="spacer" />
         {auth.status !== 'offline' && auth.status !== 'loading' && <WalletButton />}
       </header>
-      <main>{body()}</main>
+      <main><PageErrorBoundary path={path}><Suspense fallback={pageLoading}>{body()}</Suspense></PageErrorBoundary></main>
       {signedIn && <ChallengeAlert />}
       {signedIn && !inMatch && (
         <nav className="mobile-nav" aria-label="Main">

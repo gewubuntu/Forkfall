@@ -12,7 +12,9 @@ import { useTx } from '../chain/Tx.tsx';
 import { useHub } from '../chain/useHub.ts';
 import { useMyDecks } from '../chain/useMyDecks.ts';
 import { useOwned } from '../chain/useOwned.ts';
+import { CardZoom } from '../components/CardZoom.tsx';
 import { GameCard } from '../components/GameCard.tsx';
+import { useBoardGestures } from '../game/gestures.ts';
 import { ManaCurve } from '../components/ManaCurve.tsx';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
 import { copyText } from '../lib/clipboard.ts';
@@ -46,6 +48,10 @@ export function DeckBuilder() {
   const [name, setName] = useState('');
   const [query, setQuery] = useState('');
   const [hover, setHover] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<number | null>(null);
+  const poolRef = useRef<HTMLDivElement>(null);
+  // Touch: long-press a card in the pool for its details (a tap still adds it); there is no hover there.
+  useBoardGestures(poolRef, { onZoom: setZoom, canDrag: () => false, onDrop: () => {} });
   const flyFrom = useRef<HTMLElement | null>(null);
   const { ref: confettiRef, burst } = useParticles();
   const [seeded, setSeeded] = useState(false);
@@ -191,7 +197,7 @@ export function DeckBuilder() {
             </form>
           )}
           {importing && codeError && <div className="alert err" role="alert">{codeError}</div>}
-          <div className="pool-grid">
+          <div className="pool-grid" ref={poolRef}>
             {pool.map((c) => {
               const inDeck = counts.get(c.id) ?? 0;
               const block = addBlock(c);
@@ -250,6 +256,7 @@ export function DeckBuilder() {
           )}
           <p className="muted small">Registering stores the card list in DeckRegistry ({check.ok ? 'ranked-legal' : 'casual'}). Ownership is checked again when you queue and when a match settles.</p>
           {hover !== null && <div className="hover-preview" aria-hidden><GameCard cardId={hover} size="preview" /></div>}
+          {zoom !== null && <CardZoom cardId={zoom} onClose={() => setZoom(null)} />}
         </aside>
       </div>
     </div>

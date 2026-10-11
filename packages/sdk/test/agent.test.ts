@@ -79,3 +79,20 @@ describe('ForkfallClient.reveal', () => {
     await expect(c.reveal(ID)).rejects.toThrow(/ → 429: /);
   });
 });
+
+describe('signResult', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it('re-sends a rate-limited result submit without asking the wallet to sign again', async () => {
+    let posts = 0;
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      if (init.method === 'GET') return new Response(JSON.stringify({ result: { matchId: ID } }), { status: 200 });
+      return ++posts === 1 ? new Response(JSON.stringify({ error: 'rate limited' }), { status: 429 }) : new Response(JSON.stringify({ ok: true, complete: false }), { status: 200 });
+    });
+    let signatures = 0;
+    const c = new ForkfallClient('http://x', privateKeyToAccount(generatePrivateKey()), { signResult: async () => { signatures++; return '0x01' as Hex; } });
+    (c as unknown as { config: unknown }).config = { domain: { name: 'Forkfall', version: '1', chainId: 1, verifyingContract: ID.slice(0, 42) } };
+    await expect(c.signResult(ID)).resolves.toEqual({ ok: true, complete: false });
+    expect(posts).toBe(2);
+    expect(signatures).toBe(1);
+  });
+});

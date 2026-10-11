@@ -5,6 +5,7 @@ import { InviteBanner } from '../components/InviteBanner.tsx';
 import { avatarSvg } from '../lib/art.ts';
 import { chainDotClass, shortAddr } from '../lib/format.ts';
 import { SESSION_LENGTHS } from '../lib/session.ts';
+import { useReturnedWhilePending } from '../lib/useWalletReturn.ts';
 import { CHAIN_NAMES } from '../wagmi.ts';
 
 /** Shown after the wallet connects: switch network if needed, then sign the session message once. */
@@ -16,6 +17,7 @@ export function SignInGate() {
   const hubName = CHAIN_NAMES[hub] ?? `chain ${hub}`;
   const wrongChain = auth.status === 'wrongChain';
   const busy = auth.status === 'signingIn';
+  const back = useReturnedWhilePending(busy);
 
   return (
     <div className="gate">
@@ -61,6 +63,14 @@ export function SignInGate() {
                 </button>
               ))}
             </div>
+            {busy && (
+              <div className="sig-state pending" role="status">
+                <span className="spinner" />
+                <span>{back
+                  ? 'Signature pending: nothing has arrived from your wallet yet. Approve the request there, or disconnect and connect again.'
+                  : 'Signature pending: approve the sign-in message in your wallet.'}</span>
+              </div>
+            )}
             <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => auth.signIn(hours)}>
               {busy ? <><span className="spinner" /> Check your wallet…</> : 'Sign in with wallet'}
             </button>
