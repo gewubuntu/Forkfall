@@ -650,3 +650,10 @@
 .compact .fx-ghost .gc-name, .compact .fx-ghost .gc-kw, .compact .fx-ghost .gc-chain { display: none; }
 .compact .fx-ghost .gc-stats { margin-top: 3px; }
 .compact .fx-ghost .gc-atk, .compact .fx-ghost .gc-hp { min-width: 22px; height: 20px; font-size: 13px; padding: 0 4px; }
+/* Overlapping hand cards must not show through each other: dim them with brightness, not opacity. */
+.compact .hand .gcard.is-dim { opacity: 1; filter: brightness(.5) saturate(.6); }
+@media (max-width: 380px) {
+  .compact .clock-bar { display: none; }
+  .compact .end-turn { min-width: 92px; padding: 0 10px; }
+  .compact .turn-pill { font-size: 13px; padding: 1px 8px; }
+}
