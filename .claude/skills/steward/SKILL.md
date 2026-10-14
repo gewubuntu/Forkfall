@@ -16,6 +16,7 @@ sessions. Reproduce a failure locally before pushing a fix, then show the same c
 | --- | --- |
 | `typescript` | `pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm sim 500 poncho && pnpm web:build` |
 | `web-e2e` | `pnpm web:build && pnpm test:e2e` (off-chain referee; Chromium is at `/opt/pw-browsers`) |
+| `lighthouse` | `pnpm web:build`, start the referee (`OFFCHAIN=1 PORT=8787 node --import tsx apps/server/src/main.ts &`), then `CHROME_PATH=<chrome> RUNS=5 BASE_URL=http://127.0.0.1:8787 pnpm web:lighthouse` (budget in `apps/web/lighthouse.ts`: floor 80, layout shift 0.01; the 85 target only shows in the summary) |
 | `contracts` | `cd contracts && forge fmt --check && forge build --sizes && forge test -vv`, then `pnpm test:abi` from the root |
 | `docker` | `docker build -f deploy/Dockerfile -t forkfall-referee .` plus the off-chain smoke run in ci.yml (when Docker is available) |
 

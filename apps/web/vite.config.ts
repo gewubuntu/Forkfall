@@ -50,7 +50,7 @@ function routeModulePreload(routes: Record<string, string>): Plugin {
     apply: 'build',
     transformIndexHtml: {
       order: 'post',
-      handler(_html, ctx) {
+      handler(html, ctx) {
         const bundle = ctx.bundle;
         if (!bundle) return;
         const map: Record<string, string[]> = {};
@@ -68,7 +68,11 @@ function routeModulePreload(routes: Record<string, string>): Plugin {
           map[prefix] = [...files];
         }
         const js = `(function(m){var p=location.pathname;for(var k in m)if(p.indexOf(k)===0)m[k].forEach(function(f){var l=document.createElement('link');l.rel='modulepreload';l.crossOrigin='';l.href='/'+f;document.head.appendChild(l)})})(${JSON.stringify(map)})`;
-        return [{ tag: 'script', children: js, injectTo: 'head' }];
+        // Before the stylesheet: an inline script after a <link rel=stylesheet> waits for the CSS to download, which
+        // held these preloads back by a whole round trip. (Not head-prepend: <meta charset> must stay in the first 1 KB.)
+        const at = html.search(/<link rel="stylesheet"/);
+        const tag = `<script>${js}</script>\n    `;
+        return at < 0 ? html.replace('</head>', `${tag}</head>`) : html.slice(0, at) + tag + html.slice(at);
       },
     },
   };

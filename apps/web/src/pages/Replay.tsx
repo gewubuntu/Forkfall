@@ -8,10 +8,12 @@ import { usePublicClient } from 'wagmi';
 import { useAuth } from '../auth/AuthProvider.tsx';
 import { useHub } from '../chain/useHub.ts';
 import { useSettled } from '../chain/useSettlement.ts';
+import { CardZoom } from '../components/CardZoom.tsx';
 import { GameCard } from '../components/GameCard.tsx';
 import { FxLayer } from '../game/FxLayer.tsx';
 import { raceName } from '../game/meta.ts';
 import { shortAddr } from '../lib/format.ts';
+import { COMPACT_QUERY, useMedia, useTouch } from '../lib/useMedia.ts';
 import { Log, Preview, Side } from './Match.tsx';
 
 const SPEEDS = [{ ms: 1400, label: '0.5×' }, { ms: 700, label: '1×' }, { ms: 300, label: '2×' }];
@@ -55,6 +57,12 @@ function Viewer({ log, frames, checks, viewerSeat }: {
   const [flipped, setFlipped] = useState(false);
   const [preview, setPreview] = useState<number | null>(null);
   const arenaRef = useRef<HTMLDivElement>(null);
+  const compact = useMedia(COMPACT_QUERY);
+  // No hover on a touch screen: a tap opens the card full size instead of the sidebar preview.
+  const touch = useTouch();
+  const [zoom, setZoom] = useState<number | null>(null);
+  // The hover preview is hidden in the compact layout, so a tap or click opens the card there too.
+  const details = (cardId: number) => (touch || compact ? () => setZoom(cardId) : undefined);
   // Effects play only when stepping forward one move (Play or ▶); jumps and rewinds stay quiet.
   const prevI = useRef(i);
   const stepped = i === prevI.current + 1;
@@ -97,19 +105,20 @@ function Viewer({ log, frames, checks, viewerSeat }: {
     <div className="lane" aria-label={`${raceName(races[side])} board`}>
       {state.players[side].board.length === 0 && <span className="lane-empty">No units</span>}
       {state.players[side].board.map((u) => (
-        <GameCard key={u.uid} size="board" cardId={u.cardId} unit={u} bonusAttack={swarm(side, u)} hit={hits.has(String(u.uid))} onHover={setPreview} />
+        <GameCard key={u.uid} size="board" cardId={u.cardId} unit={u} bonusAttack={swarm(side, u)} hit={hits.has(String(u.uid))} onHover={setPreview} onClick={details(u.cardId)} />
       ))}
     </div>
   );
   const hand = (side: 0 | 1) => (
-    <div className={`hand replay-hand ${side === top ? 'top' : ''}`} aria-label={`${raceName(races[side])} hand`}>
-      {state.players[side].hand.map((h) => <GameCard key={h.uid} size="mini" cardId={h.cardId} onHover={setPreview} />)}
+    <div className={`hand replay-hand ${side === top ? 'top' : ''}`} aria-label={`${raceName(races[side])} hand`}
+      style={{ ['--n' as string]: Math.max(1, state.players[side].hand.length) }}>
+      {state.players[side].hand.map((h) => <GameCard key={h.uid} size="mini" cardId={h.cardId} onHover={setPreview} onClick={details(h.cardId)} />)}
       {state.players[side].hand.length === 0 && <span className="lane-empty">Empty hand</span>}
     </div>
   );
 
   return (
-    <div className="match replay">
+    <div className={`match replay ${compact ? 'compact' : ''}`}>
       <FxLayer events={events} seat={null} arena={arenaRef} races={[raceName(races[0]), raceName(races[1])]} skip={!stepped} />
       <div className="arena" ref={arenaRef}>
         {hand(top)}
@@ -140,6 +149,7 @@ function Viewer({ log, frames, checks, viewerSeat }: {
         <Preview cardId={preview} />
         <Log events={events} seat={null} races={races} />
       </aside>
+      {zoom !== null && <CardZoom cardId={zoom} onClose={() => setZoom(null)} />}
     </div>
   );
 }

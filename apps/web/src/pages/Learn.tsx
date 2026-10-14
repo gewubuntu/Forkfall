@@ -215,7 +215,7 @@ function LessonMatch({ lesson }: { lesson: Lesson }) {
             ))}
           </div>
         </Side>
-        <div className="hand tut-hand" aria-label="Your hand">
+        <div className="hand tut-hand" aria-label="Your hand" style={{ ['--n' as string]: Math.max(1, v.hand.length) }}>
           {v.hand.map((h) => (
             <GameCard key={h.uid} cardId={h.cardId} cost={Math.max(0, card(h.cardId).cost - v.players[0].discount)}
               playable={playable.has(h.uid)} dimmed={myTurn && !playable.has(h.uid)} selected={sel?.kind === 'hand' && sel.uid === h.uid}

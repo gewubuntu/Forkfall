@@ -50,6 +50,28 @@ jobs:
             playwright-report
             apps/web/test-results
 
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm web:build
+      # The built app served the way production serves it (compressed, cache headers) by an off-chain referee.
+      - name: Start the referee
+        run: |
+          OFFCHAIN=1 PORT=8787 MATCH_ARCHIVE_DIR=$RUNNER_TEMP/archive node --import tsx apps/server/src/main.ts > $RUNNER_TEMP/referee.log 2>&1 &
+          for i in $(seq 60); do curl -fs localhost:8787/v1/config >/dev/null && break; sleep 1; done
+      # Phone budget (apps/web/lighthouse.ts): median of 5 mobile runs per page, fails under 80 or on a layout shift
+      # over 0.01; the 85 target shows in the job summary. Lighthouse drives the runner's preinstalled Google Chrome.
+      - run: pnpm web:lighthouse
+        env: { CHROME_PATH: /usr/bin/google-chrome, RUNS: 5, BASE_URL: 'http://127.0.0.1:8787' }
+      - if: failure()
+        run: cat $RUNNER_TEMP/referee.log
+
   contracts:
     runs-on: ubuntu-latest
     defaults:
