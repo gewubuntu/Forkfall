@@ -375,6 +375,27 @@ test.describe('replay on a phone', () => {
   });
 });
 
+test.describe('replay in a narrow desktop window (mouse, no touch)', () => {
+  test.use({ viewport: { width: 500, height: 800 } });
+  test('the hover preview is hidden, so a click opens the card', async ({ page, browser }) => {
+    // finishedMatch taps, so play it out on a touch context; the replay is public.
+    const ctx = await browser.newContext(phone('iPhone SE (3rd gen)'));
+    const id = await finishedMatch(await ctx.newPage(), 1);
+    await ctx.close();
+    await installTestWallet(page, privateKeyToAccount(generatePrivateKey()), HUB_CHAIN);
+    await page.goto('/play');
+    await page.getByRole('button', { name: 'Connect wallet' }).first().click();
+    await page.getByRole('button', { name: /Forkfall Test Wallet/ }).click();
+    await page.getByRole('button', { name: 'Sign in with wallet' }).click();
+    await expect(page.getByRole('button', { name: /vs bot/ })).toBeVisible();
+    await page.goto(`/matches/${id}`);
+    await expect(page.getByText('Match over')).toBeVisible();
+    await expect(page.locator('.replay.compact')).toBeVisible();
+    await page.locator('.replay-hand:not(.top) .gcard').first().click();
+    await expect(page.getByRole('dialog', { name: /details/ })).toBeVisible();
+  });
+});
+
 test.describe('replay on a phone in landscape', () => {
   test.use(phone('Pixel 7 landscape'));
   test('the board and the controls rail fit the screen', async ({ page }) => {

@@ -61,7 +61,8 @@ function Viewer({ log, frames, checks, viewerSeat }: {
   // No hover on a touch screen: a tap opens the card full size instead of the sidebar preview.
   const touch = useTouch();
   const [zoom, setZoom] = useState<number | null>(null);
-  const details = (cardId: number) => (touch ? () => setZoom(cardId) : undefined);
+  // The hover preview is hidden in the compact layout, so a tap or click opens the card there too.
+  const details = (cardId: number) => (touch || compact ? () => setZoom(cardId) : undefined);
   // Effects play only when stepping forward one move (Play or ▶); jumps and rewinds stay quiet.
   const prevI = useRef(i);
   const stepped = i === prevI.current + 1;
