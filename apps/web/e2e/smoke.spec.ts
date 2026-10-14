@@ -44,6 +44,26 @@ test('the tutorial plays to the end without a wallet', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('a lesson link loads without the wallet code, and leaving the lesson opens the full app', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const scripts: string[] = [];
+  page.on('request', (r) => { if (r.resourceType() === 'script') scripts.push(new URL(r.url()).pathname); });
+  await page.goto('/learn/basics');
+  await expect(page.getByRole('region', { name: 'Coach' })).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  // The lighter page (lesson.html): no wallet stack and not the full app's entry. Without it the score drops ~15 points.
+  expect(scripts.filter((u) => /\/assets\/(main|AuthProvider|public|secp256k1|createTransport)-/.test(u))).toEqual([]);
+  expect(scripts.some((u) => /\/assets\/lesson-/.test(u))).toBe(true);
+
+  await page.getByRole('link', { name: 'All lessons' }).click();
+  await expect(page).toHaveURL(/\/learn$/);
+  // The full app: the lesson list and the header's wallet button.
+  await expect(page.getByRole('link', { name: /The basics/i }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Connect wallet' }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('sign in with a browser wallet, play the house bot, sign the result and verify the replay', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));

@@ -14,7 +14,7 @@ import { FxLayer } from '../game/FxLayer.tsx';
 import { raceName } from '../game/meta.ts';
 import { shortAddr } from '../lib/format.ts';
 import { COMPACT_QUERY, useMedia, useTouch } from '../lib/useMedia.ts';
-import { Log, Preview, Side } from './Match.tsx';
+import { Log, Preview, Side } from '../game/Board.tsx';
 
 const SPEEDS = [{ ms: 1400, label: '0.5×' }, { ms: 700, label: '1×' }, { ms: 300, label: '2×' }];
 

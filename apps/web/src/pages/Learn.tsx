@@ -14,7 +14,7 @@ import { COMPACT_QUERY, useMedia } from '../lib/useMedia.ts';
 import { RACE_COLOR, RACE_INFO, raceName } from '../game/meta.ts';
 import { spriteSvg } from '../lib/art.ts';
 import { lessonsDoneLocally, markLessonDone } from '../lib/cosmetics.ts';
-import { Dialog, Log, Preview, Side } from './Match.tsx';
+import { Dialog, Log, Preview, Side } from '../game/Board.tsx';
 
 type PlayAction = Extract<Action, { type: 'play' }>;
 const BOT_STEP_MS = 750;

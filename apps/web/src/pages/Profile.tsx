@@ -18,7 +18,8 @@ import { useSeasonStats } from '../chain/useSettlement.ts';
 import { CardBack } from '../components/GameCard.tsx';
 import { InvitesCard } from '../components/InvitesCard.tsx';
 import { avatarSvg } from '../lib/art.ts';
-import { emblem, useMyCosmetics } from '../lib/cosmetics.ts';
+import { emblem } from '../lib/cosmetics.ts';
+import { useMyCosmetics } from '../lib/useMyCosmetics.ts';
 import { shortAddr } from '../lib/format.ts';
 
 const day = (unix: number) => new Date(unix * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });

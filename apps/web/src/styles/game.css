@@ -287,6 +287,8 @@
 /* ─── Match effects (FxLayer) ─────────────────────── */
 .particles.fx-canvas { z-index: 55; }
 .fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 56; }
+/* The particle canvas (lib/particles.ts), shared with pack reveals. */
+.particles { position: fixed; inset: 0; width: 100%; height: var(--vh); pointer-events: none; z-index: 3; }
 .fx-ghost { position: fixed !important; margin: 0; pointer-events: none; z-index: 41; animation: none !important; }
 .fx-float { position: fixed; transform: translate(-50%, -50%); font-family: var(--font-pixel); font-weight: 800; pointer-events: none; white-space: nowrap;
   text-shadow: 0 2px 0 rgba(0,0,0,.65), 0 0 10px rgba(0,0,0,.5); animation: fx-rise 1.1s cubic-bezier(.2,.8,.3,1) forwards; }

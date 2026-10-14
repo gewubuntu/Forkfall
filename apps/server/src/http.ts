@@ -422,7 +422,9 @@ function serveStatic(req: IncomingMessage, path: string, res: ServerResponse, di
   if (!file.startsWith(dir) || !existsSync(file) || !statSync(file).isFile()) {
     // A missing build file (an old chunk after a deploy) must fail, not get the app page cached for a year.
     if (file.startsWith(join(dir, 'assets/'))) throw new ApiError(404, 'not found');
-    file = join(dir, 'index.html');
+    // A lesson opened from a link gets the lighter page without the wallet stack (apps/web/lesson.html), when built.
+    const lesson = join(dir, 'lesson.html');
+    file = /^\/learn\/[^/]+\/?$/.test(path) && existsSync(lesson) ? lesson : join(dir, 'index.html');
   }
   const ext = extname(file);
   const mtime = statSync(file).mtimeMs;

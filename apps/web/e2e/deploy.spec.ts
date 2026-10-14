@@ -26,7 +26,7 @@ test('a page chunk missing after a deploy reloads into the new build instead of 
 });
 
 test('a deep link starts its page chunks before the stylesheet has loaded', async ({ request }) => {
-  const html = await (await request.get('/learn/basics')).text();
+  const html = await (await request.get('/challenge/abc')).text();
   const preload = html.indexOf("l.rel='modulepreload'");
   const css = html.search(/<link rel="stylesheet"/);
   expect(preload).toBeGreaterThan(0);

@@ -19,7 +19,7 @@ import { TiltCard } from '../components/TiltCard.tsx';
 import { PullFeed } from '../components/PullFeed.tsx';
 import { useParticles } from '../lib/particles.ts';
 import { sfx } from '../lib/sfx.ts';
-import { useMyCosmetics } from '../lib/cosmetics.ts';
+import { useMyCosmetics } from '../lib/useMyCosmetics.ts';
 import { RACE_COLOR, RACE_INFO } from '../game/meta.ts';
 import { LOGO_MARK, spriteSvg } from '../lib/art.ts';
 

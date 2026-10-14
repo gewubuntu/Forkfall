@@ -1,6 +1,6 @@
 import { LESSONS } from '@forkfall/engine';
 import { Link } from 'react-router';
-import { useMyCosmetics } from '../lib/cosmetics.ts';
+import { useMyCosmetics } from '../lib/useMyCosmetics.ts';
 
 /** "New here?" nudge to the tutorial until you've finished it, then to the race lessons until those are done. */
 export function LearnBanner({ races = false }: { races?: boolean }) {
