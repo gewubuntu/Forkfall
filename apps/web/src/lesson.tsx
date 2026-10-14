@@ -19,9 +19,15 @@ import { Learn } from './pages/Learn.tsx';
 
 window.addEventListener('vite:preloadError', (e) => { if (reloadForNewBuild()) e.preventDefault(); });
 
-/** Anywhere outside a lesson: load that page from the server, which serves the full app (index.html). */
+/**
+ * Anywhere outside a lesson: load that page from the server, which serves the full app (index.html). The page file
+ * itself (/lesson.html, opened by hand) would only serve this page again, so it goes to the lesson list instead.
+ */
 function FullApp() {
-  useLayoutEffect(() => { window.location.reload(); }, []);
+  useLayoutEffect(() => {
+    if (window.location.pathname.endsWith('.html')) window.location.replace('/learn');
+    else window.location.reload();
+  }, []);
   return <div className="gate"><span className="spinner" aria-label="Loading" /></div>;
 }
 

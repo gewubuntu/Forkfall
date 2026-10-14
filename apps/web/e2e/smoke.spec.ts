@@ -55,6 +55,9 @@ test('a lesson link loads without the wallet code, and leaving the lesson opens 
   // The lighter page (lesson.html): no wallet stack and not the full app's entry. Without it the score drops ~15 points.
   expect(scripts.filter((u) => /\/assets\/(main|AuthProvider|public|secp256k1|createTransport)-/.test(u))).toEqual([]);
   expect(scripts.some((u) => /\/assets\/lesson-/.test(u))).toBe(true);
+  // ...and nothing beyond what the page declares, whatever the bundler names its chunks.
+  const declared = new Set((await (await page.request.get('/learn/basics')).text()).match(/\/assets\/[^"]+\.js/g));
+  expect(scripts.filter((u) => !declared.has(u))).toEqual([]);
 
   await page.getByRole('link', { name: 'All lessons' }).click();
   await expect(page).toHaveURL(/\/learn$/);
@@ -62,6 +65,16 @@ test('a lesson link loads without the wallet code, and leaving the lesson opens 
   await expect(page.getByRole('link', { name: /The basics/i }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Connect wallet' }).first()).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('the lesson page file opened by hand goes to the lesson list once, instead of reloading forever', async ({ page }) => {
+  let loads = 0;
+  page.on('load', () => loads++);
+  await page.goto('/lesson.html');
+  await expect(page).toHaveURL(/\/learn$/);
+  await expect(page.locator(`a[href="/learn/basics"]`).first()).toBeVisible();
+  await page.waitForTimeout(1500);
+  expect(loads).toBeLessThanOrEqual(2);
 });
 
 test('sign in with a browser wallet, play the house bot, sign the result and verify the replay', async ({ page }) => {
