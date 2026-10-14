@@ -56,6 +56,10 @@ async function untilPlayable(page: Page) {
 
 /** A finger held still on an element, through the DevTools protocol (Playwright has no long-press). */
 async function longPress(page: Page, selector: string) {
+  // A card drawn this turn flies in from 80 px to the right (card-draw): measure where it lands, not mid-flight, or on a
+  // slow machine the finger misses it (the rightmost card's centre is off screen).
+  await page.locator(selector).first().evaluate((e) => Promise.all(e.getAnimations({ subtree: true })
+    .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished)));
   const b = (await page.locator(selector).first().boundingBox())!;
   const cdp = await page.context().newCDPSession(page);
   const p = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
