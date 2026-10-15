@@ -33,7 +33,7 @@ export default defineConfig({
     ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}),
     ...(process.env.PLAYWRIGHT_CHROMIUM ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM } } : {}),
   },
-  webServer: {
+  webServer: [{
     command: 'node --import tsx apps/server/src/main.ts',
     cwd: root,
     url: `http://127.0.0.1:${PORT}/v1/config`,
@@ -44,5 +44,12 @@ export default defineConfig({
       MATCH_ARCHIVE_DIR: join(data, 'archive'), QUESTS_FILE: join(data, 'quests.json'), INVITES_FILE: join(data, 'invites.json'), SEALED_FILE: join(data, 'sealed.json'), METRICS_FILE: join(data, 'metrics.json'), SEALED_BOT_SECONDS: '2', PROFILES_FILE: join(data, 'profiles.json'),
       SETTLEMENT_DIR: join(data, 'settlements'),
     },
-  },
+  }, {
+    // The Vite dev server, for the dev-only page apps/web/cards.html (e2e/cards.spec.ts). It is not in the production build.
+    command: 'pnpm --filter @forkfall/web exec vite --port 4319 --strictPort',
+    cwd: root,
+    url: 'http://127.0.0.1:4319/cards.html',
+    reuseExistingServer: false,
+    timeout: 60_000,
+  }],
 });
