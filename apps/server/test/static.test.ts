@@ -13,6 +13,7 @@ const dir = mkdtempSync(join(tmpdir(), 'forkfall-static-'));
 mkdirSync(join(dir, 'assets'));
 const js = `export const big = ${JSON.stringify('x'.repeat(5000))};`;
 writeFileSync(join(dir, 'index.html'), `<!doctype html><title>Forkfall</title>${' '.repeat(2000)}`);
+writeFileSync(join(dir, 'lesson.html'), `<!doctype html><title>Forkfall lesson</title>${' '.repeat(2000)}`);
 writeFileSync(join(dir, 'assets/index-abc123.js'), js);
 writeFileSync(join(dir, 'assets/42-def456.webp'), Buffer.alloc(3000, 1));
 writeFileSync(join(dir, 'assets/inter-latin.woff2'), Buffer.alloc(2000, 2));
@@ -67,6 +68,17 @@ describe('web app files (phones on 4G)', () => {
     expect(img.headers['content-type']).toBe('image/webp');
     expect(img.headers['content-encoding']).toBeUndefined();
     expect((await get('/assets/inter-latin.woff2')).headers['content-type']).toBe('font/woff2');
+  });
+
+  it('serves the lighter lesson page for a lesson link, and the full app everywhere else', async () => {
+    for (const path of ['/learn/basics', '/learn/agents/']) {
+      const page = await get(path);
+      expect(page.body.toString(), path).toContain('<title>Forkfall lesson</title>');
+      expect(page.headers['cache-control']).toBe('no-cache');
+    }
+    for (const path of ['/learn', '/learn/', '/learn/basics/extra', '/matches/learn']) {
+      expect((await get(path)).body.toString(), path).toContain('<title>Forkfall</title>');
+    }
   });
 
   it('answers a missing build file with 404 instead of the app page', async () => {

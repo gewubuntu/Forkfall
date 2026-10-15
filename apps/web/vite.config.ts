@@ -52,7 +52,8 @@ function routeModulePreload(routes: Record<string, string>): Plugin {
       order: 'post',
       handler(html, ctx) {
         const bundle = ctx.bundle;
-        if (!bundle) return;
+        // lesson.html loads its one page statically: nothing to preload by route.
+        if (!bundle || ctx.filename.endsWith('lesson.html')) return;
         const map: Record<string, string[]> = {};
         for (const [prefix, mod] of Object.entries(routes)) {
           const entry = Object.values(bundle).find((c) => c.type === 'chunk' && c.facadeModuleId?.endsWith(mod));
@@ -89,5 +90,7 @@ export default defineConfig({
     target: 'es2022',
     // Wallet SDKs are split out and only load on connect; keep the warning for anything else that grows.
     chunkSizeWarningLimit: 600,
+    // lesson.html: a lesson opened from a link loads without the wallet stack (src/lesson.tsx).
+    rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), lesson: fileURLToPath(new URL('./lesson.html', import.meta.url)) } },
   },
 });

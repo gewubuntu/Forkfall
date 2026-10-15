@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="description" content="Forkfall: on-chain pixel card duels on Base and Robinhood Chain (testnet alpha)." />
+  <meta name="theme-color" content="#0b0d14" />
+  <title>Forkfall</title>
+  <!-- A lesson opened from a link (/learn/<lesson>): the board and the rules engine only, no wallet code, so it shows
+       up fast on a phone. The referee serves this page for those paths; anywhere else it links to reloads into the
+       full app (index.html). -->
+  <style>
+    /* Painted before any script runs: no white flash, and something to look at on a slow connection. */
+    html, body { background: #0a0c12; margin: 0; }
+    .boot { min-height: 100vh; min-height: 100dvh; display: grid; place-content: center; gap: 10px; text-align: center; color: #9198ad;
+      font: 600 14px/1.4 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    .boot b { font: 700 28px/1 ui-monospace, monospace; letter-spacing: .12em; color: #eef1f8; }
+  </style>
+</head>
+<body>
+  <div id="root"><div class="boot" role="status"><b>FORKFALL</b><span>Loading the game…</span></div></div>
+  <script type="module" src="/src/lesson.tsx"></script>
+</body>
+</html>

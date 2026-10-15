@@ -9,7 +9,6 @@
 .pass-kicker { font-family: var(--font-pixel); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--base-2); }
 .pass-tier { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .pass-premium-tag { font-size: 12px; font-weight: 700; color: var(--pass-gold-ink); background: var(--pass-gold); border-radius: 99px; padding: 3px 10px; }
-.btn-sm { padding: 6px 12px; font-size: 13px; }
 .pass-bar { height: 10px; border-radius: 99px; background: var(--bg-2); border: 1px solid var(--line); overflow: hidden; }
 .pass-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--base), var(--base-2) 60%, var(--rh-2)); border-radius: 99px; transition: width .4s; }
 .pass-bar.big { height: 14px; }

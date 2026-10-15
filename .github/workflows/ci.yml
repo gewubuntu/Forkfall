@@ -65,8 +65,9 @@ jobs:
         run: |
           OFFCHAIN=1 PORT=8787 MATCH_ARCHIVE_DIR=$RUNNER_TEMP/archive node --import tsx apps/server/src/main.ts > $RUNNER_TEMP/referee.log 2>&1 &
           for i in $(seq 60); do curl -fs localhost:8787/v1/config >/dev/null && break; sleep 1; done
-      # Phone budget (apps/web/lighthouse.ts): median of 5 mobile runs per page, fails under 80 or on a layout shift
-      # over 0.01; the 85 target shows in the job summary. Lighthouse drives the runner's preinstalled Google Chrome.
+      # Phone budget (apps/web/lighthouse.ts): median of 5 mobile runs per page, fails under the page's floor (80, the
+      # tutorial board 90) or on a layout shift over 0.01; the 85 target shows in the job summary. Lighthouse drives
+      # the runner's preinstalled Google Chrome.
       - run: pnpm web:lighthouse
         env: { CHROME_PATH: /usr/bin/google-chrome, RUNS: 5, BASE_URL: 'http://127.0.0.1:8787' }
       - if: failure()

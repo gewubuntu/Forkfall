@@ -3,7 +3,7 @@
  * serves the built web app). Each page is measured RUNS times with Lighthouse's mobile preset (simulated slow 4G,
  * 4× CPU slowdown) and judged on the median, because one run swings by ±0.04 on the same build.
  *
- * Blocking: a median performance score under FLOOR, or a median layout shift above MAX_CLS (any real shift, such as a
+ * Blocking: a median performance score under the page's floor (FLOOR unless the page sets its own), or a median layout shift above MAX_CLS (any real shift, such as a
  * header or banner moving, is well above it; a web font swapping in nudges the board by under 0.001). The 0.85 target
  * from the mobile work is reported next to it but does not fail the job: on CI-sized machines a page that meets it
  * measures 0.81–0.88.
@@ -16,16 +16,17 @@ import { appendFileSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-export const PAGES = [
+export const PAGES: { path: string; name: string; floor?: number }[] = [
   { path: '/', name: 'Landing' },
-  { path: '/learn/basics', name: 'Tutorial board' },
+  // A lesson link loads the lighter lesson page (lesson.html) and scores ~95: a drop to 85 means something regressed.
+  { path: '/learn/basics', name: 'Tutorial board', floor: 0.9 },
 ];
 export const FLOOR = 0.8;
 export const TARGET = 0.85;
 export const MAX_CLS = 0.01;
 
 export interface Run { score: number; lcpMs: number; tbtMs: number; cls: number; bytes: number }
-export interface Verdict { name: string; path: string; score: number; lcpMs: number; tbtMs: number; cls: number; bytes: number; ok: boolean; reasons: string[] }
+export interface Verdict { name: string; path: string; floor: number; score: number; lcpMs: number; tbtMs: number; cls: number; bytes: number; ok: boolean; reasons: string[] }
 
 export function median(xs: number[]): number {
   if (!xs.length) throw new Error('median of no runs');
@@ -44,9 +45,10 @@ export function readRun(report: { categories: { performance: { score: number | n
   };
 }
 
-export function judge(page: { path: string; name: string }, runs: Run[], floor = FLOOR): Verdict {
+export function judge(page: { path: string; name: string; floor?: number }, runs: Run[]): Verdict {
+  const floor = page.floor ?? FLOOR;
   const m = (k: keyof Run) => median(runs.map((r) => r[k]));
-  const v = { ...page, score: m('score'), lcpMs: m('lcpMs'), tbtMs: m('tbtMs'), cls: m('cls'), bytes: m('bytes') };
+  const v = { ...page, floor, score: m('score'), lcpMs: m('lcpMs'), tbtMs: m('tbtMs'), cls: m('cls'), bytes: m('bytes') };
   const reasons: string[] = [];
   if (!(v.score >= floor)) reasons.push(`performance ${pct(v.score)} is under the floor of ${pct(floor)}`);
   if (!(v.cls <= MAX_CLS)) reasons.push(`layout shift ${v.cls.toFixed(3)} is over ${MAX_CLS}`);
@@ -56,14 +58,14 @@ export function judge(page: { path: string; name: string }, runs: Run[], floor =
 const pct = (x: number) => Math.round(x * 100).toString();
 
 export function summary(verdicts: Verdict[], runs: number): string {
-  const rows = verdicts.map((v) => `| ${v.name} (\`${v.path}\`) | **${pct(v.score)}**${v.score >= TARGET ? '' : ' (under target)'} | ${(v.lcpMs / 1000).toFixed(1)} s | ${Math.round(v.tbtMs)} ms | ${v.cls.toFixed(3)} | ${Math.round(v.bytes / 1024)} KiB | ${v.ok ? '✓' : `✗ ${v.reasons.join('; ')}`} |`);
+  const rows = verdicts.map((v) => `| ${v.name} (\`${v.path}\`) | **${pct(v.score)}**${v.score >= TARGET ? '' : ' (under target)'} | ${pct(v.floor)} | ${(v.lcpMs / 1000).toFixed(1)} s | ${Math.round(v.tbtMs)} ms | ${v.cls.toFixed(3)} | ${Math.round(v.bytes / 1024)} KiB | ${v.ok ? '✓' : `✗ ${v.reasons.join('; ')}`} |`);
   return [
     `### Lighthouse, mobile (median of ${runs} runs)`,
     '',
-    `Fails under ${pct(FLOOR)} or on a layout shift over ${MAX_CLS}; the target is ${pct(TARGET)}.`,
+    `Fails under a page's floor or on a layout shift over ${MAX_CLS}; the target is ${pct(TARGET)}.`,
     '',
-    '| Page | Performance | LCP | TBT | CLS | Transferred | |',
-    '| --- | --- | --- | --- | --- | --- | --- |',
+    '| Page | Performance | Floor | LCP | TBT | CLS | Transferred | |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
     ...rows,
     '',
   ].join('\n');

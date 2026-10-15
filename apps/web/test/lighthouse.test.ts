@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FLOOR, judge, median, readRun, summary, type Run } from '../lighthouse.ts';
+import { FLOOR, judge, median, PAGES, readRun, summary, type Run } from '../lighthouse.ts';
 
 const run = (score: number, cls = 0): Run => ({ score, lcpMs: 3400, tbtMs: 60, cls, bytes: 360 * 1024 });
 const page = { path: '/', name: 'Landing' };
@@ -9,6 +9,14 @@ describe('Lighthouse budget', () => {
     expect(median([0.86, 0.71, 0.88])).toBe(0.86);
     expect(median([0.8, 0.9])).toBeCloseTo(0.85);
     expect(judge(page, [run(0.86), run(0.71), run(0.88)]).ok).toBe(true);
+  });
+
+  it('holds a page to its own floor when it sets one', () => {
+    const tutorial = { path: '/learn/basics', name: 'Tutorial board', floor: 0.9 };
+    expect(judge(tutorial, [run(0.86), run(0.88), run(0.95)]).ok).toBe(false);   // fine for the landing page, not here
+    expect(judge(tutorial, [run(0.86), run(0.91), run(0.95)]).ok).toBe(true);
+    expect(judge(page, [run(0.86), run(0.88), run(0.95)]).ok).toBe(true);
+    expect(PAGES.find((p) => p.path === '/learn/basics')?.floor).toBe(0.9);
   });
 
   it('fails a page whose median is under the floor', () => {

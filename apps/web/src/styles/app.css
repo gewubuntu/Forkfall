@@ -103,6 +103,7 @@ button { font: inherit; color: inherit; }
 }
 .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
 .btn-lg { padding: 14px 26px; font-size: 16px; border-radius: 10px; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
 .btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
 .btn-danger { color: var(--danger); }
