@@ -232,7 +232,7 @@ export function DeckBuilder() {
             <Check ok={rankedOk} warn>{rankedOk ? 'Ranked-legal' : `Casual only: ${points > RANKED_RARITY_CAP ? `${points}/${RANKED_RARITY_CAP} rarity points` : 'more than 1 Legendary'}`}</Check>
           </ul>
           <ol className="deck-list">
-            {rows.length === 0 && <li className="muted">Click cards on the left to add them.</li>}
+            {rows.length === 0 && <li className="muted dl-empty">Click or tap a card to add it to the deck.</li>}
             {rows.map(({ c, n }) => (
               <li key={c.id} data-dl={c.id} className={n > total(c.id) ? 'short' : ''} onMouseEnter={() => setHover(c.id)} onMouseLeave={() => setHover(null)}
                 style={{ ['--rc' as string]: RACE_COLOR[c.faction] }}>
