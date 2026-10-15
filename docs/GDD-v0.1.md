@@ -362,7 +362,7 @@ Forkfall uses a hybrid look: pixel-art characters inside a clean, modern card fr
 
 **Frame rules:** rarity shows in the frame material (stone for Common, silver for Uncommon, gold for Rare, animated for Legendary), and a corner badge shows the chain of origin.
 
-**Card size:** every card of a size is exactly as tall as every other, whatever its name or rules text says. The name, keyword, text and stats rows have fixed heights, and a long name or rules text is set in a smaller font instead of making the card taller (about 6 of the 171 cards do). The hover and zoom preview is the one place a card may grow, so the whole text is always readable there. A test checks every card at every size.
+**Card size:** every card of a size is exactly as tall as every other, whatever its name or rules text says. The name, keyword, text and stats rows have fixed heights, and a long name or rules text is set in a smaller font instead of making the card taller (6 of the 171 texts and 2 names do). The hover and zoom preview is the one place a card may grow, so the whole text is always readable there. A test checks every card at every size.
 
 **Guardrails:**
 

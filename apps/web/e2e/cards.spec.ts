@@ -14,7 +14,7 @@ test('every card at a size is the same height, with nothing cut off', async ({ p
   await page.evaluate(() => document.fonts.ready);
   await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished)));
 
-  const sections = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('section, #hand')].map((s) => {
+  const sections = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('[data-cards]')].map((s) => {
     const cards = [...s.querySelectorAll<HTMLElement>('.gcard')];
     const heights = cards.map((c) => c.getBoundingClientRect().height);
     const name = (c: Element) => c.querySelector('.gc-name')!.textContent!;
@@ -25,7 +25,7 @@ test('every card at a size is the same height, with nothing cut off', async ({ p
     return { id: s.id, n: cards.length, spread: Math.max(...heights) - Math.min(...heights), cutOff, minText: Math.min(...fonts('.gc-text')), minName: Math.min(...fonts('.gc-name')) };
   }));
 
-  expect(sections.map((s) => s.id)).toEqual(['grid-104', 'grid-111', 'grid-128', 'grid-138', 'grid-150', 'hand', 'board', 'mini']);
+  expect(sections.map((s) => s.id)).toEqual(['grid-104', 'grid-111', 'grid-128', 'grid-138', 'grid-150', 'hand', 'compact-hand', 'compact-replay-hand', 'board', 'mini']);
   for (const s of sections) {
     expect(s.n, `${s.id}: cards`).toBeGreaterThan(100);
     expect(s.spread, `${s.id}: tallest minus shortest card (px)`).toBeLessThanOrEqual(0.5);

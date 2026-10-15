@@ -46,7 +46,7 @@ export default defineConfig({
     },
   }, {
     // The Vite dev server, for the dev-only page apps/web/cards.html (e2e/cards.spec.ts). It is not in the production build.
-    command: 'pnpm --filter @forkfall/web exec vite --port 4319 --strictPort',
+    command: 'pnpm --filter @forkfall/web exec vite --host 127.0.0.1 --port 4319 --strictPort',
     cwd: root,
     url: 'http://127.0.0.1:4319/cards.html',
     reuseExistingServer: false,
