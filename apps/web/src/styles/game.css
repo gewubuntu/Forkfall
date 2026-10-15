@@ -93,6 +93,29 @@
 .gcard-preview .gc-cost { width: 36px; height: 36px; font-size: 19px; top: -11px; left: -11px; }
 .gcard-preview .gc-atk, .gcard-preview .gc-hp { height: 30px; min-width: 36px; font-size: 19px; }
 
+/* ─── Fixed slots ───────────────────────────────────
+   Every card of a size is exactly as tall as every other, whatever its name or rules text says: name, keywords, text and
+   stats rows have a fixed height, and a long name or text gets a smaller font (data-nl / data-tl, GameCard.tsx) instead
+   of more height. The preview (hover, zoom) is the one card that may grow, so the whole text can be read there.
+   The hand's text scales with the card's width (--u, 1% of it, up to a 10.5 px font), so one calibration holds from a
+   phone's 104 px grid to 150 px: 9.1u is the base font, 59.2u the text box (5 lines of it). */
+.gcard-hand, .gcard-board, .gcard-mini { --sh: 24px; }
+.gcard-preview { --sh: 30px; }
+.gc-stats, .gc-type { height: var(--sh); }
+.gc-type { display: grid; place-items: center; }
+.gcard-hand .gc-name, .gcard-board .gc-name, .gcard-mini .gc-name { height: var(--nh); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.gcard-hand, .gcard-mini { --nh: 29px; }
+.gcard-board { --nh: 28px; }
+.gcard-hand[data-nl='1'] .gc-name { font-size: 10.5px; }
+.gcard-hand[data-nl='2'] .gc-name { font-size: 9.5px; }
+.gcard-board[data-nl='1'] .gc-name, .gcard-mini[data-nl='1'] .gc-name { font-size: 10px; }
+.gcard-board[data-nl='2'] .gc-name, .gcard-mini[data-nl='2'] .gc-name { font-size: 9px; }
+.gcard-board .gc-kw, .gcard-mini .gc-kw { height: 23px; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.gcard-hand { container-type: inline-size; --u: min(1cqw, 1.154px); --th: calc(59.2 * var(--u)); --tf: calc(9.1 * var(--u)); }
+.gcard-hand[data-tl='1'] { --tf: calc(8 * var(--u)); }
+.gcard-hand[data-tl='2'] { --tf: calc(7.2 * var(--u)); }
+.gcard-hand .gc-text { flex: none; height: var(--th); min-height: 0; font-size: var(--tf); overflow: hidden; }
+
 .gcard-back { width: 18px; height: 26px; border-radius: 4px; flex: none; border: 1px solid #3a4360;
   background: repeating-linear-gradient(45deg, #232a45 0 3px, #1a2036 3px 6px); }
 .gcard-back.small { width: 13px; height: 19px; border-radius: 3px; margin-left: -5px; }
@@ -203,7 +226,6 @@
 
 .hand { display: flex; gap: 10px; justify-content: center; padding: 12px 6px 6px; overflow-x: auto; min-height: 120px; align-items: flex-end; }
 .hand .gcard { width: 118px; }
-.hand .gc-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-height: 0; }
 .hand .gcard { margin-top: 8px; }
 
 .sidebar { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 72px; align-self: start; max-height: calc(var(--vh) - 88px); }
@@ -256,7 +278,6 @@
   .gcard-board .gc-name { font-size: 10.5px; }
   .gcard-board .gc-kw { display: none; }
   .gcard-board .gc-atk, .gcard-board .gc-hp { min-width: 22px; height: 20px; font-size: 13px; padding: 0 4px; }
-  .gcard .gc-text { font-size: 9.5px; min-height: 0; }
   .lane { min-height: 150px; gap: 6px; padding: 10px 0 14px; }
   .hand { justify-content: flex-start; }
   .side-bar { gap: 10px; }
@@ -577,6 +598,7 @@
 .compact .side.me .lane { margin: 0; }
 .compact .lane .gcard-board { width: min(calc((100cqw - 16px) / 5), calc(100cqh - 30px), 104px); padding: 3px; border-radius: 9px; }
 .compact .lane .gcard-board .gc-name, .compact .lane .gcard-board .gc-kw { display: none; }
+.compact .lane .gcard-board, .compact .hand .gcard, .compact .fx-ghost { --sh: 20px; }
 .compact .lane .gcard-board .gc-stats { margin-top: 3px; }
 .compact .lane .gcard-board .gc-atk, .compact .lane .gcard-board .gc-hp { min-width: 22px; height: 20px; font-size: 13px; padding: 0 4px; }
 .compact .lane .gcard-board .gc-chain { display: none; }
@@ -584,7 +606,7 @@
 /* Tall lanes have room for the name. */
 @container (min-height: 132px) {
   .compact .lane .gcard-board { width: min(calc((100cqw - 16px) / 5), calc(100cqh - 46px), 104px); }
-  .compact .lane .gcard-board .gc-name { display: block; font-size: 10.5px; margin: 3px 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .compact .lane .gcard-board .gc-name { display: block; height: auto; font-size: 10.5px; margin: 3px 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 .compact .turnbar { position: relative; flex: none; min-height: 52px; padding: 4px; gap: 6px; flex-wrap: nowrap; }
@@ -612,7 +634,7 @@
 .compact .hand .gcard { --cw: max(64px, min(calc(100cqh - 56px), 104px, calc((100cqw - (var(--n) - 1) * 6px) / var(--n)))); width: var(--cw); margin: 0; padding: 4px; border-radius: 10px; }
 .compact .hand .gcard + .gcard { margin-left: min(6px, calc((100cqw - var(--n) * var(--cw)) / max(var(--n) - 1, 1))); }
 .compact .hand .gc-text, .compact .hand .gc-chain { display: none; }
-.compact .hand .gc-name { font-size: 11.5px; margin: 4px 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.compact .hand .gc-name { display: block; height: auto; font-size: 11.5px; margin: 4px 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .compact .hand .gc-type { margin-top: 4px; font-size: 9.5px; }
 .compact .hand .gc-stats { margin-top: 4px; }
 .compact .hand .gc-atk, .compact .hand .gc-hp { min-width: 22px; height: 20px; font-size: 13px; padding: 0 4px; }

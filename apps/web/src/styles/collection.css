@@ -114,7 +114,7 @@
 
 /* Cards fly out of the pack, face-down, then flip. */
 .reveal-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; perspective: 1200px; }
-.flip { width: 138px; height: 236px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
+.flip { width: 138px; height: 273px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
 .flip.deal { animation: deal-in .55s cubic-bezier(.2, .9, .25, 1.15) calc(var(--i) * 90ms) both; }
 @keyframes deal-in { from { transform: translateX(var(--dx)) translateY(20px) scale(.35) rotate(calc(var(--i) * 9deg - 18deg)); opacity: 0; } 40% { opacity: 1; } }
 .flip:not(.on):hover .flip-inner { transform: translateY(-6px) rotateY(12deg); }
@@ -154,7 +154,7 @@
   .flip-inner { transition: none; } .pack-art.big::after, .pk-body::after, .pack-rays { animation: none; }
   .flip.deal, .pack3d.ready, .pack3d.sealed, .reveal.shake, .flip-back { animation: none !important; }
 }
-@media (max-width: 720px) { .flip { width: 104px; height: 178px; } .reveal-title { font-size: 26px; } .legend-banner span { font-size: 32px; } }
+@media (max-width: 720px) { .flip { width: 104px; height: 223px; } .reveal-title { font-size: 26px; } .legend-banner span { font-size: 32px; } }
 
 /* ─── Transaction toasts ─── */
 .tx-toasts { position: fixed; right: 16px; bottom: 16px; z-index: 60; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100% - 32px)); }
@@ -178,7 +178,8 @@
   .starter-grid { grid-template-columns: 1fr; }
   .shop { flex-direction: column; align-items: center; }
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
-  .flip { width: 104px; height: 186px; }
+  .card-grid .grid-cell { contain-intrinsic-size: auto 270px; }
+  .flip { width: 104px; height: 223px; }
   .reveal-title { font-size: 26px; }
 }
 @media (max-width: 640px) { .tx-toasts { bottom: calc(64px + env(safe-area-inset-bottom)); right: 8px; width: calc(100% - 16px); } }
@@ -287,4 +288,4 @@
 .gift-addr .err { color: var(--danger); }
 
 /* Off-screen collection cards skip layout and paint until scrolled near. */
-.card-grid .grid-cell { content-visibility: auto; contain-intrinsic-size: auto 260px; }
+.card-grid .grid-cell { content-visibility: auto; contain-intrinsic-size: auto 320px; }

@@ -4,6 +4,16 @@ import { KEYWORD_LABEL, RACE_COLOR } from '../game/meta.ts';
 import { spriteArt } from '../lib/art.ts';
 import { backClass } from '../lib/cosmetics.ts';
 
+/**
+ * Every card of a size is exactly as tall as every other (game.css, "Fixed slots"): a long name or rules text gets a
+ * smaller font, never more height. The steps come from the text's length and were calibrated against the whole set at
+ * the narrowest width a card is shown at (e2e/cards.spec.ts fails if a card is cut off or a different height).
+ */
+export const TEXT_STEPS = [95, 120];
+export const NAME_STEPS = [20, 25];
+const textStep = (text: string) => (text.length > TEXT_STEPS[1] ? 2 : text.length > TEXT_STEPS[0] ? 1 : 0);
+const nameStep = (name: string) => (name.length > NAME_STEPS[1] ? 2 : name.length > NAME_STEPS[0] ? 1 : 0);
+
 export interface GameCardProps {
   cardId: number;
   /** Board state: shows live attack/health instead of printed stats. */
@@ -61,6 +71,8 @@ export function GameCard(p: GameCardProps) {
       data-card={u ? p.cardId : undefined}
       data-hand={p.handUid}
       data-zoom={p.cardId}
+      data-tl={textStep(c.text) || undefined}
+      data-nl={nameStep(c.name) || undefined}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
       aria-label={p.label ?? `${c.name}${u ? `, ${atk} attack, ${hp} health` : `, costs ${p.cost ?? c.cost}`}`}
@@ -81,7 +93,7 @@ export function GameCard(p: GameCardProps) {
       </div>
       <div className="gc-name">{c.name}</div>
       {size !== 'board' && size !== 'mini' && <div className="gc-text">{c.text}</div>}
-      {(size === 'board' || size === 'mini') && kws.length > 0 && <div className="gc-kw">{kws.join(' · ')}</div>}
+      {(size === 'board' || size === 'mini') && <div className="gc-kw">{kws.join(' · ')}</div>}
       {c.type === 'unit' ? (
         <div className="gc-stats">
           <span className={`gc-atk ${buffed ? 'up' : ''}`}>{atk}</span>

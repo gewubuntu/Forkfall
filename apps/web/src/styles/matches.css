@@ -101,7 +101,10 @@
 .compact .replay-hand { height: clamp(72px, calc(var(--vh) * .12), 112px); padding: 4px 2px 2px; gap: 0; align-items: center; }
 .compact .replay-hand .gcard { flex: none; min-width: 0; width: var(--cw); --cw: max(40px, min(calc(100cqh - 34px), 84px, calc((100cqw - (var(--n) - 1) * 4px) / var(--n)))); padding: 3px; border-radius: 8px; }
 .compact .replay-hand .gcard + .gcard { margin-left: min(4px, calc((100cqw - var(--n) * var(--cw)) / max(var(--n) - 1, 1))); }
-.compact .replay-hand .gc-name, .compact .replay-hand .gc-kw, .compact .replay-hand .gc-type { display: none; }
+.compact .replay-hand .gc-name, .compact .replay-hand .gc-kw { display: none; }
+/* A spell's type label keeps its row (empty) so spells are as tall as units, as in the other hands. */
+.compact .replay-hand .gc-type { visibility: hidden; margin-top: 3px; }
+.compact .replay-hand .gcard { --sh: 16px; }
 .compact .replay-hand .gc-stats { margin-top: 3px; }
 .compact .replay-hand .gc-atk, .compact .replay-hand .gc-hp { min-width: 15px; height: 16px; font-size: 11px; padding: 0 2px; }
 .compact .replay-hand .gc-cost { width: 20px; height: 20px; font-size: 11px; top: -6px; left: -5px; }
