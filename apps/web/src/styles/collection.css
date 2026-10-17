@@ -67,7 +67,7 @@
 .cd-action p { margin: 0; }
 
 /* ─── Pack reveal ─── */
-.reveal-bg { background: radial-gradient(circle at 50% 42%, rgba(30, 64, 175, .35), rgba(4, 6, 10, .9) 65%); transition: background .6s; }
+.reveal-bg { overflow-y: auto; align-items: safe center; background: radial-gradient(circle at 50% 42%, rgba(30, 64, 175, .35), rgba(4, 6, 10, .9) 65%); transition: background .6s; }
 .reveal-bg.best-legendary { background: radial-gradient(circle at 50% 42%, rgba(232, 95, 196, .45), rgba(4, 6, 10, .92) 65%); }
 .reveal { width: min(860px, 100%); text-align: center; position: relative; z-index: 2; }
 .reveal.shake { animation: stage-shake .45s; }
@@ -113,7 +113,7 @@
 @keyframes fade-out { to { opacity: 0; } }
 
 /* Cards fly out of the pack, face-down, then flip. */
-.reveal-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; perspective: 1200px; }
+.reveal-row { display: flex; gap: 14px; row-gap: 40px; justify-content: center; flex-wrap: wrap; perspective: 1200px; }
 .flip { width: 138px; height: 273px; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
 .flip.deal { animation: deal-in .55s cubic-bezier(.2, .9, .25, 1.15) calc(var(--i) * 90ms) both; }
 @keyframes deal-in { from { transform: translateX(var(--dx)) translateY(20px) scale(.35) rotate(calc(var(--i) * 9deg - 18deg)); opacity: 0; } 40% { opacity: 1; } }
