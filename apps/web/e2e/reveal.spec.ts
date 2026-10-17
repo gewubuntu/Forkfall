@@ -16,7 +16,7 @@ for (const [name, width, height] of [['desktop', 1280, 800], ['phone', 390, 844]
     await page.getByRole('button', { name: 'Reveal all' }).click();
     await page.getByRole('button', { name: 'Add to collection' }).waitFor();
     await page.evaluate(() => document.fonts.ready);
-    await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished)));
+    await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getComputedTiming().iterations !== Infinity).length)).toBe(0);
 
     // Geometry, not hit-testing, so it holds however the page is scrolled: the label must not overlap any other card.
     const tags = await page.evaluate(() => {
@@ -30,6 +30,11 @@ for (const [name, width, height] of [['desktop', 1280, 800], ['phone', 390, 844]
         return { text: t.textContent, covered };
       });
     });
+    // The canvas (particles) and the flash/banner are fixed to the screen, however far the reveal is scrolled.
+    await page.locator('.reveal-scroll').evaluate((e) => { e.scrollTop = e.scrollHeight; });
+    const fx = await page.evaluate(() => [...document.querySelectorAll('.particles, .legend-flash, .legend-banner')].map((e) => ({ cls: e.className, top: Math.round(e.getBoundingClientRect().top) })));
+    expect(fx.filter((e) => e.cls.includes('particles'))).toEqual([{ cls: 'particles', top: 0 }]);
+    expect(fx.filter((e) => e.top < 0)).toEqual([]);
     expect(tags).toHaveLength(5);
     expect(tags.filter((t) => t.covered)).toEqual([]);
     expect(errors).toEqual([]);

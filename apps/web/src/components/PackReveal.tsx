@@ -124,6 +124,7 @@ export function PackReveal({ ids, fresh, packId, kind = 0, back, onClose, next }
       <canvas ref={canvas} className="particles" aria-hidden />
       {banner && <div className="legend-flash" aria-hidden />}
       {banner && <div className="legend-banner" aria-hidden><span>LEGENDARY</span></div>}
+      <div className="reveal-scroll">
       <div className={`reveal ${shake ? 'shake' : ''}`} role="dialog" aria-modal="true" aria-label="Open pack" ref={root}>
         <button className="mute-btn" onClick={() => { setMuted(!muted); setMute(!muted); }} aria-label={muted ? 'Unmute sounds' : 'Mute sounds'} title={muted ? 'Sound off' : 'Sound on'}>
           {muted ? '🔇' : '🔊'}
@@ -190,6 +191,7 @@ export function PackReveal({ ids, fresh, packId, kind = 0, back, onClose, next }
           {done && next && <button className="btn" onClick={next}>Open next pack</button>}
           {done && <button className="btn btn-primary" onClick={onClose}>Add to collection</button>}
         </div>
+      </div>
       </div>
     </div>
   );
