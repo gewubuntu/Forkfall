@@ -29,6 +29,22 @@ export function paidCount(eligible: number) {
   return eligible < 2 ? 0 : Math.ceil(eligible / 2);
 }
 
+/**
+ * Split a week's pot over `eligible` (already sorted best first): linear by rank, the remainder to rank 1.
+ * Agents below the cut come back with why they weren't paid.
+ */
+export function planPayouts<T>(eligible: T[], pot: bigint) {
+  const n = paidCount(eligible.length);
+  const weights = Array.from({ length: n }, (_, i) => BigInt(n - i));
+  const totalW = weights.reduce((a, b) => a + b, 0n);
+  const amounts = weights.map((w) => (pot * w) / totalW);
+  if (n) amounts[0] += pot - amounts.reduce((a, b) => a + b, 0n);
+  return {
+    paid: eligible.slice(0, n).map((agent, i) => ({ agent, amount: amounts[i] })),
+    unpaid: eligible.slice(n).map((agent) => ({ agent, reason: (n ? 'below-cut' : 'too-few-eligible') as 'below-cut' | 'too-few-eligible' })),
+  };
+}
+
 export function leagueDir(root: string, chainId: number) {
   return join(root, 'apps/server/data/league', String(chainId));
 }

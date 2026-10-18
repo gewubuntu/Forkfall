@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { createPublicClient, createWalletClient, formatUnits, http, keccak256, stringToHex, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { ANVIL, BASE_SEPOLIA, DEFAULT_RPC, type AddressBook } from '../src/chain.ts';
-import { leagueDir, paidCount as paidCountFor, type LeagueWeekFile } from '../src/league.ts';
+import { leagueDir, planPayouts, type LeagueWeekFile } from '../src/league.ts';
 
 const env = process.env;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -63,14 +63,10 @@ const eligible = rows.filter((r) => {
 }).sort((a, b) => b.rating - a.rating || b.wins - a.wins || b.games - a.games);
 
 const pot = await read<bigint>(L, agentLeagueAbi, 'pot', [week]);
-const paidCount = paidCountFor(eligible.length);
-for (const r of eligible.slice(paidCount)) ineligible.push({ agent: r.agent, reason: paidCount ? 'below-cut' : 'too-few-eligible', games: r.games, opponents: r.opponents });
-const weights = Array.from({ length: paidCount }, (_, i) => BigInt(paidCount - i));
-const totalW = weights.reduce((a, b) => a + b, 0n);
-const amounts = weights.map((w) => (totalW ? (pot * w) / totalW : 0n));
-if (amounts.length) amounts[0] += pot - amounts.reduce((a, b) => a + b, 0n);
-const payouts: LeagueWeekFile['payouts'] = eligible.slice(0, paidCount).map((r, i) => ({
-  agent: r.agent, operator: r.operator, amount: amounts[i].toString(), rank: i + 1, rating: r.rating, games: r.games, opponents: r.opponents,
+const plan = planPayouts(eligible, pot);
+for (const u of plan.unpaid) ineligible.push({ agent: u.agent.agent, reason: u.reason, games: u.agent.games, opponents: u.agent.opponents });
+const payouts: LeagueWeekFile['payouts'] = plan.paid.map(({ agent: r, amount }, i) => ({
+  agent: r.agent, operator: r.operator, amount: amount.toString(), rank: i + 1, rating: r.rating, games: r.games, opponents: r.opponents,
 }));
 
 const deadline = Math.floor(Date.now() / 1000) + Number(env.DEADLINE_DAYS ?? 30) * 86_400;
