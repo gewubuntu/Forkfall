@@ -18,11 +18,16 @@ export interface LeagueWeekFile {
   publishedAt: number;
   tx?: Hex;
   payouts: { agent: Address; operator: Address; amount: string; rank: number; rating: number; games: number; opponents: number }[];
-  ineligible: { agent: Address; reason: 'too-few-games' | 'too-few-opponents' | 'banned' | 'not-an-agent' | 'below-cut'; games: number; opponents: number }[];
+  ineligible: { agent: Address; reason: 'too-few-games' | 'too-few-opponents' | 'banned' | 'not-an-agent' | 'below-cut' | 'too-few-eligible'; games: number; opponents: number }[];
   tree: ReturnType<StandardMerkleTree<[string, string]>['dump']>;
 }
 
 export interface LeagueClaim { week: number; agent: Address; amount: string; proof: Hex[]; rank: number; deadline: number }
+
+/** Top half of the eligible agents, rounded up. Fewer than two eligible agents: no winner, the pot rolls over. */
+export function paidCount(eligible: number) {
+  return eligible < 2 ? 0 : Math.ceil(eligible / 2);
+}
 
 export function leagueDir(root: string, chainId: number) {
   return join(root, 'apps/server/data/league', String(chainId));
