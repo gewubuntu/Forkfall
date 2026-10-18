@@ -7,7 +7,8 @@
  *
  * Rule (defaults): eligible = registered, unbanned agents with ≥10 league games against ≥5 different
  * opponents that week. The top half of eligible agents by league rating is paid, weighted linearly by rank
- * (rank 1 gets the most). If nobody is eligible, the pot rolls into the current week.
+ * (rank 1 gets the most), rounding up. With fewer than two eligible agents nobody is paid and the pot rolls
+ * into the current week.
  * Env: WEEK (default: last finished week), MIN_GAMES (10), MIN_OPPONENTS (5), DEADLINE_DAYS (30), DRY_RUN=1.
  */
 import { StandardMerkleTree } from '@openzeppelin/merkle-tree';
@@ -18,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { createPublicClient, createWalletClient, formatUnits, http, keccak256, stringToHex, type Address, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { ANVIL, BASE_SEPOLIA, DEFAULT_RPC, type AddressBook } from '../src/chain.ts';
-import { leagueDir, type LeagueWeekFile } from '../src/league.ts';
+import { leagueDir, planPayouts, type LeagueWeekFile } from '../src/league.ts';
 
 const env = process.env;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -62,14 +63,10 @@ const eligible = rows.filter((r) => {
 }).sort((a, b) => b.rating - a.rating || b.wins - a.wins || b.games - a.games);
 
 const pot = await read<bigint>(L, agentLeagueAbi, 'pot', [week]);
-const paidCount = Math.ceil(eligible.length / 2);
-for (const r of eligible.slice(paidCount)) ineligible.push({ agent: r.agent, reason: 'below-cut', games: r.games, opponents: r.opponents });
-const weights = Array.from({ length: paidCount }, (_, i) => BigInt(paidCount - i));
-const totalW = weights.reduce((a, b) => a + b, 0n);
-const amounts = weights.map((w) => (totalW ? (pot * w) / totalW : 0n));
-if (amounts.length) amounts[0] += pot - amounts.reduce((a, b) => a + b, 0n);
-const payouts: LeagueWeekFile['payouts'] = eligible.slice(0, paidCount).map((r, i) => ({
-  agent: r.agent, operator: r.operator, amount: amounts[i].toString(), rank: i + 1, rating: r.rating, games: r.games, opponents: r.opponents,
+const plan = planPayouts(eligible, pot);
+for (const u of plan.unpaid) ineligible.push({ agent: u.agent.agent, reason: u.reason, games: u.agent.games, opponents: u.agent.opponents });
+const payouts: LeagueWeekFile['payouts'] = plan.paid.map(({ agent: r, amount }, i) => ({
+  agent: r.agent, operator: r.operator, amount: amount.toString(), rank: i + 1, rating: r.rating, games: r.games, opponents: r.opponents,
 }));
 
 const deadline = Math.floor(Date.now() / 1000) + Number(env.DEADLINE_DAYS ?? 30) * 86_400;
@@ -77,7 +74,7 @@ const tree = StandardMerkleTree.of<[string, string]>(payouts.length ? payouts.ma
 const rootHash = (payouts.length ? tree.root : keccak256(stringToHex(`no payouts for week ${week}`))) as Hex;
 const file: LeagueWeekFile = {
   week, chainId, league: L, pot: pot.toString(), root: rootHash, deadline: payouts.length ? deadline : 0,
-  rule: `Top half of eligible agents (≥${MIN_GAMES} games, ≥${MIN_OPPONENTS} opponents) by league rating, linear by rank; paid to operators`,
+  rule: `Top half of eligible agents (≥${MIN_GAMES} games, ≥${MIN_OPPONENTS} opponents) by league rating, linear by rank, rounded up (fewer than 2 eligible: no payout, pot rolls over); paid to operators`,
   publishedAt: Math.floor(Date.now() / 1000), payouts, ineligible, tree: tree.dump(),
 };
 console.log(`week ${week}: pot ${formatUnits(pot, 6)} tUSDC, ${rows.length} agents, ${eligible.length} eligible, ${payouts.length} paid`);
@@ -95,7 +92,7 @@ if (!env.DRY_RUN) {
   if (payouts.length) {
     file.tx = await send('publishWeek', 'publishWeek', [week, rootHash, BigInt(deadline)]);
   } else {
-    // Nobody qualified: close the week at once and roll the pot into the current week.
+    // Fewer than two agents qualified: close the week at once and roll the pot into the current week.
     const now = Number((await pub.getBlock()).timestamp);
     file.tx = await send('publishWeek (no payouts)', 'publishWeek', [week, rootHash, BigInt(now)]);
     if (pot > 0n) {
