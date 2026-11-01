@@ -1,0 +1,37 @@
+# Daily health check (scheduled routine)
+
+Production: https://play.forkfall.xyz on Base Sepolia (chain 84532). Read-only except GitHub issues: don't change code,
+push, deploy or touch any server. Never print or post secrets: a failing referee echoes its RPC URL with the API key,
+so never print a raw response body.
+
+## Checks
+
+1. **Site:** `code=$(curl -sS -m 20 -o /tmp/hc-config.json -w '%{http_code}' https://play.forkfall.xyz/v1/config)`
+   must be `200` with `"chainId":84532` in the body (`grep -q`). On failure print only the status and
+   `sed -E 's#([a-z]+://)([^/" ]*@)?([^/" ]+)[^" ]*#\1\3/<redacted>#g' /tmp/hc-config.json | head -c 600` (it keeps
+   only each URL's scheme and host). `https://play.forkfall.xyz/` must return HTML with 200.
+2. **Referee wallet:** the address in `.referee` of `contracts/deployments/84532.json`; a JSON-RPC `eth_getBalance`
+   POST to https://sepolia.base.org. Fail below 0.01 ETH; warn in the summary below 0.03 ETH.
+3. **CI on main:** the newest completed run of workflow `ci.yml` on `main` must have conclusion `success`.
+
+If a request fails because the sandbox proxy rejects the host (curl says the proxy refused the CONNECT; only then check
+`curl -sS "$HTTPS_PROXY/__agentproxy/status"`), that is this environment's setup, not an outage: open no issue, and
+name the hosts to add under the environment's Network access → Allowed domains.
+
+## Issues (label `health-check`; create it if missing)
+
+Each check has one fixed title with nothing appended: `Health check: site`, `Health check: referee wallet`,
+`Health check: CI on main`. The cause goes in the body: the exact command, the redacted output or status, the time
+(UTC), and the likely next step for the owner.
+
+- Before opening one, list open `health-check` issues. One whose title starts with the check's title is the same check,
+  whatever the cause (older titles like `Health check: /v1/config returns …` are the site check): comment today's
+  result on the oldest instead, and if several are open for one check, name the others as duplicates once.
+- A check that passes again: comment once on its open issue that it recovered (skip if its latest comment already says
+  so). Don't close it; the owner closes.
+- A response that exposes a secret (an RPC provider URL such as `https://base-sepolia.g.alchemy.com/<redacted>`, a
+  token, a private key): also open one issue labelled `security`, titled `Security: <endpoint> leaks <what>`, unless
+  an open `security` issue covers it. Never include the secret.
+
+End with a short summary: each check, pass/fail, and the issues opened or commented on. If a step in this file was
+wrong or missing, end with `Suggested change:` and the exact wording.

@@ -2,12 +2,12 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "mcp__github__create_pull_request",
+        "matcher": "^mcp__.*github.*__create_pull_request$",
         "hooks": [
           {
             "type": "command",
             "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/pr-opened.sh\"",
-            "statusMessage": "Queueing the PR review"
+            "statusMessage": "Reminding Claude to review the new PR"
           }
         ]
       }
@@ -23,7 +23,12 @@
       }
     ]
   },
+  "claudeMdExcludes": ["**/contracts/lib/**/CLAUDE.md"],
+  "permissions": {
+    "deny": ["Skill(add-changeset)", "Skill(solidity-style)", "Skill(library-api-design)", "Skill(testing)"],
+    "ask": ["mcp__*__merge_pull_request", "mcp__*__enable_pr_auto_merge"]
+  },
   "enabledPlugins": {
-    "rugproof@claude-community": true
+    "engineering@synced": false
   }
 }
