@@ -26,6 +26,8 @@ jobs:
       - run: pnpm test
       - run: pnpm sim 500 poncho  # balance gates (GDD), both at 500 games: every race 45–55%, Poncho set ≤ 58%
       - run: pnpm web:build
+      - run: node scripts/check-agent-setup.mjs   # agent docs and hooks match the repo
+        if: ${{ !cancelled() }}
 
   web-e2e:
     runs-on: ubuntu-latest
