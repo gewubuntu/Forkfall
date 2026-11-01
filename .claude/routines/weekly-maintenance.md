@@ -19,7 +19,7 @@ with `Suggested change:` and the exact wording.
 5. Review it as CLAUDE.md says (the code-reviewer agent; also packages added or removed and new install scripts).
    Then, in this run, wait until CI on its head SHA finishes (poll `pull_request_read` `get_check_runs`; don't end
    the run on a subscription) and fix or report failures (steward).
-6. Once its CI is green, close each older open `chore/weekly-deps` PR with the comment `Superseded by #<new>`; if it
+6. Once its CI is green, close each older PR from step 1's list with the comment `Superseded by #<new>`; if it
    isn't green, leave them open and say why in the summary.
 
 ## 2. Security review (report only: never fix or push from this part)

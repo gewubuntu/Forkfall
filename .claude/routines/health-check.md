@@ -8,9 +8,9 @@ so never print a raw response body.
 
 1. **Site:** `code=$(curl -sS -m 20 -o /tmp/hc-config.json -w '%{http_code}' https://play.forkfall.xyz/v1/config)`
    must be `200` with `"chainId":84532` in the body (`grep -q`). On failure print only the status and
-   `sed -E 's#[a-z]+:(\\?/){2}[^" <>]*#<url>#g' /tmp/hc-config.json | head -c 600` (every URL removed), then each URL's
+   `sed -E 's#[A-Za-z]+:(\\?/){2}[^" <>]*#<url>#g' /tmp/hc-config.json | head -c 600` (every URL removed), then each URL's
    scheme and host only:
-   `grep -oE '[a-z]+:(\\?/){2}([^/@" <>]*@)?[A-Za-z0-9.-]+' /tmp/hc-config.json | sed -E 's#(\\?/){2}[^/@" <>]*@#//#; s#\\##g' | sort -u`. `https://play.forkfall.xyz/` must return HTML with 200.
+   `grep -oE '[A-Za-z]+:(\\?/){2}([^/@" <>]*@)?[A-Za-z0-9.-]+' /tmp/hc-config.json | sed -E 's#(\\?/){2}[^/@" <>]*@#//#; s#\\##g' | sort -u`. `https://play.forkfall.xyz/` must return HTML with 200.
 2. **Referee wallet:** the address in `.referee` of `contracts/deployments/84532.json`; a JSON-RPC `eth_getBalance`
    POST to https://sepolia.base.org. Fail below 0.01 ETH; warn in the summary below 0.03 ETH.
 3. **CI on main:** the newest completed run of workflow `ci.yml` on `main` must have conclusion `success`.

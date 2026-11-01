@@ -12,7 +12,8 @@ trap '[ $? = 0 ] || echo "Forkfall toolchain setup failed at: $BASH_COMMAND. Tel
 TOOLS="$HOME/.cache/forkfall-tools"
 mkdir -p "$TOOLS"
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}"   # both unset when the script is rerun by hand
-ENV_FILE="${CLAUDE_ENV_FILE:-/dev/stdout}"   # a rerun by hand prints the export lines
+# Exports go to the session env file; a rerun by hand (no CLAUDE_ENV_FILE) prints them instead.
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then exec 3>>"$CLAUDE_ENV_FILE"; else exec 3>&1; fi
 
 # Downloads extract into a temp dir and move into place only once complete, so a cut-off transfer never leaves a
 # half-extracted tool that later runs would accept.
@@ -44,7 +45,7 @@ want_pnpm=$("$node_dir/bin/node" -p "require('./package.json').packageManager.sp
 {
   echo "export PATH=\"$node_dir/bin:$TOOLS/foundry:\$PATH\""
   echo "export FOUNDRY_OFFLINE=true"   # solc is in ~/.svm; don't let forge try the blocked download host
-} >> "$ENV_FILE"
+} >&3
 
 # The versions CI uses, read from where CI reads them.
 FOUNDRY_VERSION=$(sed -n 's/.*{ *version: *\(v[0-9.]*\) *}.*/\1/p' .github/workflows/ci.yml | head -1)
