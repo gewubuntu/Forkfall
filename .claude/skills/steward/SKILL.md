@@ -5,7 +5,7 @@ description: How to drive a Forkfall pull request to mergeable — which CI chec
 
 # Driving a Forkfall PR to green
 
-The owner merges (CLAUDE.md, Never). Your job ends at a PR that is green, conflict-free, reviewed (CLAUDE.md) and described accurately.
+The owner merges (the one exception is in CLAUDE.md, Never). Your job ends at a PR that is green, conflict-free, reviewed (CLAUDE.md) and described accurately.
 
 ## CI checks (`.github/workflows/ci.yml`) and how to reproduce them
 

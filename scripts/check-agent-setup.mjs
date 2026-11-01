@@ -13,12 +13,17 @@ const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclud
 const docs = files.filter((f) => f === 'CLAUDE.md' || (f.startsWith('.claude/') && f.endsWith('.md')));
 const names = new Set(files.map((f) => basename(f)));
 const tops = new Set(files.map((f) => f.split('/')[0]));
-const exists = (p) => files.some((f) => f === p.replace(/\/$/, '') || f.startsWith(p.replace(/\/?$/, '/')));
+const exists = (p) => files.some((f) => f === p.replace(/\/$/, '') || f.startsWith(p.replace(/\/?$/, '/')))
+  || ignored(p); // build outputs and local files the docs mention (contracts/out/, .claude/settings.local.json)
+function ignored(p) {
+  try { execFileSync('git', ['check-ignore', '-q', '--no-index', p], { cwd: root }); return true; } catch { return false; }
+}
 const scripts = JSON.parse(read('package.json')).scripts ?? {};
 // Files the docs name on purpose although they don't exist in a clean checkout.
 const MADE_AT_RUNTIME = new Set(['qa-probe.test.ts', 'qa-probe.spec.ts', 'QaProbe.t.sol', '31337.json', 'apps/server/data/']);
 const PNPM_BUILTINS = new Set(['install', 'i', 'add', 'remove', 'update', 'up', 'dedupe', 'exec', 'dlx', 'run', 'why', 'list',
-  'ls', 'store', 'outdated', 'audit', 'rebuild', 'config', 'patch', 'approve-builds', 'licenses', 'prune', 'peers', 'view']);
+  'ls', 'store', 'outdated', 'audit', 'rebuild', 'config', 'patch', 'approve-builds', 'licenses', 'prune', 'peers', 'view',
+  'deploy', 'fetch', 'create', 'init', 'link', 'unlink', 'pack', 'publish', 'env', 'root', 'bin', 'cache', 'setup']);
 const EXT = /\.(ts|tsx|mjs|js|sol|md|json|sh|yml|yaml|toml|css|html)$/;
 const problems = [];
 

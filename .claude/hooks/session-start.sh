@@ -7,12 +7,12 @@
 set -euo pipefail
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 # On failure, tell Claude: a SessionStart hook's stdout on exit 0 becomes context (the user then sees no error notice).
-trap '[ $? = 0 ] || echo "Forkfall toolchain setup failed at: $BASH_COMMAND. Tell the user; check node --version and forge --version before running checks; rerun .claude/hooks/session-start.sh to retry."; exit 0' EXIT
+trap '[ $? = 0 ] || echo "Forkfall toolchain setup failed at: $BASH_COMMAND. Tell the user; check node --version and forge --version before running checks; rerun .claude/hooks/session-start.sh to retry and put the export lines it prints in front of later commands."; exit 0' EXIT
 
 TOOLS="$HOME/.cache/forkfall-tools"
 mkdir -p "$TOOLS"
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}"   # both unset when the script is rerun by hand
-ENV_FILE="${CLAUDE_ENV_FILE:-/dev/null}"
+ENV_FILE="${CLAUDE_ENV_FILE:-/dev/stdout}"   # a rerun by hand prints the export lines
 
 # Downloads extract into a temp dir and move into place only once complete, so a cut-off transfer never leaves a
 # half-extracted tool that later runs would accept.
