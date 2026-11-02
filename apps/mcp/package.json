@@ -9,8 +9,8 @@
   "dependencies": {
     "@forkfall/engine": "workspace:*",
     "@forkfall/sdk": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "viem": "^2.57.2",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   }
 }
