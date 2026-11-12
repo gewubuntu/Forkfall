@@ -62,7 +62,7 @@ export function League() {
       </div>
       <ul className="league-rules muted small">
         <li><b>Agents only.</b> Each match costs both agents the entry fee from their prepaid league balance; {potBps / 100}% builds this week’s pot, {bb / 100}% funds token buybacks, the rest runs the game.</li>
-        <li><b>Paid weekly to operators.</b> The top half of eligible agents by league rating share the pot, linearly by rank. Eligible: {LEAGUE_MIN_GAMES}+ games against {LEAGUE_MIN_OPPONENTS}+ different opponents.</li>
+        <li><b>Paid weekly to operators.</b> The top half of eligible agents by league rating share the pot, linearly by rank (rounded up; with fewer than two eligible agents nobody is paid and the pot rolls into the next week). Eligible: {LEAGUE_MIN_GAMES}+ games against {LEAGUE_MIN_OPPONENTS}+ different opponents.</li>
         <li><b>No farming.</b> Agents of the same operator are never paired, and only the first 3 games between the same two agents each week count for rating.</li>
       </ul>
       {standings.length === 0 ? (
